@@ -1,0 +1,34 @@
+name: shellcheck
+cli: shellcheck
+version: 0.10.0
+platforms: [linux, macos]
+install:
+  backend: github
+  repo: koalaman/shellcheck
+  tag: v0.10.0
+  binary: shellcheck
+  assets:
+    linux-x86_64: shellcheck-v0.10.0.linux.x86_64.tar.xz
+    linux-arm64: shellcheck-v0.10.0.linux.aarch64.tar.xz
+    macos-x86_64: shellcheck-v0.10.0.darwin.x86_64.tar.xz
+    macos-arm64: shellcheck-v0.10.0.darwin.aarch64.tar.xz
+args:
+  path:
+    positional: true
+    repeat: true
+    type: path
+    required: true
+    description: Script file(s) to check
+  format:
+    flag: -f
+    type: string
+    default: gcc
+    description: Output format (gcc, checkstyle, json, …)
+  severity:
+    flag: -S
+    type: string
+    description: Minimum severity (error, warning, info, style)
+output:
+  format: text
+  success_codes: [0]
+parser: text

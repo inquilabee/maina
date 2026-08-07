@@ -1,0 +1,16 @@
+extends: kubectl/kubectl
+subcommand: apply
+args:
+  filename:
+    flag: -f
+    type: path
+    required: true
+  namespace:
+    flag: -n
+    type: string
+  dry_run:
+    flag: --dry-run
+    type: string
+output:
+  success_codes: [0]
+parser: text

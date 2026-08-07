@@ -1,0 +1,41 @@
+name: eslint
+cli: eslint
+version: 8.57.1
+requires:
+  runtime: node
+  version: 20
+install:
+  backend: npm
+  package: eslint
+args:
+  path:
+    positional: true
+    repeat: true
+    type: path
+    required: true
+  fix:
+    flag: --fix
+    type: flag
+  format:
+    flag: --format
+    type: string
+    default: json
+  no_eslintrc:
+    flag: --no-eslintrc
+    type: flag
+  env:
+    flag: --env
+    type: string
+    repeat: true
+  rule:
+    flag: --rule
+    type: string
+    repeat: true
+  no_error_on_unmatched_pattern:
+    flag: --no-error-on-unmatched-pattern
+    type: flag
+    default: true
+output:
+  format: json
+  success_codes: [0, 1]
+parser: json

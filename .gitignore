@@ -1,0 +1,26 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# ShipGate managed installs / reports / cache
+.shipgate/tools/
+.shipgate/reports/
+.shipgate/cache/
+
+# Cursor IDE local rules (not product docs) and internal docs
+.cursor/
+.shipgate/
+adr/
+scripts/
+todos.md
+
+# cache files and dir
+*cache*
+docs/

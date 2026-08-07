@@ -1,0 +1,8 @@
+name: git
+abstract: true
+cli: git
+install:
+  backend: path
+args: {}
+output:
+  success_codes: [0]

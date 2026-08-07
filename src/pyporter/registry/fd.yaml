@@ -1,0 +1,37 @@
+name: fd
+cli: fd
+version: 10.2.0
+platforms: [linux, macos]
+install:
+  backend: github
+  repo: sharkdp/fd
+  tag: v10.2.0
+  binary: fd
+  assets:
+    linux-x86_64: fd-v10.2.0-x86_64-unknown-linux-musl.tar.gz
+    linux-arm64: fd-v10.2.0-aarch64-unknown-linux-gnu.tar.gz
+    macos-x86_64: fd-v10.2.0-x86_64-apple-darwin.tar.gz
+    macos-arm64: fd-v10.2.0-aarch64-apple-darwin.tar.gz
+args:
+  pattern:
+    positional: true
+    type: string
+  path:
+    positional: true
+    type: path
+    repeat: true
+  extension:
+    flag: -e
+    type: string
+    repeat: true
+  type:
+    flag: -t
+    type: string
+    repeat: true
+  hidden:
+    flag: -H
+    type: flag
+output:
+  format: text
+  success_codes: [0]
+parser: lines

@@ -1,0 +1,5 @@
+extends: git/git
+subcommand: remote
+args: {}
+output:
+  success_codes: [0]

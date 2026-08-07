@@ -1,0 +1,40 @@
+name: jscpd
+cli: jscpd
+version: 4.0.5
+requires:
+  runtime: node
+  version: 20
+install:
+  backend: npm
+  package: jscpd
+args:
+  path:
+    positional: true
+    repeat: true
+    type: path
+    required: true
+  min_lines:
+    flag: --min-lines
+    type: string
+  min_tokens:
+    flag: --min-tokens
+    type: string
+  format:
+    flag: --format
+    type: string
+    repeat: true
+  reporters:
+    flag: --reporters
+    type: string
+    default: json
+  output:
+    flag: --output
+    type: path
+  silent:
+    flag: --silent
+    type: flag
+    default: true
+output:
+  format: json
+  success_codes: [0]
+parser: json

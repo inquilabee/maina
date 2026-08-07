@@ -1,0 +1,4 @@
+cli: hello
+install:
+  backend: path
+parser: text

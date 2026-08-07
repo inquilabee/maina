@@ -1,0 +1,28 @@
+name: prettier
+cli: prettier
+version: 3.3.3
+requires:
+  runtime: node
+  version: 20
+install:
+  backend: npm
+  package: prettier
+args:
+  path:
+    positional: true
+    repeat: true
+    type: path
+    required: true
+  check:
+    flag: --check
+    type: flag
+  write:
+    flag: --write
+    type: flag
+  parser:
+    flag: --parser
+    type: string
+output:
+  format: text
+  success_codes: [0]
+parser: text

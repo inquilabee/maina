@@ -1,0 +1,14 @@
+extends: git/remote/remote
+subcommand: add
+args:
+  name:
+    positional: true
+    type: string
+    required: true
+  url:
+    positional: true
+    type: string
+    required: true
+parser: add.py
+output:
+  success_codes: [0]

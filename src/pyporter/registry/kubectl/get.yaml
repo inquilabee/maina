@@ -1,0 +1,20 @@
+extends: kubectl/kubectl
+subcommand: get
+args:
+  resource:
+    positional: true
+    type: string
+    required: true
+  namespace:
+    flag: -n
+    type: string
+  output:
+    flag: -o
+    type: string
+    default: json
+  selector:
+    flag: -l
+    type: string
+parser: json
+output:
+  success_codes: [0]

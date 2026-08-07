@@ -1,0 +1,40 @@
+name: rg
+cli: rg
+version: 14.1.1
+platforms: [linux, macos]
+install:
+  backend: github
+  repo: BurntSushi/ripgrep
+  tag: 14.1.1
+  binary: rg
+  assets:
+    linux-x86_64: ripgrep-14.1.1-x86_64-unknown-linux-musl.tar.gz
+    linux-arm64: ripgrep-14.1.1-aarch64-unknown-linux-gnu.tar.gz
+    macos-x86_64: ripgrep-14.1.1-x86_64-apple-darwin.tar.gz
+    macos-arm64: ripgrep-14.1.1-aarch64-apple-darwin.tar.gz
+args:
+  pattern:
+    positional: true
+    type: string
+    required: true
+  path:
+    positional: true
+    type: path
+    repeat: true
+  glob:
+    flag: --glob
+    type: string
+    repeat: true
+  json:
+    flag: --json
+    type: flag
+  files:
+    flag: --files
+    type: flag
+  ignore_case:
+    flag: -i
+    type: flag
+output:
+  format: text
+  success_codes: [0, 1]
+parser: text

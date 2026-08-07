@@ -1,0 +1,31 @@
+name: yq
+cli: yq
+version: 4.44.3
+platforms: [linux, macos]
+install:
+  backend: github
+  repo: mikefarah/yq
+  tag: v4.44.3
+  binary: yq
+  assets:
+    linux-x86_64: yq_linux_amd64
+    linux-arm64: yq_linux_arm64
+    macos-x86_64: yq_darwin_amd64
+    macos-arm64: yq_darwin_arm64
+args:
+  expression:
+    positional: true
+    type: string
+  path:
+    positional: true
+    type: path
+  output_format:
+    flag: -o
+    type: string
+  raw:
+    flag: -r
+    type: flag
+output:
+  format: text
+  success_codes: [0]
+parser: text

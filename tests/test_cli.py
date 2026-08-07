@@ -1,0 +1,189 @@
+"""Tests for Tool.__str__ / help and Typer CLI run parsing."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+from typer.testing import CliRunner
+
+from pyporter.cli import RunArgParser, RunInvocation, app, main
+from pyporter.result import ToolResult
+from pyporter.tool import Tool
+
+runner = CliRunner()
+
+
+def test_str_bound_tool_owns_help_block() -> None:
+    text = str(Tool("jq"))
+    assert text.startswith("Tool: jq")
+    assert "cli: jq" in text
+    assert "Arguments:" in text
+    assert "filter:" in text
+
+
+def test_str_shellcheck_includes_arg_descriptions() -> None:
+    text = str(Tool("shellcheck"))
+    assert "Tool: shellcheck" in text
+    assert "cli: shellcheck" in text
+    assert "path:" in text
+    assert "Script file" in text
+
+
+def test_str_unbound_is_package_help() -> None:
+    text = str(Tool())
+    assert "Top-level tools:" in text
+    assert "pyporter run" in text
+    assert text == Tool.package_help()
+
+
+def test_run_usage_help_lists_tools() -> None:
+    text = Tool.run_usage_help()
+    assert "pyporter run <tool_id>" in text
+    assert "Top-level tools:" in text
+    assert "shellcheck" in text
+
+
+def test_help_returns_str(capsys: pytest.CaptureFixture[str]) -> None:
+    tool = Tool("jq")
+    returned = tool.help()
+    captured = capsys.readouterr()
+    assert returned == str(tool)
+    assert captured.out.strip() == str(tool)
+
+
+def test_run_arg_parser_kwargs_and_extra() -> None:
+    kwargs, extra = RunArgParser.parse(
+        ["filter=.", "null_input", "path=a", "path=b", "--", "-c", "--arg", "x", "y"]
+    )
+    assert kwargs == {
+        "filter": ".",
+        "null_input": True,
+        "path": ["a", "b"],
+    }
+    assert extra == ["-c", "--arg", "x", "y"]
+
+
+def test_run_arg_parser_bool_coercion() -> None:
+    kwargs, extra = RunArgParser.parse(["silent=true", "raw=false"])
+    assert kwargs == {"silent": True, "raw": False}
+    assert extra is None
+
+
+def test_run_invocation_strips_help_before_extra() -> None:
+    tool_id, tokens, wants_help = RunInvocation.parse("shellcheck", ["--help", "--", "--help"])
+    assert tool_id == "shellcheck"
+    assert wants_help is True
+    assert tokens == ["--", "--help"]
+
+
+def test_cli_root_help() -> None:
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "prepare" in result.stdout
+    assert "run" in result.stdout
+
+
+def test_cli_run_help_without_tool() -> None:
+    result = runner.invoke(app, ["run", "--help"])
+    assert result.exit_code == 0
+    assert "pyporter run <tool_id>" in result.stdout
+    assert "Top-level tools:" in result.stdout
+
+
+def test_cli_run_tool_help_flag() -> None:
+    result = runner.invoke(app, ["run", "shellcheck", "--help"])
+    assert result.exit_code == 0
+    assert "Tool: shellcheck" in result.stdout
+    assert "cli: shellcheck" in result.stdout
+    assert "Arguments:" in result.stdout
+    assert "path:" in result.stdout
+    assert "Script file" in result.stdout
+    assert "Usage: pyporter run [OPTIONS]" not in result.stdout
+
+
+def test_cli_run_tool_help_short_flag() -> None:
+    result = runner.invoke(app, ["run", "shellcheck", "-h"])
+    assert result.exit_code == 0
+    assert "Tool: shellcheck" in result.stdout
+
+
+def test_cli_run_tool_bare_prints_help() -> None:
+    result = runner.invoke(app, ["run", "shellcheck"])
+    assert result.exit_code == 0
+    assert "Tool: shellcheck" in result.stdout
+    assert "Arguments:" in result.stdout
+    assert "missing required" not in result.stdout
+    assert "missing required" not in result.stderr
+
+
+def test_cli_help_subcommand() -> None:
+    result = runner.invoke(app, ["help"])
+    assert result.exit_code == 0
+    assert "Top-level tools:" in result.stdout
+
+
+def test_cli_run_unknown_tool() -> None:
+    result = runner.invoke(app, ["run", "definitely-missing-tool"])
+    assert result.exit_code == 2
+
+
+def test_cli_run_with_kwargs_still_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str | None, dict[str, Any]]] = []
+
+    def fake_run(
+        self: Tool,
+        *,
+        extra: str | list[str] | None = None,
+        **kwargs: Any,
+    ) -> ToolResult:
+        calls.append((self.id, {"extra": extra, **kwargs}))
+        return ToolResult(
+            tool=self.id or "",
+            ok=True,
+            exit_code=0,
+            raw="ok\n",
+            stderr="",
+            command=["shellcheck", "script.sh"],
+            parsed="ok\n",
+        )
+
+    monkeypatch.setattr(Tool, "run", fake_run)
+    result = runner.invoke(app, ["run", "shellcheck", "path=script.sh", "format=gcc"])
+    assert result.exit_code == 0
+    assert calls == [("shellcheck", {"extra": None, "path": "script.sh", "format": "gcc"})]
+    assert "ok" in result.stdout
+
+
+def test_cli_run_help_after_extra_separator_does_not_short_circuit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, Any]] = []
+
+    def fake_run(
+        self: Tool,
+        *,
+        extra: str | list[str] | None = None,
+        **kwargs: Any,
+    ) -> ToolResult:
+        calls.append({"extra": extra, **kwargs})
+        return ToolResult(
+            tool=self.id or "",
+            ok=True,
+            exit_code=0,
+            raw="",
+            stderr="",
+            command=["shellcheck"],
+        )
+
+    monkeypatch.setattr(Tool, "run", fake_run)
+    # main() captures raw argv so ``--`` survives Click stripping.
+    assert main(["run", "shellcheck", "path=x.sh", "--", "--help"]) == 0
+    assert calls == [{"extra": ["--help"], "path": "x.sh"}]
+
+
+def test_main_returns_int_for_help() -> None:
+    assert main(["help"]) == 0
+    assert main(["--help"]) == 0
+    assert main(["run", "shellcheck", "--help"]) == 0
+    assert main(["run", "definitely-missing-tool"]) == 2

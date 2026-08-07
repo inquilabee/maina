@@ -1,0 +1,35 @@
+name: jq
+cli: jq
+version: 1.7.1
+platforms: [linux, macos]
+install:
+  backend: github
+  repo: jqlang/jq
+  tag: jq-1.7.1
+  binary: jq
+  assets:
+    linux-x86_64: jq-linux-amd64
+    linux-arm64: jq-linux-arm64
+    macos-x86_64: jq-macos-amd64
+    macos-arm64: jq-macos-arm64
+args:
+  filter:
+    positional: true
+    type: string
+    required: true
+  path:
+    positional: true
+    type: path
+  compact:
+    flag: -c
+    type: flag
+  raw:
+    flag: -r
+    type: flag
+  null_input:
+    flag: -n
+    type: flag
+output:
+  format: text
+  success_codes: [0]
+parser: text

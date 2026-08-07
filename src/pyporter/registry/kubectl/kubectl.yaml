@@ -1,0 +1,8 @@
+name: kubectl
+abstract: true
+cli: kubectl
+install:
+  backend: path
+args: {}
+output:
+  success_codes: [0]
