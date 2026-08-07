@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 import pytest
 
 from helpers import write_yaml
-from pyporter.errors import AbstractToolError, ManifestError
-from pyporter.registry import Registry
+from pyporter.core.errors import AbstractToolError, ManifestError
+from pyporter.core.registry import Registry
 from pyporter.runtime import Runtime
 from pyporter.tool import Tool
 

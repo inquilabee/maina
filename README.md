@@ -31,7 +31,8 @@ pyporter.Tool("mytool", runtime=rt).run(...)
 
 Or omit the Runtime and mutate the process session: `pyporter.register(registry_dirs=[...])`.
 Later registry dirs override shipped ids for the same tool id. You can also pass
-`parsers=`, `parsers_dirs=`, `installers=`, and `language=`. Use
+`parsers=`, `parsers_dirs=`, `installers=`, and `language=`. Parsers implement the
+`Parser` protocol (`parse(raw, result)` / any matching callable). Use
 `Tool(..., runtime=rt)` or `pyporter.use(rt)` when isolating a composition
 Runtime (tests, multiple catalogs).
 
@@ -98,12 +99,17 @@ The hook runs `shipgate check --suite pre-commit`. It expects a local `.shipgate
 ```bash
 pyporter prepare              # ensure runtimes + tools
 pyporter prepare jscpd        # one tool (and its required runtime)
-pyporter help                 # package help (also the default with no args)
+pyporter                      # Typer package help
+pyporter help                 # same as bare `pyporter`
+pyporter list                 # top-level tool ids
+pyporter list kubectl         # children of a parent id
+pyporter run                  # Typer run help
+pyporter run eslint --help    # registry help for that tool
 pyporter run shellcheck --help   # that tool's registry help (also bare: run shellcheck)
 pyporter run jq filter=. null_input
 pyporter run jscpd path=src min_lines=5
-pyporter run kubectl/get resource=pods namespace=default
-pyporter run git/remote/add name=origin url=https://example.com
+pyporter run kubectl-get resource=pods namespace=default
+pyporter run git-remote-add name=origin url=https://example.com
 ```
 
 `run` maps `key=value` tokens to `Tool(tool_id).run(**kwargs)`. Repeat a key for

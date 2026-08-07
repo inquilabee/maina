@@ -8,16 +8,23 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 
-from pyporter.errors import AbstractToolError, ArgError, ManifestError, PorterError
+from pyporter.core.errors import AbstractToolError, ArgError, ManifestError, PorterError
 from pyporter.runtime import runtime
 from pyporter.tool import Tool
 
 if TYPE_CHECKING:
-    from pyporter.result import ToolResult
+    from pyporter.core.result import ToolResult
 
 app = typer.Typer(
     name="pyporter",
-    help="Registry-first CLI tool runner",
+    help=(
+        "Registry-first CLI tool runner.\n\n"
+        "Use `pyporter run <tool_id> key=value ... [-- extra...]` to invoke a "
+        "registered tool. Pass registry kwargs as key=value tokens (repeat a key "
+        "for list values); a bare key sets that flag to true. Tokens after `--` "
+        "become extra argv. `pyporter run <tool_id>` or `... --help` prints that "
+        "tool's registry help. List ids with `pyporter list`."
+    ),
     add_completion=False,
     no_args_is_help=False,
 )
@@ -35,17 +42,55 @@ def split_at_dashdash(tokens: list[str]) -> tuple[list[str], list[str] | None]:
     return tokens[:sep], tokens[sep + 1 :]
 
 
+def to_cli_id(tool_id: str) -> str:
+    """Present a registry id for the CLI (``kubectl/get`` → ``kubectl-get``)."""
+    return tool_id.replace("/", "-")
+
+
+def from_cli_id(tool_id: str) -> str:
+    """Accept CLI ids with hyphens (``kubectl-get`` → ``kubectl/get``)."""
+    return tool_id.replace("-", "/")
+
+
+def echo_typer_help(ctx: Any) -> None:
+    """Print Typer/Click help for ``ctx`` (no registry tool catalog)."""
+    typer.echo(ctx.get_help())
+
+
 @app.callback(invoke_without_command=True)
 def root(ctx: typer.Context) -> None:
-    """Show package help when no subcommand is given."""
+    """Show Typer package help when no subcommand is given."""
     if ctx.invoked_subcommand is None:
-        typer.echo(Tool().help())
+        echo_typer_help(ctx)
+        raise typer.Exit(0)
 
 
 @app.command("help")
-def help_cmd() -> None:
-    """Show package help."""
-    typer.echo(Tool().help())
+def help_cmd(ctx: typer.Context) -> None:
+    """Show the same help as ``pyporter`` / ``pyporter --help``."""
+    parent = ctx.parent if ctx.parent is not None else ctx
+    echo_typer_help(parent)
+    raise typer.Exit(0)
+
+
+@app.command("list")
+def list_cmd(
+    tool_id: Annotated[
+        str | None,
+        typer.Argument(help="Parent tool id whose children to list (default: top-level)"),
+    ] = None,
+) -> None:
+    """List registered tool ids (top-level, or children of TOOL_ID).
+
+    Nested ids are shown with hyphens (``kubectl-get``), not slashes.
+    """
+    parent = from_cli_id(tool_id) if tool_id is not None else None
+    ids = runtime().registry.list_commands(parent)
+    if not ids:
+        typer.echo("(none registered)")
+        return
+    for tid in ids:
+        typer.echo(to_cli_id(tid))
 
 
 @app.command()
@@ -56,9 +101,10 @@ def prepare(
     ] = None,
 ) -> None:
     """Ensure mise runtimes and tool installs."""
-    prepared = runtime().installer.prepare_ids(list(tools) if tools else None)
+    ids = [from_cli_id(t) for t in tools] if tools else None
+    prepared = runtime().installer.prepare_ids(ids)
     for tid in prepared:
-        typer.echo(f"prepared: {tid}")
+        typer.echo(f"prepared: {to_cli_id(tid)}")
 
 
 @app.command(
@@ -72,7 +118,7 @@ def run(
     ctx: typer.Context,
     tool_id: Annotated[
         str | None,
-        typer.Argument(help="Registry tool id (e.g. jq, kubectl/get, git/remote/add)"),
+        typer.Argument(help="Registry tool id (e.g. jq, kubectl-get, git-remote-add)"),
     ] = None,
 ) -> None:
     """Run a registered tool via Tool(tool_id).run(**kwargs).
@@ -80,12 +126,14 @@ def run(
     Pass registry kwargs as ``key=value`` tokens. Repeat a key for list values.
     A bare key sets that flag to true. Tokens after ``--`` become ``extra``.
 
+    Nested tool ids use hyphens on the CLI (``kubectl-get``); slashes still work.
     ``pyporter run <tool_id>`` and ``... --help`` print that tool's registry help.
     """
     resolved_id, tokens, wants_help = RunInvocation.resolve(tool_id, list(ctx.args))
     if resolved_id is None:
-        typer.echo(Tool.run_usage_help())
+        echo_typer_help(ctx)
         raise typer.Exit(0)
+    resolved_id = from_cli_id(resolved_id)
     if wants_help or RunInvocation.is_empty(tokens):
         emit_tool_help(resolved_id)
         raise typer.Exit(0)

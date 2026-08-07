@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from pyporter.errors import ToolExitError
+from pyporter.core.errors import ToolExitError
 
 
 @dataclass(slots=True)

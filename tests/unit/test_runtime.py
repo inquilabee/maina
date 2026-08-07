@@ -8,8 +8,8 @@ import pytest
 
 import pyporter
 from helpers import write_yaml
-from pyporter.errors import ManifestError, RegisterError
-from pyporter.parsers import ParserResolver
+from pyporter.core.errors import ManifestError, RegisterError
+from pyporter.core.parsers import ParserResolver
 from pyporter.runtime import Runtime, resolve_cache_root
 
 if TYPE_CHECKING:

@@ -8,14 +8,14 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, cast
 
-from pyporter.errors import InstallError
+from pyporter.core.errors import InstallError
+from pyporter.core.protocols import InstallContext, InstallerBackend, LanguageRuntimeProvider
 from pyporter.mise import MiseRuntime
-from pyporter.protocols import InstallContext, InstallerBackend, LanguageRuntimeProvider
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from pyporter.registry import Manifest, Registry
+    from pyporter.core.registry import Manifest, Registry
 
 
 @contextmanager

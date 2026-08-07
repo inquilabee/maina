@@ -11,16 +11,16 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pyporter.backends import GithubBackend, NpmBackend, PathBackend
-from pyporter.errors import RegisterError
+from pyporter.core.errors import RegisterError
+from pyporter.core.parsers import ParserFn, ParserResolver, builtin_generals
+from pyporter.core.registry import Registry
 from pyporter.installer import Installer
 from pyporter.mise import MiseRuntime
-from pyporter.parsers import ParserFn, ParserResolver, builtin_generals
-from pyporter.registry import Registry
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-    from pyporter.protocols import InstallerBackend, LanguageRuntimeProvider
+    from pyporter.core.protocols import InstallerBackend, LanguageRuntimeProvider
 
 
 class RuntimeSession:
@@ -59,7 +59,7 @@ class Runtime:
     """Owns registry overlays, general parsers, installer backends, and language.
 
     This is the composition root. Language runtimes stay behind
-    :class:`~pyporter.protocols.LanguageRuntimeProvider` (e.g. ``MiseRuntime``).
+    :class:`~pyporter.core.protocols.LanguageRuntimeProvider` (e.g. ``MiseRuntime``).
     """
 
     def __init__(

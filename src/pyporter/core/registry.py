@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
-from pyporter.errors import ManifestError
+from pyporter.core.errors import ManifestError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

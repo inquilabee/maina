@@ -1,15 +1,29 @@
-"""Pluggable contracts for installer backends and language runtimes."""
+"""Pluggable contracts for installers, language runtimes, and parsers."""
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from pyporter.registry import Manifest
+    from pyporter.core.registry import Manifest
+    from pyporter.core.result import ToolResult
+
+
+@runtime_checkable
+class Parser(Protocol):
+    """Transform tool stdout into structured ``ToolResult.parsed`` data.
+
+    Plain callables (module-level ``parse``, lambdas, bound methods) satisfy this
+    protocol. Register them via ``register(parsers={...})`` or ``parsers_dirs``.
+    """
+
+    def __call__(self, raw: str, result: ToolResult) -> Any:
+        """Parse *raw* stdout; *result* is the run outcome for context."""
+        ...
 
 
 @runtime_checkable

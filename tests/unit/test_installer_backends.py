@@ -9,15 +9,15 @@ import pytest
 
 from helpers import write_yaml
 from pyporter.backends import PathBackend
-from pyporter.errors import InstallError
+from pyporter.core.errors import InstallError
+from pyporter.core.registry import Manifest, Registry
 from pyporter.installer import Installer
-from pyporter.registry import Manifest, Registry
 from pyporter.runtime import Runtime, register
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from pyporter.protocols import InstallContext, LanguageRuntimeProvider
+    from pyporter.core.protocols import InstallContext, LanguageRuntimeProvider
 
 
 @dataclass

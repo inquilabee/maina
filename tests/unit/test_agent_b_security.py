@@ -15,13 +15,13 @@ import pytest
 from helpers import write_yaml
 from pyporter.backends.archive import ArchiveFetcher
 from pyporter.backends.npm import NpmBackend
-from pyporter.errors import InstallError
+from pyporter.core.errors import InstallError
+from pyporter.core.registry import InstallSpec, Manifest, Registry, RequiresSpec
 from pyporter.installer import Installer, install_dir_lock
-from pyporter.registry import InstallSpec, Manifest, Registry, RequiresSpec
 from pyporter.runner import ToolRunner
 
 if TYPE_CHECKING:
-    from pyporter.protocols import InstallContext
+    from pyporter.core.protocols import InstallContext
 
 
 @dataclass
@@ -178,7 +178,7 @@ def test_github_backend_resolve_uses_fetcher(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from pyporter.backends.github import GithubBackend
-    from pyporter.protocols import InstallContext
+    from pyporter.core.protocols import InstallContext
 
     monkeypatch.setattr("pyporter.backends.github.platform_key", lambda: "linux-x86_64")
     fetcher = RecordingFetcher()

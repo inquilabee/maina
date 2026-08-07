@@ -2,21 +2,30 @@
 
 from __future__ import annotations
 
+import inspect
 from typing import TYPE_CHECKING, Any
 
-from pyporter.errors import AbstractToolError
-from pyporter.registry import Registry
+from pyporter.core.errors import AbstractToolError
+from pyporter.core.registry import Registry
 from pyporter.runner import ToolRunner
 from pyporter.runtime import runtime as active_runtime
 
 if TYPE_CHECKING:
-    from pyporter.registry import ArgSpec, Manifest
-    from pyporter.result import ToolResult
+    from pyporter.core.registry import ArgSpec, Manifest
+    from pyporter.core.result import ToolResult
     from pyporter.runtime import Runtime
 
 
 class Tool:
-    """Registry-backed CLI surface composed from Runtime + ToolRunner."""
+    """Call non-Python CLIs via registry manifests.
+
+    Usage:
+      from pyporter import Tool
+      result = Tool("jscpd").run(path=["src"])
+      print(result.raw, result.parsed)
+
+    For the ``pyporter`` CLI, run ``pyporter --help``.
+    """
 
     def __init__(
         self,
@@ -77,12 +86,16 @@ class Tool:
         return self._registry.list_commands(self._id)
 
     def __str__(self) -> str:
-        """Format package or bound-tool help text."""
+        """Format library or bound-tool help text (not the CLI shell)."""
         if self._manifest is None:
-            return self.package_help(runtime=self._runtime)
+            body = inspect.cleandoc(type(self).__doc__ or "")
+            tops = self._registry.list_commands(None)
+            return "\n".join(
+                [body, "", "Registered top-level tools:", *self.format_tool_id_lines(tops)]
+            )
         manifest = self._manifest
         lines = [
-            f"Tool: {manifest.id}",
+            f"{self.__class__.__name__}: {manifest.id}",
             f"cli: {manifest.data.get('cli')}",
             f"abstract: {manifest.abstract}",
             f"subcommands: {' '.join(manifest.subcommands) or '(none)'}",
@@ -96,57 +109,13 @@ class Tool:
         return "\n".join(lines)
 
     def help(self) -> str:
-        """Format package or bound-tool usage help (does not print)."""
+        """Format library or bound-tool help (does not print)."""
         return str(self)
 
     @staticmethod
     def format_tool_id_lines(ids: list[str]) -> list[str]:
         """Format a bullet list of tool ids for help text."""
         return [f"  - {t}" for t in ids] if ids else ["  (none registered)"]
-
-    @classmethod
-    def package_help(cls, *, runtime: Runtime | None = None) -> str:
-        """Format unbound package usage help."""
-        rt = runtime if runtime is not None else active_runtime()
-        tops = rt.registry.list_commands(None)
-        lines = [
-            "pyporter — call non-Python CLIs via registry manifests",
-            "",
-            "Usage:",
-            "  from pyporter import Tool",
-            '  result = Tool("jscpd").run(path=["src"])',
-            "  print(result.raw, result.parsed)",
-            "",
-            "CLI:",
-            "  pyporter prepare [tool...]",
-            "  pyporter run <tool_id> [key=value ...] [-- extra...]",
-            "  pyporter run <tool_id> --help",
-            "  pyporter help",
-            "",
-            "Top-level tools:",
-            *cls.format_tool_id_lines(tops),
-        ]
-        return "\n".join(lines)
-
-    @classmethod
-    def run_usage_help(cls, *, runtime: Runtime | None = None) -> str:
-        """Format help for ``pyporter run`` without a tool id."""
-        rt = runtime if runtime is not None else active_runtime()
-        tops = rt.registry.list_commands(None)
-        lines = [
-            "Usage:",
-            "  pyporter run <tool_id> [key=value ...] [-- extra...]",
-            "  pyporter run <tool_id> --help",
-            "",
-            "Pass registry kwargs as key=value tokens. Repeat a key for list values.",
-            "A bare key sets that flag to true. Tokens after -- become extra.",
-            "",
-            "See also: pyporter help",
-            "",
-            "Top-level tools:",
-            *cls.format_tool_id_lines(tops),
-        ]
-        return "\n".join(lines)
 
     @staticmethod
     def _arg_help_lines(args: dict[str, ArgSpec]) -> list[str]:

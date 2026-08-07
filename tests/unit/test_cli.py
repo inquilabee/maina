@@ -11,7 +11,7 @@ import pyporter
 from helpers import write_yaml
 from pyporter.backends import PathBackend
 from pyporter.cli import RunArgParser, RunInvocation, app, main
-from pyporter.result import ToolResult
+from pyporter.core.result import ToolResult
 from pyporter.runtime import Runtime
 from pyporter.tool import Tool
 
@@ -34,17 +34,11 @@ def test_str_shellcheck_includes_arg_descriptions() -> None:
     assert "Script file" in text
 
 
-def test_str_unbound_is_package_help() -> None:
+def test_str_unbound_is_library_help() -> None:
     text = str(Tool())
-    assert "Top-level tools:" in text
-    assert "pyporter run" in text
-    assert text == Tool.package_help()
-
-
-def test_run_usage_help_lists_tools() -> None:
-    text = Tool.run_usage_help()
-    assert "pyporter run <tool_id>" in text
-    assert "Top-level tools:" in text
+    assert "Registered top-level tools:" in text
+    assert "from pyporter import Tool" in text
+    assert "pyporter run" not in text
     assert "shellcheck" in text
 
 
@@ -91,8 +85,48 @@ def test_cli_root_help() -> None:
 def test_cli_run_help_without_tool() -> None:
     result = runner.invoke(app, ["run", "--help"])
     assert result.exit_code == 0
-    assert "pyporter run <tool_id>" in result.stdout
-    assert "Top-level tools:" in result.stdout
+    assert "Usage:" in result.stdout
+    assert "tool_id" in result.stdout or "TOOL_ID" in result.stdout
+    assert "Top-level tools:" not in result.stdout
+
+
+def test_cli_bare_shows_typer_help() -> None:
+    result = runner.invoke(app, [])
+    assert result.exit_code == 0
+    assert "Usage:" in result.stdout
+    assert "prepare" in result.stdout
+    assert "run" in result.stdout
+    assert "list" in result.stdout
+    assert "Top-level tools:" not in result.stdout
+
+
+def test_cli_list_top_level() -> None:
+    result = runner.invoke(app, ["list"])
+    assert result.exit_code == 0
+    assert "shellcheck" in result.stdout.splitlines()
+    assert "jq" in result.stdout.splitlines()
+    assert "Top-level tools:" not in result.stdout
+
+
+def test_cli_list_children() -> None:
+    result = runner.invoke(app, ["list", "kubectl"])
+    assert result.exit_code == 0
+    lines = result.stdout.splitlines()
+    assert "kubectl-get" in lines
+    assert "kubectl-apply" in lines
+    assert "kubectl/get" not in lines
+
+
+def test_cli_list_children_hyphen_parent() -> None:
+    result = runner.invoke(app, ["list", "git-remote"])
+    assert result.exit_code == 0
+    assert "git-remote-add" in result.stdout.splitlines()
+
+
+def test_cli_run_accepts_hyphen_id() -> None:
+    result = runner.invoke(app, ["run", "kubectl-get"])
+    assert result.exit_code == 0
+    assert "Tool: kubectl/get" in result.stdout
 
 
 def test_cli_run_tool_help_flag() -> None:
@@ -124,7 +158,9 @@ def test_cli_run_tool_bare_prints_help() -> None:
 def test_cli_help_subcommand() -> None:
     result = runner.invoke(app, ["help"])
     assert result.exit_code == 0
-    assert "Top-level tools:" in result.stdout
+    assert "Usage:" in result.stdout
+    assert "prepare" in result.stdout
+    assert "Top-level tools:" not in result.stdout
 
 
 def test_cli_run_unknown_tool() -> None:

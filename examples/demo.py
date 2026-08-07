@@ -14,9 +14,9 @@ def main() -> None:
     if local.is_dir():
         pyporter.register(pyporter.runtime(), registry_dirs=[local])
 
-    Tool().help()
+    print(Tool().help())
     print("---")
-    Tool("jscpd").help()
+    print(Tool("jscpd").help())
     print("---")
     print("commands(kubectl):", Tool("kubectl").commands())
     print("git remote add id:", Tool("git", subcommand="remote/add").id)

@@ -5,16 +5,18 @@ from __future__ import annotations
 import importlib.util
 import json
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, TypeAlias
 
-from pyporter.errors import ManifestError
-from pyporter.result import ToolResult
+from pyporter.core.errors import ManifestError
+from pyporter.core.protocols import Parser
+from pyporter.core.result import ToolResult
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from pathlib import Path
 
-ParserFn = Callable[[str, ToolResult], Any]
+# Annotation-friendly callable form; structurally matches :class:`Parser`.
+ParserFn: TypeAlias = Callable[[str, ToolResult], Any]
 
 
 def parse_json(raw: str, _result: ToolResult) -> Any:
@@ -48,8 +50,15 @@ def builtin_generals() -> dict[str, ParserFn]:
     }
 
 
+def _require_parser(name: str, fn: object) -> ParserFn:
+    """Validate *fn* satisfies :class:`Parser`; return it as :data:`ParserFn`."""
+    if not isinstance(fn, Parser):
+        raise ManifestError(f"parser {name!r} must be a Parser callable")
+    return fn  # type: ignore[return-value]
+
+
 class ParserResolver:
-    """Owns the general parser name→callable registry map.
+    """Owns the general parser name→callable map (:class:`~pyporter.core.protocols.Parser`).
 
     Call :meth:`bind` for a run-scoped resolver that applies override / ref / path.
     """
@@ -75,7 +84,7 @@ class ParserResolver:
     def register(self, name: str, fn: ParserFn) -> None:
         """Register or replace a general parser by mode name."""
         self._validate_name(name)
-        self._generals[name] = fn
+        self._generals[name] = _require_parser(name, fn)
 
     def register_many(self, parsers: Mapping[str, ParserFn]) -> None:
         """Register or replace general parsers from a name→callable map."""
@@ -107,16 +116,14 @@ class ParserResolver:
 
     @staticmethod
     def load_parser_module(path: Path) -> ParserFn:
-        """Load parse() from a registry parsers/*.py file."""
+        """Load ``parse`` from a registry ``parsers/*.py`` file."""
         spec = importlib.util.spec_from_file_location(f"pyporter_parser_{path.stem}", path)
         if spec is None or spec.loader is None:
             raise ManifestError(f"cannot load parser module {path}")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         parse = getattr(module, "parse", None)
-        if not callable(parse):
-            raise ManifestError(f"parser {path} must define parse(raw, result)")
-        return cast("ParserFn", parse)
+        return _require_parser(str(path), parse)
 
     # Back-compat aliases for call sites that still reference classmethods.
     parse_json = staticmethod(parse_json)

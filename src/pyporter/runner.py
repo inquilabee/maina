@@ -7,14 +7,14 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from pyporter.argparser import ArgParser
-from pyporter.errors import InstallError
-from pyporter.parsers import ParserResolver
-from pyporter.result import ToolResult
+from pyporter.core.argparser import ArgParser
+from pyporter.core.errors import InstallError
+from pyporter.core.parsers import ParserResolver
+from pyporter.core.result import ToolResult
 
 if TYPE_CHECKING:
+    from pyporter.core.registry import Manifest
     from pyporter.installer import Installer
-    from pyporter.registry import Manifest
 
 # Test-only injectable; not a public pluggable runner API.
 Executor = Callable[..., subprocess.CompletedProcess[str]]

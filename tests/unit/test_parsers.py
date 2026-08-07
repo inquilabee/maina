@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from pyporter.errors import ManifestError
-from pyporter.parsers import ParserResolver, builtin_generals
-from pyporter.result import ToolResult
+from pyporter.core.errors import ManifestError
+from pyporter.core.parsers import ParserResolver, builtin_generals
+from pyporter.core.result import ToolResult
 from pyporter.runtime import Runtime
 
 if TYPE_CHECKING:
@@ -60,6 +60,24 @@ def test_register_parser_callable() -> None:
 
     resolver.register("csv", parse_csv)
     assert resolver.generic_parser("csv")("a,b", make_result()) == ["a", "b"]
+
+
+def test_builtins_satisfy_parser_protocol() -> None:
+    from pyporter.core.parsers import parse_json, parse_lines, parse_text
+    from pyporter.core.protocols import Parser
+
+    assert isinstance(parse_json, Parser)
+    assert isinstance(parse_lines, Parser)
+    assert isinstance(parse_text, Parser)
+
+
+def test_register_rejects_non_parser() -> None:
+    from typing import Any
+
+    resolver = ParserResolver()
+    bad: Any = "not-callable"
+    with pytest.raises(ManifestError, match="must be a Parser callable"):
+        resolver.register("bad", bad)
 
 
 def test_register_parsers_dir(tmp_path: Path) -> None:

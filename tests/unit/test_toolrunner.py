@@ -11,17 +11,17 @@ import pytest
 
 from helpers import write_yaml
 from pyporter.backends import PathBackend
-from pyporter.errors import InstallError
+from pyporter.core.errors import InstallError
+from pyporter.core.parsers import ParserResolver, builtin_generals
+from pyporter.core.registry import Registry
 from pyporter.installer import Installer
-from pyporter.parsers import ParserResolver, builtin_generals
-from pyporter.registry import Registry
 from pyporter.runner import ToolRunner
 from pyporter.runtime import Runtime
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from pyporter.protocols import LanguageRuntimeProvider
+    from pyporter.core.protocols import LanguageRuntimeProvider
 
 
 @dataclass
@@ -181,7 +181,7 @@ def test_family_parser_apply_via_preferred() -> None:
     manifest = rt.registry.load("git/remote/add")
     assert manifest.parser == "add.py"
     assert manifest.parser_path is not None
-    from pyporter.result import ToolResult
+    from pyporter.core.result import ToolResult
 
     # apply() skips parsers when raw is empty; non-empty raw exercises family parse().
     result = ToolResult(

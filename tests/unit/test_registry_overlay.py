@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 import pytest
 
 from helpers import write_yaml
-from pyporter.errors import ManifestError
-from pyporter.registry import Registry
+from pyporter.core.errors import ManifestError
+from pyporter.core.registry import Registry
 
 if TYPE_CHECKING:
     from pathlib import Path

@@ -7,13 +7,13 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from pyporter.errors import InstallError
+from pyporter.core.errors import InstallError
 
 
 class MiseRuntime:
     """Instance-scoped owner of mise binary bootstrap and language runtimes.
 
-    Satisfies :class:`~pyporter.protocols.LanguageRuntimeProvider`. This is the
+    Satisfies :class:`~pyporter.core.protocols.LanguageRuntimeProvider`. This is the
     language runtime provider, not the composition :class:`~pyporter.runtime.Runtime`.
     """
 

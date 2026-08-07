@@ -6,12 +6,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from pyporter.backends.archive import ArchiveFetcher
-from pyporter.errors import InstallError
-from pyporter.platform import platform_key
+from pyporter.core.errors import InstallError
+from pyporter.core.platform import platform_key
 
 if TYPE_CHECKING:
-    from pyporter.protocols import InstallContext
-    from pyporter.registry import Manifest
+    from pyporter.core.protocols import InstallContext
+    from pyporter.core.registry import Manifest
 
 
 class GithubBackend:
