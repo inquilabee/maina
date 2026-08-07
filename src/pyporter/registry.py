@@ -73,9 +73,7 @@ class ArgSpec:
             raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} args.{name} must be a map")
         if bad := unknown_keys(raw, ARG_KEYS):
             keys = ", ".join(bad)
-            raise ManifestError(
-                f"{MANIFEST_PREFIX}{tool_id!r} args.{name} unknown keys: {keys}"
-            )
+            raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} args.{name} unknown keys: {keys}")
         return cls(
             type=str(raw.get("type", "string")),
             flag=None if raw.get("flag") is None else str(raw["flag"]),

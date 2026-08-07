@@ -6,10 +6,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from helpers import write_yaml
 from pyporter.errors import ManifestError
 from pyporter.registry import Registry
-
-from helpers import write_yaml
 
 if TYPE_CHECKING:
     from pathlib import Path

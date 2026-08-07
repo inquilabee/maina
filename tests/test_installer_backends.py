@@ -7,13 +7,12 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from helpers import write_yaml
 from pyporter.backends import PathBackend
 from pyporter.errors import InstallError
 from pyporter.installer import Installer
 from pyporter.registry import Manifest, Registry
 from pyporter.runtime import Runtime, register
-
-from helpers import write_yaml
 
 if TYPE_CHECKING:
     from pathlib import Path

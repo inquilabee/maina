@@ -12,6 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from helpers import write_yaml
 from pyporter.backends.archive import ArchiveFetcher
 from pyporter.backends.npm import NpmBackend
 from pyporter.errors import InstallError
@@ -19,10 +20,8 @@ from pyporter.installer import Installer, install_dir_lock
 from pyporter.registry import InstallSpec, Manifest, Registry, RequiresSpec
 from pyporter.runner import ToolRunner
 
-from helpers import write_yaml
-
 if TYPE_CHECKING:
-    from pyporter.protocols import InstallContext, LanguageRuntimeProvider
+    from pyporter.protocols import InstallContext
 
 
 @dataclass
@@ -36,6 +35,28 @@ class FakeLanguage:
     def env(self, runtime: str, version: str) -> dict[str, str]:
         del version
         return {"PATH": f"/opt/{runtime}/bin:/usr/bin", "MARK": "shared"}
+
+
+class RecordingFetcher(ArchiveFetcher):
+    """ArchiveFetcher stub that records download_and_extract calls."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls: list[tuple[str, Path, str, str]] = []
+
+    def download_and_extract(
+        self,
+        url: str,
+        dest_dir: Path,
+        *,
+        binary: str,
+        asset_name: str,
+    ) -> None:
+        self.calls.append((url, dest_dir, binary, asset_name))
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        exe = dest_dir / binary
+        exe.write_text("#!/bin/sh\n", encoding="utf-8")
+        exe.chmod(0o755)
 
 
 class RecordingBackend:
@@ -153,27 +174,14 @@ def test_download_and_extract_happy_path_mock_https(tmp_path: Path) -> None:
     assert session.get.call_args.args[0].startswith("https://")
 
 
-def test_github_backend_resolve_uses_fetcher(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_github_backend_resolve_uses_fetcher(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from pyporter.backends.github import GithubBackend
     from pyporter.protocols import InstallContext
 
     monkeypatch.setattr("pyporter.backends.github.platform_key", lambda: "linux-x86_64")
-    calls: list[tuple[str, Path, str, str]] = []
-
-    class RecordingFetcher:
-        def download_and_extract(
-            self,
-            url: str,
-            dest_dir: Path,
-            *,
-            binary: str,
-            asset_name: str,
-        ) -> None:
-            calls.append((url, dest_dir, binary, asset_name))
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            exe = dest_dir / binary
-            exe.write_text("#!/bin/sh\n", encoding="utf-8")
-            exe.chmod(0o755)
+    fetcher = RecordingFetcher()
 
     manifest = Manifest(
         id="demo",
@@ -188,12 +196,12 @@ def test_github_backend_resolve_uses_fetcher(tmp_path: Path, monkeypatch: pytest
     )
     lang = FakeLanguage(tmp_path / "cache")
     ctx = InstallContext(cache_root=tmp_path / "cache", language=lang)
-    backend = GithubBackend(fetcher=RecordingFetcher())  # type: ignore[arg-type]
+    backend = GithubBackend(fetcher=fetcher)
     exe, env = backend.resolve(manifest, version="1.0.0", env={"PATH": "/usr/bin"}, ctx=ctx)
     assert Path(exe).name == "demo"
     assert Path(exe).is_file()
     assert str(Path(exe).parent) in env["PATH"]
-    assert calls == [
+    assert fetcher.calls == [
         (
             "https://github.com/acme/demo/releases/download/v1.0.0/demo-linux.tar.gz",
             ctx.tool_bin_dir("demo", "1.0.0"),
@@ -364,13 +372,18 @@ def test_mise_ensure_skips_install_when_present(
     monkeypatch.setattr(rt, "mise_bin", lambda: Path("/fake/mise"))
     which_calls: list[str] = []
 
-    def fake_which(mise, spec, runtime, env):  # noqa: ANN001
+    def fake_which(
+        _mise: object,
+        spec: str,
+        _runtime: object,
+        _env: object,
+    ) -> Path:
         which_calls.append(spec)
         return tmp_path / "bin"
 
     monkeypatch.setattr(MiseRuntime, "_mise_which", staticmethod(fake_which))
 
-    def fail_run(*_a, **_k):  # noqa: ANN001
+    def fail_run(*_a: object, **_k: object) -> None:
         raise AssertionError("mise install should be skipped")
 
     monkeypatch.setattr(subprocess, "run", fail_run)

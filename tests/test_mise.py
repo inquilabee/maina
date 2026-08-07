@@ -13,9 +13,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def test_mise_env_prepends_ensure_bin(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_mise_env_prepends_ensure_bin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     rt = MiseRuntime(cache_root=tmp_path)
     bin_dir = tmp_path / "runtimes" / "node" / "bin"
     bin_dir.mkdir(parents=True)

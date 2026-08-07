@@ -7,9 +7,8 @@ from typing import TYPE_CHECKING
 import pytest
 
 import pyporter
-from pyporter.runtime import SESSION, Runtime
-
 from helpers import write_yaml
+from pyporter.runtime import SESSION, Runtime
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

@@ -8,13 +8,12 @@ import pytest
 from typer.testing import CliRunner
 
 import pyporter
+from helpers import write_yaml
 from pyporter.backends import PathBackend
 from pyporter.cli import RunArgParser, RunInvocation, app, main
 from pyporter.result import ToolResult
 from pyporter.runtime import Runtime
 from pyporter.tool import Tool
-
-from helpers import write_yaml
 
 runner = CliRunner()
 

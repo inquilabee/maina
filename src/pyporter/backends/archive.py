@@ -10,6 +10,7 @@ import tarfile
 import tempfile
 import zipfile
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlparse
 
 import requests
@@ -19,6 +20,7 @@ from pyporter.errors import InstallError
 # Soft cap for streamed release assets (GitHub binaries, etc.).
 DEFAULT_MAX_BYTES = 512 * 1024 * 1024
 _CHUNK_SIZE = 64 * 1024
+TarReadMode = Literal["r:gz", "r:xz"]
 
 
 class ArchiveFetcher:
@@ -73,9 +75,7 @@ class ArchiveFetcher:
         if content_length is not None:
             try:
                 if int(content_length) > self.max_bytes:
-                    raise InstallError(
-                        f"download exceeds size cap ({self.max_bytes} bytes): {url}"
-                    )
+                    raise InstallError(f"download exceeds size cap ({self.max_bytes} bytes): {url}")
             except ValueError:
                 pass
         total = 0
@@ -85,9 +85,7 @@ class ArchiveFetcher:
                     continue
                 total += len(chunk)
                 if total > self.max_bytes:
-                    raise InstallError(
-                        f"download exceeds size cap ({self.max_bytes} bytes): {url}"
-                    )
+                    raise InstallError(f"download exceeds size cap ({self.max_bytes} bytes): {url}")
                 out.write(chunk)
 
     def extract_archive(
@@ -124,7 +122,7 @@ class ArchiveFetcher:
             raise InstallError(f"unsafe path in archive: {member_name}")
 
     @classmethod
-    def safe_extract_tar(cls, archive: Path, dest: Path, *, mode: str) -> None:
+    def safe_extract_tar(cls, archive: Path, dest: Path, *, mode: TarReadMode) -> None:
         """Extract a tar archive (``r:gz`` / ``r:xz``) after rejecting path-escape members."""
         dest = dest.resolve()
         with tarfile.open(archive, mode) as tar:

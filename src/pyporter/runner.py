@@ -9,11 +9,11 @@ from typing import TYPE_CHECKING, Any
 
 from pyporter.argparser import ArgParser
 from pyporter.errors import InstallError
-from pyporter.installer import Installer
 from pyporter.parsers import ParserResolver
 from pyporter.result import ToolResult
 
 if TYPE_CHECKING:
+    from pyporter.installer import Installer
     from pyporter.registry import Manifest
 
 # Test-only injectable; not a public pluggable runner API.
@@ -67,9 +67,7 @@ class ToolRunner:
                 timeout=resolved_timeout,
             )
         except subprocess.TimeoutExpired as exc:
-            raise InstallError(
-                f"{self.manifest.id} timed out after {resolved_timeout}s"
-            ) from exc
+            raise InstallError(f"{self.manifest.id} timed out after {resolved_timeout}s") from exc
         duration_ms = (time.perf_counter() - started) * 1000
         success_codes = self.manifest.output.success_codes
         ok = proc.returncode in set(success_codes)

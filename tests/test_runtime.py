@@ -7,11 +7,10 @@ from typing import TYPE_CHECKING
 import pytest
 
 import pyporter
+from helpers import write_yaml
 from pyporter.errors import ManifestError, RegisterError
 from pyporter.parsers import ParserResolver
 from pyporter.runtime import Runtime, resolve_cache_root
-
-from helpers import write_yaml
 
 if TYPE_CHECKING:
     from pathlib import Path

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
+from helpers import write_yaml
 from pyporter.backends import PathBackend
 from pyporter.errors import InstallError
 from pyporter.installer import Installer
@@ -16,8 +17,6 @@ from pyporter.parsers import ParserResolver, builtin_generals
 from pyporter.registry import Registry
 from pyporter.runner import ToolRunner
 from pyporter.runtime import Runtime
-
-from helpers import write_yaml
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -170,9 +169,10 @@ def test_toolrunner_executor_records_cwd(tmp_path: Path) -> None:
         installer=path_installer(tmp_path, registry),
         executor=fake_run,
     )
-    result = runner.run({}, cwd="/tmp")
+    cwd = str(tmp_path / "work")
+    result = runner.run({}, cwd=cwd)
     assert result.ok
-    assert seen["cwd"] == "/tmp"
+    assert seen["cwd"] == cwd
     assert seen["argv"][0].endswith("echo") or seen["argv"][0] == "echo"
 
 
