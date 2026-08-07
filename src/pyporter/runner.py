@@ -93,6 +93,4 @@ class ToolRunner:
         if timeout is not None:
             return float(timeout)
         raw = self.manifest.data.get("timeout")
-        if raw is None:
-            return None
-        return float(raw)
+        return None if raw is None else float(raw)

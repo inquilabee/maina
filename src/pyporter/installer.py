@@ -18,19 +18,6 @@ if TYPE_CHECKING:
     from pyporter.core.registry import Manifest, Registry
 
 
-@contextmanager
-def install_dir_lock(dest: Path) -> Iterator[None]:
-    """Exclusive lock for a cache install directory (parallel prepare safety)."""
-    dest.mkdir(parents=True, exist_ok=True)
-    lock_path = dest / ".porter-install.lock"
-    with lock_path.open("a+b") as lock_file:
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-
-
 class Installer:
     """Dispatcher over registered :class:`InstallerBackend` implementations."""
 
@@ -59,6 +46,19 @@ class Installer:
     def language(self, value: LanguageRuntimeProvider) -> None:
         self._language = value
 
+    @staticmethod
+    @contextmanager
+    def install_dir_lock(dest: Path) -> Iterator[None]:
+        """Exclusive lock for a cache install directory (parallel prepare safety)."""
+        dest.mkdir(parents=True, exist_ok=True)
+        lock_path = dest / ".porter-install.lock"
+        with lock_path.open("a+b") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
     def register_backends(
         self,
         backends: Mapping[str, InstallerBackend] | Sequence[InstallerBackend],
@@ -75,10 +75,11 @@ class Installer:
         """Resolve argv[0] path/name and process env for a manifest."""
         backend_name = manifest.install.backend
         version = manifest.version or "default"
-        if runtime := manifest.requires.runtime:
-            env = self.language.env(runtime, manifest.requires.version or "lts")
-        else:
-            env = os.environ.copy()
+        env = (
+            self.language.env(runtime, manifest.requires.version or "lts")
+            if (runtime := manifest.requires.runtime)
+            else os.environ.copy()
+        )
         # Copy at the resolve boundary so backends cannot mutate a shared caller dict.
         env = dict(env)
         backend = self._backends.get(backend_name)
@@ -86,7 +87,7 @@ class Installer:
             raise InstallError(f"unknown install backend: {backend_name!r}")
         ctx = InstallContext(cache_root=self.cache_root, language=self.language)
         lock_dir = self.cache_root / "tools" / manifest.cli / version
-        with install_dir_lock(lock_dir):
+        with self.install_dir_lock(lock_dir):
             return backend.resolve(manifest, version=version, env=env, ctx=ctx)
 
     def prepare(self, manifest: Manifest) -> None:
@@ -105,3 +106,7 @@ class Installer:
             self.prepare(manifest)
             prepared.append(tid)
         return prepared
+
+
+# Back-compat alias for tests/callers that import the module-level lock helper.
+install_dir_lock = Installer.install_dir_lock

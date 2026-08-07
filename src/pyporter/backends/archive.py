@@ -9,6 +9,7 @@ import stat
 import tarfile
 import tempfile
 import zipfile
+from contextlib import suppress
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
@@ -19,7 +20,7 @@ from pyporter.core.errors import InstallError
 
 # Soft cap for streamed release assets (GitHub binaries, etc.).
 DEFAULT_MAX_BYTES = 512 * 1024 * 1024
-_CHUNK_SIZE = 64 * 1024
+CHUNK_SIZE = 64 * 1024
 TarReadMode = Literal["r:gz", "r:xz"]
 
 
@@ -73,14 +74,12 @@ class ArchiveFetcher:
         """Write response body to dest, rejecting Content-Length or body over max_bytes."""
         content_length = response.headers.get("Content-Length")
         if content_length is not None:
-            try:
+            with suppress(ValueError):
                 if int(content_length) > self.max_bytes:
                     raise InstallError(f"download exceeds size cap ({self.max_bytes} bytes): {url}")
-            except ValueError:
-                pass
         total = 0
         with dest.open("wb") as out:
-            for chunk in response.iter_content(chunk_size=_CHUNK_SIZE):
+            for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
                 if not chunk:
                     continue
                 total += len(chunk)

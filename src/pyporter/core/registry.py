@@ -77,8 +77,8 @@ class ArgSpec:
         return cls(
             type=str(raw.get("type", "string")),
             flag=None if raw.get("flag") is None else str(raw["flag"]),
-            positional=bool(raw.get("positional", False)),
-            required=bool(raw.get("required", False)),
+            positional=raw.get("positional", False),
+            required=raw.get("required", False),
             repeat=raw.get("repeat"),
             join=None if raw.get("join") is None else str(raw["join"]),
             default=raw.get("default"),
@@ -422,24 +422,32 @@ class Registry:
     @staticmethod
     def _top_level_entry_id(path: Path) -> str | None:
         """Return a top-level registry id for a path, or None if skipped."""
-        if path.name == "parsers" or path.name.startswith("."):
-            return None
-        if path.is_file() and path.suffix == ".yaml":
-            return path.stem
-        if path.is_dir() and Registry._dir_has_manifests(path):
-            return path.name
-        return None
+        return (
+            None
+            if path.name == "parsers" or path.name.startswith(".")
+            else (
+                path.stem
+                if path.is_file() and path.suffix == ".yaml"
+                else (path.name if path.is_dir() and Registry._dir_has_manifests(path) else None)
+            )
+        )
 
     @staticmethod
     def _child_entry_id(base: Path, prefix: str, path: Path) -> str | None:
         """Return a child registry id for a path under base, or None if skipped."""
-        if path.name in {"parsers"} or path.name.startswith("."):
-            return None
-        if path.is_file() and path.suffix == ".yaml":
-            return None if path.stem == base.name else f"{prefix}/{path.stem}"
-        if path.is_dir() and Registry._dir_has_manifests(path):
-            return f"{prefix}/{path.name}"
-        return None
+        return (
+            None
+            if path.name in {"parsers"} or path.name.startswith(".")
+            else (
+                (None if path.stem == base.name else f"{prefix}/{path.stem}")
+                if path.is_file() and path.suffix == ".yaml"
+                else (
+                    f"{prefix}/{path.name}"
+                    if path.is_dir() and Registry._dir_has_manifests(path)
+                    else None
+                )
+            )
+        )
 
     @staticmethod
     def _dir_has_manifests(path: Path) -> bool:

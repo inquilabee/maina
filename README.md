@@ -85,14 +85,14 @@ Full `shipgate check` (no `--suite`) is the merge bar.
 
 ### Pre-commit
 
-Local commits can run the lighter `pre-commit` suite via [pre-commit](https://pre-commit.com/):
+Local commits run ShipGate **format**, **full** `shipgate check`, **refactor --strict**, and unit tests via [pre-commit](https://pre-commit.com/) (same shape as [ShipGate’s dogfood hooks](https://github.com/inquilabee/shipgate/blob/main/.pre-commit-config.yaml)):
 
 ```bash
 uv sync
 pre-commit install
 ```
 
-The hook runs `shipgate check --suite pre-commit`. It expects a local `.shipgate/` tree and `scripts/` (including `scripts/shipgate-link-src.sh`). Those may be gitignored; that is fine for personal use.
+Hooks expect a local `.shipgate/` tree and `scripts/shipgate-link-src.sh` (gitignored is fine for personal use).
 
 ## CLI
 

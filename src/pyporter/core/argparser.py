@@ -114,13 +114,19 @@ class ArgParser:
     ) -> list[str]:
         """Emit list values as CSV, positionals, or repeated flags."""
         tokens = [str(v) for v in values]
-        if not tokens:
-            return []
-        if join == "csv":
-            return ArgParser._emit_csv(name, flag, tokens, positional=positional)
-        if positional or not flag:
-            return tokens
-        return ArgParser._emit_flag_list(flag, tokens, repeat=repeat)
+        return (
+            (
+                ArgParser._emit_csv(name, flag, tokens, positional=positional)
+                if join == "csv"
+                else (
+                    tokens
+                    if positional or not flag
+                    else ArgParser._emit_flag_list(flag, tokens, repeat=repeat)
+                )
+            )
+            if tokens
+            else []
+        )
 
     @staticmethod
     def _emit_flag_list(flag: str, tokens: list[str], *, repeat: Any) -> list[str]:
@@ -151,8 +157,6 @@ class ArgParser:
     @staticmethod
     def normalize_extra(extra: str | list[str] | None) -> list[str]:
         """Normalize extra passthrough args to an argv suffix."""
-        if extra is None:
-            return []
-        if isinstance(extra, str):
-            return shlex.split(extra)
-        return list(extra)
+        return (
+            [] if extra is None else (shlex.split(extra) if isinstance(extra, str) else list(extra))
+        )

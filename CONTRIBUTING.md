@@ -13,14 +13,14 @@ uv run shipgate refactor check .
 uv run shipgate refactor check --strict src
 ```
 
-Optional local hook (suite `pre-commit` only, not the merge bar):
+Local [pre-commit](https://pre-commit.com/) mirrors that bar (format, full check, refactor `--strict`, unit tests), same shape as [ShipGate dogfood](https://github.com/inquilabee/shipgate/blob/main/.pre-commit-config.yaml):
 
 ```bash
 uv sync
 pre-commit install
 ```
 
-The hook needs local `.shipgate/` and `scripts/` (gitignored is fine for personal use).
+Hooks need local `.shipgate/` and `scripts/shipgate-link-src.sh` (gitignored is fine for personal use).
 
 ## Tests
 

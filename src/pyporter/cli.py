@@ -275,11 +275,11 @@ class RunArgParser:
     def _coerce(value: str) -> Any:
         """Coerce common boolean spellings; leave other values as strings."""
         lowered = value.lower()
-        if lowered in {"true", "yes", "1"}:
-            return True
-        if lowered in {"false", "no", "0"}:
-            return False
-        return value
+        return (
+            True
+            if lowered in {"true", "yes", "1"}
+            else (False if lowered in {"false", "no", "0"} else value)
+        )
 
 
 def emit_result(result: ToolResult) -> None:

@@ -5,11 +5,11 @@ from __future__ import annotations
 import platform
 import sys
 
-PLATFORM_BY_PREFIX: tuple[tuple[str, str], ...] = (
-    ("linux", "linux"),
-    ("darwin", "macos"),
-    ("win", "windows"),
-)
+PLATFORM_BY_PREFIX: dict[str, str] = {
+    "linux": "linux",
+    "darwin": "macos",
+    "win": "windows",
+}
 
 ARCH_ALIASES: dict[str, str] = {
     "x86_64": "x86_64",
@@ -21,7 +21,7 @@ ARCH_ALIASES: dict[str, str] = {
 
 def current_platform() -> str:
     """Return linux|macos|windows (or the raw ``sys.platform`` if unknown)."""
-    for prefix, name in PLATFORM_BY_PREFIX:
+    for prefix, name in PLATFORM_BY_PREFIX.items():
         if sys.platform.startswith(prefix) or sys.platform == prefix:
             return name
     return sys.platform

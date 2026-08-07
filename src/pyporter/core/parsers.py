@@ -50,13 +50,6 @@ def builtin_generals() -> dict[str, ParserFn]:
     }
 
 
-def _require_parser(name: str, fn: object) -> ParserFn:
-    """Validate *fn* satisfies :class:`Parser`; return it as :data:`ParserFn`."""
-    if not isinstance(fn, Parser):
-        raise ManifestError(f"parser {name!r} must be a Parser callable")
-    return fn  # type: ignore[return-value]
-
-
 class ParserResolver:
     """Owns the general parser name→callable map (:class:`~pyporter.core.protocols.Parser`).
 
@@ -84,7 +77,7 @@ class ParserResolver:
     def register(self, name: str, fn: ParserFn) -> None:
         """Register or replace a general parser by mode name."""
         self._validate_name(name)
-        self._generals[name] = _require_parser(name, fn)
+        self._generals[name] = self._require_parser(name, fn)
 
     def register_many(self, parsers: Mapping[str, ParserFn]) -> None:
         """Register or replace general parsers from a name→callable map."""
@@ -115,6 +108,13 @@ class ParserResolver:
             raise ManifestError(f"invalid general parser name: {name!r}")
 
     @staticmethod
+    def _require_parser(name: str, fn: object) -> ParserFn:
+        """Validate *fn* satisfies :class:`Parser`; return it as :data:`ParserFn`."""
+        if not isinstance(fn, Parser):
+            raise ManifestError(f"parser {name!r} must be a Parser callable")
+        return fn  # type: ignore[return-value]
+
+    @staticmethod
     def load_parser_module(path: Path) -> ParserFn:
         """Load ``parse`` from a registry ``parsers/*.py`` file."""
         spec = importlib.util.spec_from_file_location(f"pyporter_parser_{path.stem}", path)
@@ -123,7 +123,7 @@ class ParserResolver:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         parse = getattr(module, "parse", None)
-        return _require_parser(str(path), parse)
+        return ParserResolver._require_parser(str(path), parse)
 
     # Back-compat aliases for call sites that still reference classmethods.
     parse_json = staticmethod(parse_json)
@@ -149,15 +149,23 @@ class BoundParser:
 
     def resolve(self) -> ParserFn | None:
         """Resolve the effective parser callable for a run."""
-        if self.override is not None:
-            if isinstance(self.override, str):
-                return self._registry.generic_parser(self.override)
-            return self.override
-        if self.parser_path is not None:
-            return ParserResolver.load_parser_module(self.parser_path)
-        if self.parser_ref is not None and self._registry.is_general(self.parser_ref):
-            return self._registry.generic_parser(self.parser_ref)
-        return None
+        return (
+            (
+                self._registry.generic_parser(self.override)
+                if isinstance(self.override, str)
+                else self.override
+            )
+            if self.override is not None
+            else (
+                ParserResolver.load_parser_module(self.parser_path)
+                if self.parser_path is not None
+                else (
+                    self._registry.generic_parser(self.parser_ref)
+                    if self.parser_ref is not None and self._registry.is_general(self.parser_ref)
+                    else None
+                )
+            )
+        )
 
     def apply(self, result: ToolResult) -> ToolResult:
         """Attach parsed output onto result when a parser is configured."""

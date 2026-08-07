@@ -44,17 +44,6 @@ class RuntimeSession:
 SESSION = RuntimeSession()
 
 
-def resolve_cache_root(path: Path | None = None) -> Path:
-    """Resolve the pyporter cache root (``PYPORTER_CACHE`` / ``~/.cache/pyporter``)."""
-    if path is not None:
-        root = Path(path)
-    else:
-        override = os.environ.get("PYPORTER_CACHE")
-        root = Path(override) if override else Path.home() / ".cache" / "pyporter"
-    root.mkdir(parents=True, exist_ok=True)
-    return root
-
-
 class Runtime:
     """Owns registry overlays, general parsers, installer backends, and language.
 
@@ -68,7 +57,7 @@ class Runtime:
         cache_root: Path | None = None,
         language: LanguageRuntimeProvider | None = None,
     ) -> None:
-        self._cache_root = resolve_cache_root(cache_root)
+        self._cache_root = self.resolve_cache_root(cache_root)
         self._registry = Registry([])
         self._parsers = ParserResolver()
         self._language: LanguageRuntimeProvider | None = language
@@ -152,6 +141,17 @@ class Runtime:
         )
 
     @staticmethod
+    def resolve_cache_root(path: Path | None = None) -> Path:
+        """Resolve the pyporter cache root (``PYPORTER_CACHE`` / ``~/.cache/pyporter``)."""
+        if path is not None:
+            root = Path(path)
+        else:
+            override = os.environ.get("PYPORTER_CACHE")
+            root = Path(override) if override else Path.home() / ".cache" / "pyporter"
+        root.mkdir(parents=True, exist_ok=True)
+        return root
+
+    @staticmethod
     def as_paths(value: Path | str | Sequence[Path | str]) -> list[Path]:
         """Coerce a single path or sequence into a list of Paths."""
         return [Path(value)] if isinstance(value, (str, Path)) else [Path(p) for p in value]
@@ -167,6 +167,10 @@ class Runtime:
                 raise RegisterError(f"{kind} path is not a directory: {path}")
             resolved.append(path)
         return resolved
+
+
+# Back-compat alias for tests/callers that import the module-level helper.
+resolve_cache_root = Runtime.resolve_cache_root
 
 
 def runtime() -> Runtime:
