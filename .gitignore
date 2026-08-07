@@ -14,8 +14,22 @@ wheels/
 .shipgate/reports/
 .shipgate/cache/
 
-# Cursor IDE local rules (not product docs) and internal docs
-.cursor/
+# Cursor IDE local state — keep portable persona rules/skills tracked
+.cursor/*
+!.cursor/rules/
+.cursor/rules/*
+!.cursor/rules/persona/
+!.cursor/rules/persona/**
+!.cursor/skills/
+.cursor/skills/*
+!.cursor/skills/persona-check/
+!.cursor/skills/persona-check/**
+!.cursor/skills/update-persona/
+!.cursor/skills/update-persona/**
+
+# Generated persona reviews
+reviews/
+
 .shipgate/
 adr/
 scripts/
