@@ -117,3 +117,47 @@ def test_runtime_register_custom_backend(tmp_path: Path) -> None:
 def test_fake_language_satisfies_protocol(tmp_path: Path) -> None:
     lang: LanguageRuntimeProvider = FakeLanguage(tmp_path)
     assert lang.ensure("node", "20") == tmp_path
+
+
+def test_installer_composes_multi_runtime_path(tmp_path: Path) -> None:
+    ensured: list[tuple[str, str]] = []
+
+    @dataclass
+    class TrackingLanguage:
+        cache_root: Path
+
+        def ensure(self, runtime: str, version: str) -> Path:
+            ensured.append((runtime, version))
+            path = self.cache_root / "bins" / runtime / version / "bin"
+            path.mkdir(parents=True, exist_ok=True)
+            return path
+
+        def env(self, runtime: str, version: str) -> dict[str, str]:
+            # Deliberately resets PATH — installer must not rely on env() loops.
+            bin_dir = self.ensure(runtime, version)
+            return {"PATH": str(bin_dir)}
+
+    lang = TrackingLanguage(tmp_path / "cache")
+    installer = Installer(
+        cache_root=tmp_path / "cache",
+        language=lang,
+        registry=Registry([]),
+        backends=[MockBackend()],
+    )
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "base.yaml",
+        {"abstract": True, "requires": {"python": "3.14", "node": "latest"}},
+    )
+    write_yaml(
+        root / "demo.yaml",
+        {"cli": "demo", "install": {"backend": "mock"}},
+    )
+    manifest = Registry(root).load("demo")
+    _exe, env = installer.resolve(manifest)
+    assert ("python", "3.14") in ensured
+    assert ("node", "latest") in ensured
+    path = env["PATH"]
+    assert str(tmp_path / "cache" / "bins" / "python" / "3.14" / "bin") in path
+    assert str(tmp_path / "cache" / "bins" / "node" / "latest" / "bin") in path
+    assert env["MISE_DATA_DIR"] == str(tmp_path / "cache" / "mise-data")

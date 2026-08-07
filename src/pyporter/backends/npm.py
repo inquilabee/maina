@@ -58,7 +58,7 @@ class NpmBackend:
         ctx: InstallContext,
     ) -> None:
         """Ensure a language-provider Node runtime is on PATH."""
-        node_version = manifest.requires.version or "20"
+        node_version = manifest.requires.version_for("node") or "latest"
         if shutil.which("node", path=env.get("PATH")):
             return
         ctx.language.ensure("node", node_version)

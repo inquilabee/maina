@@ -4,19 +4,42 @@ from __future__ import annotations
 
 import importlib.util
 import json
-from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, TypeAlias
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 from pyporter.core.errors import ManifestError
 from pyporter.core.protocols import Parser
-from pyporter.core.result import ToolResult
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
     from pathlib import Path
 
-# Annotation-friendly callable form; structurally matches :class:`Parser`.
-ParserFn: TypeAlias = Callable[[str, ToolResult], Any]
+    from pyporter.core.result import ToolResult
+
+    ParserInput = Parser | Callable[[str, ToolResult], Any]
+
+
+@dataclass(slots=True, frozen=True)
+class FunctionParser:
+    """Concrete :class:`~pyporter.core.protocols.Parser` wrapping a plain callable."""
+
+    _fn: Callable[[str, ToolResult], Any]
+
+    def __call__(self, raw: str, result: ToolResult) -> Any:
+        return self._fn(raw, result)
+
+
+def parser(fn: ParserInput) -> Parser:
+    """Return a concrete Parser for *fn*.
+
+    Plain ``(raw, result) -> Any`` callables are wrapped in :class:`FunctionParser`.
+    Existing :class:`FunctionParser` instances are returned unchanged.
+    """
+    if isinstance(fn, FunctionParser):
+        return fn
+    if not isinstance(fn, Parser):
+        raise ManifestError("parser factory requires a Parser callable")
+    return FunctionParser(fn)  # type: ignore[arg-type]
 
 
 def parse_json(raw: str, _result: ToolResult) -> Any:
@@ -40,13 +63,13 @@ def parse_text(raw: str, _result: ToolResult) -> str:
     return raw
 
 
-def builtin_generals() -> dict[str, ParserFn]:
+def builtin_generals() -> dict[str, Parser]:
     """Shipped general parser map (shared by Runtime bootstrap and tests)."""
     return {
-        "json": parse_json,
-        "lines": parse_lines,
-        "text": parse_text,
-        "raw": parse_text,
+        "json": parser(parse_json),
+        "lines": parser(parse_lines),
+        "text": parser(parse_text),
+        "raw": parser(parse_text),
     }
 
 
@@ -56,15 +79,15 @@ class ParserResolver:
     Call :meth:`bind` for a run-scoped resolver that applies override / ref / path.
     """
 
-    def __init__(self, *, generals: dict[str, ParserFn] | None = None) -> None:
-        self._generals: dict[str, ParserFn] = dict(generals) if generals is not None else {}
+    def __init__(self, *, generals: dict[str, Parser] | None = None) -> None:
+        self._generals: dict[str, Parser] = dict(generals) if generals is not None else {}
 
     def bind(
         self,
         *,
         parser_ref: str | None = None,
         parser_path: Path | None = None,
-        override: ParserFn | str | None = None,
+        override: ParserInput | str | None = None,
     ) -> BoundParser:
         """Return a run-scoped binder sharing this instance's general map."""
         return BoundParser(
@@ -74,12 +97,12 @@ class ParserResolver:
             override=override,
         )
 
-    def register(self, name: str, fn: ParserFn) -> None:
+    def register(self, name: str, fn: ParserInput) -> None:
         """Register or replace a general parser by mode name."""
         self._validate_name(name)
         self._generals[name] = self._require_parser(name, fn)
 
-    def register_many(self, parsers: Mapping[str, ParserFn]) -> None:
+    def register_many(self, parsers: Mapping[str, ParserInput]) -> None:
         """Register or replace general parsers from a name→callable map."""
         for name, fn in parsers.items():
             self.register(name, fn)
@@ -95,7 +118,7 @@ class ParserResolver:
         """Return True when *name* is a registered general parser on this instance."""
         return name in self._generals
 
-    def generic_parser(self, mode: str) -> ParserFn:
+    def generic_parser(self, mode: str) -> Parser:
         """Return a registered general parser by mode name."""
         if mode not in self._generals:
             raise ManifestError(f"unknown generic parser mode: {mode!r}")
@@ -108,14 +131,14 @@ class ParserResolver:
             raise ManifestError(f"invalid general parser name: {name!r}")
 
     @staticmethod
-    def _require_parser(name: str, fn: object) -> ParserFn:
-        """Validate *fn* satisfies :class:`Parser`; return it as :data:`ParserFn`."""
+    def _require_parser(name: str, fn: object) -> Parser:
+        """Validate *fn* satisfies :class:`Parser`; wrap via :func:`parser`."""
         if not isinstance(fn, Parser):
             raise ManifestError(f"parser {name!r} must be a Parser callable")
-        return fn  # type: ignore[return-value]
+        return parser(fn)
 
     @staticmethod
-    def load_parser_module(path: Path) -> ParserFn:
+    def load_parser_module(path: Path) -> Parser:
         """Load ``parse`` from a registry ``parsers/*.py`` file."""
         spec = importlib.util.spec_from_file_location(f"pyporter_parser_{path.stem}", path)
         if spec is None or spec.loader is None:
@@ -140,20 +163,20 @@ class BoundParser:
         *,
         parser_ref: str | None = None,
         parser_path: Path | None = None,
-        override: ParserFn | str | None = None,
+        override: ParserInput | str | None = None,
     ) -> None:
         self._registry = registry
         self.parser_ref = parser_ref
         self.parser_path = parser_path
         self.override = override
 
-    def resolve(self) -> ParserFn | None:
+    def resolve(self) -> Parser | None:
         """Resolve the effective parser callable for a run."""
         return (
             (
                 self._registry.generic_parser(self.override)
                 if isinstance(self.override, str)
-                else self.override
+                else parser(self.override)
             )
             if self.override is not None
             else (

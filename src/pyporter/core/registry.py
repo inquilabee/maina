@@ -1,4 +1,4 @@
-"""Registry discovery, inheritance merge, and slash-id resolution."""
+"""Registry discovery, inheritance merge, and hyphen-id resolution."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ MAP_KEYS = frozenset({"args", "install", "env", "output", "requires"})
 # Catalog decoration only — not enforced at resolve/run time.
 IGNORED_MANIFEST_KEYS = frozenset({"platforms", "name"})
 MANIFEST_PREFIX = "manifest "
+BASE_TOOL_ID = "base"
 
 ARG_KEYS = frozenset(
     {
@@ -33,7 +34,9 @@ ARG_KEYS = frozenset(
     }
 )
 INSTALL_KEYS = frozenset({"backend", "repo", "assets", "binary", "tag", "package"})
-REQUIRES_KEYS = frozenset({"runtime", "version"})
+# Legacy singular form only — freeform pins use runtime names as keys.
+LEGACY_REQUIRES_KEYS = frozenset({"runtime", "version"})
+REQUIRES_KEYS = LEGACY_REQUIRES_KEYS  # back-compat alias for importers
 OUTPUT_KEYS = frozenset({"format", "success_codes"})
 
 
@@ -125,25 +128,61 @@ class InstallSpec:
 
 @dataclass(slots=True, frozen=True)
 class RequiresSpec:
-    """Typed ``requires:`` block (language runtime pins)."""
+    """Typed ``requires:`` map (runtime→version). Legacy ``runtime``+``version`` supported."""
 
-    runtime: str | None = None
-    version: str | None = None
+    runtimes: dict[str, str] = field(default_factory=dict)
+
+    def get(self, name: str) -> str | None:
+        """Return the pinned version for *name*, or None."""
+        return self.runtimes.get(name)
+
+    def version_for(self, name: str) -> str | None:
+        """Alias for :meth:`get` (installer / npm call sites)."""
+        return self.get(name)
 
     @classmethod
     def from_mapping(cls, raw: Any, *, tool_id: str) -> RequiresSpec:
-        """Parse requires map; fail closed on non-maps and unknown keys."""
-        if raw is None:
-            raw = {}
+        """Parse requires map; fail closed on non-maps and mixed forms."""
+        raw = {} if raw is None else raw
         if not isinstance(raw, dict):
             raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} requires must be a map")
-        if bad := unknown_keys(raw, REQUIRES_KEYS):
-            keys = ", ".join(bad)
-            raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} requires unknown keys: {keys}")
-        return cls(
-            runtime=optional_str(raw.get("runtime")),
-            version=optional_str(raw.get("version")),
+        keys = set(raw)
+        legacy, freeform = keys & LEGACY_REQUIRES_KEYS, keys - LEGACY_REQUIRES_KEYS
+        if legacy and freeform:
+            raise ManifestError(
+                f"{MANIFEST_PREFIX}{tool_id!r} requires cannot mix legacy "
+                f"runtime/version with freeform pins ({', '.join(sorted(freeform))})"
+            )
+        return (
+            cls._from_legacy(raw, tool_id=tool_id)
+            if legacy
+            else cls._from_pins(raw, tool_id=tool_id)
         )
+
+    @classmethod
+    def _from_legacy(cls, raw: dict[str, Any], *, tool_id: str) -> RequiresSpec:
+        """Parse legacy singular ``runtime`` / ``version`` form."""
+        if bad := unknown_keys(raw, LEGACY_REQUIRES_KEYS):
+            joined = ", ".join(bad)
+            raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} requires unknown keys: {joined}")
+        runtime, version = optional_str(raw.get("runtime")), optional_str(raw.get("version"))
+        return cls() if runtime is None else cls(runtimes={runtime: version or "lts"})
+
+    @classmethod
+    def _from_pins(cls, raw: dict[str, Any], *, tool_id: str) -> RequiresSpec:
+        """Parse freeform runtime→version pins."""
+        pins: dict[str, str] = {}
+        for name, value in raw.items():
+            if not isinstance(name, str) or not name.strip():
+                raise ManifestError(
+                    f"{MANIFEST_PREFIX}{tool_id!r} requires keys must be non-empty strings"
+                )
+            if value is None or isinstance(value, (dict, list, bool)):
+                raise ManifestError(
+                    f"{MANIFEST_PREFIX}{tool_id!r} requires.{name} must be a version string"
+                )
+            pins[name] = str(value)
+        return cls(runtimes=pins)
 
 
 @dataclass(slots=True, frozen=True)
@@ -218,11 +257,7 @@ class Manifest:
 
 
 class Registry:
-    """Instance-scoped owner of one or more registry overlay roots.
-
-    ``roots`` is ordered; **later roots win** for the same tool id. A single
-    ``Path`` argument preserves the historical single-root constructor.
-    """
+    """Instance-scoped owner of registry overlay roots (later roots win)."""
 
     def __init__(self, root: Path | Sequence[Path] | None = None) -> None:
         if root is None:
@@ -248,10 +283,19 @@ class Registry:
         merged: dict[str, Any] = {}
         subcommands: list[str] = []
         leaf_path, leaf_root = chain[-1][1], chain[-1][2]
-        for _cid, _path, _root, data in chain:
-            if (seg := data.get("subcommand")) is not None and str(seg) != "":
+        for cid, _path, _root, data in chain:
+            layer = deepcopy(data)
+            # ``base`` is an abstract defaults bag; do not force abstract onto leaves.
+            if cid == BASE_TOOL_ID and tid != BASE_TOOL_ID:
+                layer.pop("abstract", None)
+            # Normalize legacy requires before map-merge so base freeform pins compose.
+            if "requires" in layer:
+                layer["requires"] = dict(
+                    RequiresSpec.from_mapping(layer["requires"], tool_id=cid).runtimes
+                )
+            if (seg := layer.get("subcommand")) is not None and str(seg) != "":
                 subcommands.append(str(seg))
-            merged = self.merge_maps(merged, data) if merged else deepcopy(data)
+            merged = self.merge_maps(merged, layer) if merged else layer
             merged.pop("extends", None)
             merged.pop("subcommand", None)
 
@@ -272,14 +316,21 @@ class Registry:
         )
 
     def list_commands(self, tool_id: str | None = None) -> list[str]:
-        """List child surfaces under a tool id, or all top-level ids when None."""
+        """List callable registry ids, or concrete children of a parent.
+
+        When *tool_id* is None, returns every non-abstract id in the registry
+        (sorted), including nested hyphen ids such as ``kubectl-get``. Abstract
+        surfaces stay hidden from catalogs but remain loadable and may be used
+        as a parent filter (``list kubectl``).
+        """
         if tool_id is None or tool_id == "":
-            return self._list_top_level()
+            return sorted(self._exclude_abstract(self.iter_ids()))
         tid = self.normalize_id(tool_id)
         by_id: dict[str, None] = {}
         found_any = False
+        parts = tid.split("-")
         for root in self.roots:
-            base = root / tid
+            base = root.joinpath(*parts)
             if base.is_dir():
                 found_any = True
                 for child_id in self._list_children(base, tid):
@@ -289,7 +340,11 @@ class Registry:
         if not found_any:
             self._manifest_lookup(tid)
             return []
-        return list(by_id)
+        return sorted(self._exclude_abstract(list(by_id)))
+
+    def _exclude_abstract(self, ids: list[str]) -> list[str]:
+        """Drop inheritance-only surfaces from a catalog listing."""
+        return [tid for tid in ids if not self.load(tid).abstract]
 
     def iter_ids(self) -> list[str]:
         """Collect all registry ids across roots (later root wins duplicates)."""
@@ -308,7 +363,13 @@ class Registry:
         tool_id: str,
         seen: list[str],
     ) -> list[tuple[str, Path, Path, dict[str, Any]]]:
-        """Load the extends chain root→leaf for a tool id."""
+        """Load the extends chain root→leaf for a tool id.
+
+        When a tool (other than ``base``) has no ``extends`` and a ``base``
+        manifest exists, ``base`` is prepended so the chain is
+        ``base → … → tool``. Parents that themselves lack ``extends`` also
+        pick up ``base``, so ``extends: foo`` still yields ``base → foo → tool``.
+        """
         tid = self.normalize_id(tool_id)
         if tid in seen:
             cycle = " -> ".join([*seen, tid])
@@ -319,8 +380,17 @@ class Registry:
         if extends := data.get("extends"):
             parent_id = self.normalize_id(str(extends))
             chain.extend(self._load_chain(parent_id, [*seen, tid]))
+        elif tid != BASE_TOOL_ID and self._has_manifest(BASE_TOOL_ID):
+            chain.extend(self._load_chain(BASE_TOOL_ID, [*seen, tid]))
         chain.append((tid, path, owning_root, data))
         return chain
+
+    def _has_manifest(self, tool_id: str) -> bool:
+        """Return True when *tool_id* resolves under any registry root."""
+        if not self.roots:
+            return False
+        tid = self.normalize_id(tool_id)
+        return any(self._manifest_path_in(root, tid) is not None for root in self.roots)
 
     def _manifest_lookup(self, tool_id: str) -> tuple[Path, Path]:
         """Resolve id to (manifest path, owning root). Later roots win."""
@@ -337,12 +407,23 @@ class Registry:
 
     @staticmethod
     def _manifest_path_in(root: Path, tool_id: str) -> Path | None:
-        """Resolve a registry id under one root, or None if missing."""
+        """Resolve a hyphen registry id under one root, or None if missing.
+
+        Path segments must not contain ``-``. Tries, in order:
+        ``root/{tid}.yaml``, ``root/a/b/c.yaml`` for ``a-b-c``, and family
+        ``root/a/b/c/c.yaml`` (including ``root/kubectl/kubectl.yaml``).
+        """
         direct = root / f"{tool_id}.yaml"
         if direct.is_file():
             return direct
-        nested = root / tool_id / f"{Path(tool_id).name}.yaml"
-        return nested if nested.is_file() else None
+        parts = tool_id.split("-")
+        if not parts or parts == [""]:
+            return None
+        nested = root.joinpath(*parts).with_suffix(".yaml")
+        if nested.is_file():
+            return nested
+        family = root.joinpath(*parts, parts[-1]).with_suffix(".yaml")
+        return family if family.is_file() else None
 
     def _resolve_parser_path(
         self,
@@ -373,17 +454,6 @@ class Registry:
             if current.resolve() == resolved_root or current.parent == current:
                 return parsers
             current = current.parent
-
-    def _list_top_level(self) -> list[str]:
-        """List top-level registry tool ids (union; later root wins duplicates)."""
-        by_id: dict[str, None] = {}
-        for root in self.roots:
-            if not root.is_dir():
-                continue
-            for path in sorted(root.iterdir()):
-                if (entry_id := self._top_level_entry_id(path)) is not None:
-                    by_id[entry_id] = None
-        return list(by_id)
 
     def _list_children(self, base: Path, prefix: str) -> list[str]:
         """List child registry ids under a directory surface."""
@@ -420,29 +490,16 @@ class Registry:
         return raw
 
     @staticmethod
-    def _top_level_entry_id(path: Path) -> str | None:
-        """Return a top-level registry id for a path, or None if skipped."""
-        return (
-            None
-            if path.name == "parsers" or path.name.startswith(".")
-            else (
-                path.stem
-                if path.is_file() and path.suffix == ".yaml"
-                else (path.name if path.is_dir() and Registry._dir_has_manifests(path) else None)
-            )
-        )
-
-    @staticmethod
     def _child_entry_id(base: Path, prefix: str, path: Path) -> str | None:
         """Return a child registry id for a path under base, or None if skipped."""
         return (
             None
             if path.name in {"parsers"} or path.name.startswith(".")
             else (
-                (None if path.stem == base.name else f"{prefix}/{path.stem}")
+                (None if path.stem == base.name else f"{prefix}-{path.stem}")
                 if path.is_file() and path.suffix == ".yaml"
                 else (
-                    f"{prefix}/{path.name}"
+                    f"{prefix}-{path.name}"
                     if path.is_dir() and Registry._dir_has_manifests(path)
                     else None
                 )
@@ -457,8 +514,8 @@ class Registry:
 
     @staticmethod
     def normalize_id(tool_id: str) -> str:
-        """Normalize a registry id (strip .yaml, unify separators)."""
-        cleaned = tool_id.strip().replace("\\", "/").lstrip("/")
+        """Normalize a registry id to hyphen form (strip .yaml, unify separators)."""
+        cleaned = tool_id.strip().replace("\\", "-").replace("/", "-").lstrip("-")
         if cleaned.endswith(".yaml"):
             cleaned = cleaned[: -len(".yaml")]
         elif cleaned.endswith(".yml"):
@@ -467,9 +524,9 @@ class Registry:
 
     @staticmethod
     def join_tool_id(name: str, subcommand: str | None = None) -> str:
-        """Join Tool(name, subcommand=...) into a slash id."""
+        """Join Tool(name, subcommand=...) into a hyphen id."""
         base = Registry.normalize_id(name)
-        return f"{base}/{Registry.normalize_id(subcommand)}" if subcommand else base
+        return f"{base}-{Registry.normalize_id(subcommand)}" if subcommand else base
 
     @staticmethod
     def merge_maps(parent: dict[str, Any], child: dict[str, Any]) -> dict[str, Any]:
@@ -488,7 +545,7 @@ class Registry:
 
     @staticmethod
     def yaml_path_to_id(path: Path, root: Path) -> str:
-        """Convert a registry YAML path to a slash id."""
+        """Convert a registry YAML path to a hyphen id."""
         parts = list(path.relative_to(root).with_suffix("").parts)
         family = len(parts) >= 2 and parts[-1] == parts[-2]
-        return "/".join(parts[:-1]) if family else "/".join(parts)
+        return "-".join(parts[:-1]) if family else "-".join(parts)

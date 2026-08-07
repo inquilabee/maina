@@ -356,7 +356,7 @@ def test_npm_node_check_uses_which(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     manifest = Manifest(
         id="x",
         data={"cli": "x"},
-        requires=RequiresSpec(version="20"),
+        requires=RequiresSpec(runtimes={"node": "20"}),
     )
     NpmBackend._ensure_node_on_path(manifest, env, ctx)
     assert calls == [("node", env["PATH"])]

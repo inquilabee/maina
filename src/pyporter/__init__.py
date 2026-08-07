@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pyporter.core.errors import InstallError, ManifestError, PorterError, RegisterError
+from pyporter.core.parsers import FunctionParser, parser
 from pyporter.core.protocols import (
     InstallContext,
     InstallerBackend,
@@ -14,6 +15,7 @@ from pyporter.runtime import Runtime, register, runtime, use
 from pyporter.tool import Tool
 
 __all__ = [
+    "FunctionParser",
     "InstallContext",
     "InstallError",
     "InstallerBackend",
@@ -25,6 +27,7 @@ __all__ = [
     "Runtime",
     "Tool",
     "ToolResult",
+    "parser",
     "register",
     "runtime",
     "use",

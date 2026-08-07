@@ -82,7 +82,7 @@ class Tool:
         return self.run(extra=extra, parser=parser, cwd=cwd, **kwargs)
 
     def commands(self) -> list[str]:
-        """List child registry surfaces for this tool (or top-level if unbound)."""
+        """List concrete child surfaces (or all concrete ids if unbound)."""
         return self._registry.list_commands(self._id)
 
     def __str__(self) -> str:
@@ -90,20 +90,23 @@ class Tool:
         if self._manifest is None:
             body = inspect.cleandoc(type(self).__doc__ or "")
             tops = self._registry.list_commands(None)
-            return "\n".join(
-                [body, "", "Registered top-level tools:", *self.format_tool_id_lines(tops)]
-            )
+            return "\n".join([body, "", "Registered tools:", *self.format_tool_id_lines(tops)])
         manifest = self._manifest
         lines = [
             f"{self.__class__.__name__}: {manifest.id}",
             f"cli: {manifest.data.get('cli')}",
-            f"abstract: {manifest.abstract}",
-            f"subcommands: {' '.join(manifest.subcommands) or '(none)'}",
-            f"version: {manifest.version or '(unpinned)'}",
-            "",
-            "Arguments:",
-            *self._arg_help_lines(manifest.args),
         ]
+        if manifest.abstract:
+            lines.append("abstract: true")
+        lines.extend(
+            [
+                f"subcommands: {' '.join(manifest.subcommands) or '(none)'}",
+                f"version: {manifest.version or '(unpinned)'}",
+                "",
+                "Arguments:",
+                *self._arg_help_lines(manifest.args),
+            ]
+        )
         if children := self._registry.list_commands(manifest.id):
             lines.extend(["", "Child surfaces:", *self.format_tool_id_lines(children)])
         return "\n".join(lines)

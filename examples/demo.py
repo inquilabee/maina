@@ -19,7 +19,7 @@ def main() -> None:
     print(Tool("jscpd").help())
     print("---")
     print("commands(kubectl):", Tool("kubectl").commands())
-    print("git remote add id:", Tool("git", subcommand="remote/add").id)
+    print("git remote add id:", Tool("git", subcommand="remote-add").id)
 
     result = Tool("jq").run(filter=".", null_input=True)
     print("jq ok:", result.ok, "raw:", repr(result.raw.strip()), "parsed:", result.parsed)

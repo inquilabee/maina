@@ -42,16 +42,6 @@ def split_at_dashdash(tokens: list[str]) -> tuple[list[str], list[str] | None]:
     return tokens[:sep], tokens[sep + 1 :]
 
 
-def to_cli_id(tool_id: str) -> str:
-    """Present a registry id for the CLI (``kubectl/get`` → ``kubectl-get``)."""
-    return tool_id.replace("/", "-")
-
-
-def from_cli_id(tool_id: str) -> str:
-    """Accept CLI ids with hyphens (``kubectl-get`` → ``kubectl/get``)."""
-    return tool_id.replace("-", "/")
-
-
 def echo_typer_help(ctx: Any) -> None:
     """Print Typer/Click help for ``ctx`` (no registry tool catalog)."""
     typer.echo(ctx.get_help())
@@ -77,20 +67,20 @@ def help_cmd(ctx: typer.Context) -> None:
 def list_cmd(
     tool_id: Annotated[
         str | None,
-        typer.Argument(help="Parent tool id whose children to list (default: top-level)"),
+        typer.Argument(help="Parent tool id whose children to list (default: all concrete)"),
     ] = None,
 ) -> None:
-    """List registered tool ids (top-level, or children of TOOL_ID).
+    """List callable tool ids (all concrete, or children of TOOL_ID).
 
-    Nested ids are shown with hyphens (``kubectl-get``), not slashes.
+    Nested ids use hyphens (``kubectl-get``, ``git-remote-add``). Abstract
+    parents stay hidden from the default catalog but may be passed as TOOL_ID.
     """
-    parent = from_cli_id(tool_id) if tool_id is not None else None
-    ids = runtime().registry.list_commands(parent)
+    ids = runtime().registry.list_commands(tool_id)
     if not ids:
         typer.echo("(none registered)")
         return
     for tid in ids:
-        typer.echo(to_cli_id(tid))
+        typer.echo(tid)
 
 
 @app.command()
@@ -101,10 +91,9 @@ def prepare(
     ] = None,
 ) -> None:
     """Ensure mise runtimes and tool installs."""
-    ids = [from_cli_id(t) for t in tools] if tools else None
-    prepared = runtime().installer.prepare_ids(ids)
+    prepared = runtime().installer.prepare_ids(tools)
     for tid in prepared:
-        typer.echo(f"prepared: {to_cli_id(tid)}")
+        typer.echo(f"prepared: {tid}")
 
 
 @app.command(
@@ -126,14 +115,13 @@ def run(
     Pass registry kwargs as ``key=value`` tokens. Repeat a key for list values.
     A bare key sets that flag to true. Tokens after ``--`` become ``extra``.
 
-    Nested tool ids use hyphens on the CLI (``kubectl-get``); slashes still work.
+    Nested tool ids use hyphens (``kubectl-get``, ``git-remote-add``).
     ``pyporter run <tool_id>`` and ``... --help`` print that tool's registry help.
     """
     resolved_id, tokens, wants_help = RunInvocation.resolve(tool_id, list(ctx.args))
     if resolved_id is None:
         echo_typer_help(ctx)
         raise typer.Exit(0)
-    resolved_id = from_cli_id(resolved_id)
     if wants_help or RunInvocation.is_empty(tokens):
         emit_tool_help(resolved_id)
         raise typer.Exit(0)

@@ -36,7 +36,7 @@ Later registry dirs override shipped ids for the same tool id. You can also pass
 `Tool(..., runtime=rt)` or `pyporter.use(rt)` when isolating a composition
 Runtime (tests, multiple catalogs).
 
-`extends` parents use registry ids (no `.yaml` suffix), e.g. `extends: kubectl/kubectl`.
+`extends` parents use registry ids (no `.yaml` suffix), e.g. `extends: kubectl-kubectl`.
 See `examples/local_tool/` (overlay registry) and `examples/parsers_dirs/` (custom
 parser via `parsers_dirs`).
 
@@ -48,10 +48,10 @@ parsed/machine output is usable out of the box:
 - **eslint** — `format` defaults to `json` (upstream stylish); `no_error_on_unmatched_pattern` defaults to true.
 - **jscpd** — `reporters` defaults to `json`; `silent` defaults to true.
 
-Pass the kwargs explicitly to override. Intermediate `git/remote` is callable with
+Pass the kwargs explicitly to override. Intermediate `git-remote` is callable with
 empty args on purpose (`git remote` lists remotes). Prefer `output_format` (not
 `output`) when an arg would clash with the top-level `output:` block — see
-`kubectl/get`.
+`kubectl-get`.
 
 ## Setup
 
@@ -101,8 +101,8 @@ pyporter prepare              # ensure runtimes + tools
 pyporter prepare jscpd        # one tool (and its required runtime)
 pyporter                      # Typer package help
 pyporter help                 # same as bare `pyporter`
-pyporter list                 # top-level tool ids
-pyporter list kubectl         # children of a parent id
+pyporter list                 # concrete (callable) tool ids
+pyporter list kubectl         # children of a parent id (abstract parents ok)
 pyporter run                  # Typer run help
 pyporter run eslint --help    # registry help for that tool
 pyporter run shellcheck --help   # that tool's registry help (also bare: run shellcheck)

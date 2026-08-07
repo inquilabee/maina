@@ -1,4 +1,4 @@
-extends: git/git
+extends: git-git
 abstract: false
 subcommand: remote
 # Intentional: callable with empty args — `git remote` lists remotes.

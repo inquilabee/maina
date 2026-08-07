@@ -1,9 +1,6 @@
 name: prettier
 cli: prettier
 version: 3.3.3
-requires:
-  runtime: node
-  version: 20
 install:
   backend: npm
   package: prettier

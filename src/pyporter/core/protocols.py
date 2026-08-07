@@ -18,7 +18,8 @@ class Parser(Protocol):
     """Transform tool stdout into structured ``ToolResult.parsed`` data.
 
     Plain callables (module-level ``parse``, lambdas, bound methods) satisfy this
-    protocol. Register them via ``register(parsers={...})`` or ``parsers_dirs``.
+    protocol. Prefer wrapping via :func:`pyporter.core.parsers.parser` /
+    :class:`~pyporter.core.parsers.FunctionParser` when registering.
     """
 
     def __call__(self, raw: str, result: ToolResult) -> Any:

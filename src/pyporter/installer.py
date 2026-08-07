@@ -15,7 +15,7 @@ from pyporter.mise import MiseRuntime
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from pyporter.core.registry import Manifest, Registry
+    from pyporter.core.registry import Manifest, Registry, RequiresSpec
 
 
 class Installer:
@@ -75,13 +75,8 @@ class Installer:
         """Resolve argv[0] path/name and process env for a manifest."""
         backend_name = manifest.install.backend
         version = manifest.version or "default"
-        env = (
-            self.language.env(runtime, manifest.requires.version or "lts")
-            if (runtime := manifest.requires.runtime)
-            else os.environ.copy()
-        )
         # Copy at the resolve boundary so backends cannot mutate a shared caller dict.
-        env = dict(env)
+        env = dict(self._compose_requires_env(manifest.requires))
         backend = self._backends.get(backend_name)
         if backend is None:
             raise InstallError(f"unknown install backend: {backend_name!r}")
@@ -89,6 +84,24 @@ class Installer:
         lock_dir = self.cache_root / "tools" / manifest.cli / version
         with self.install_dir_lock(lock_dir):
             return backend.resolve(manifest, version=version, env=env, ctx=ctx)
+
+    def _compose_requires_env(self, requires: RequiresSpec) -> dict[str, str]:
+        """Ensure every pinned runtime and compose PATH without clobbering.
+
+        ``LanguageRuntimeProvider.env`` typically copies ``os.environ`` per call,
+        so invoking it once per pin would drop earlier bins. Mirror
+        :meth:`MiseRuntime.env`: ``ensure`` each runtime, prepend each bin dir,
+        set ``MISE_DATA_DIR`` once when any pin is present.
+        """
+        env = os.environ.copy()
+        pins = requires.runtimes
+        if not pins:
+            return env
+        for runtime, version in pins.items():
+            bin_dir = self.language.ensure(runtime, version)
+            env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
+        env["MISE_DATA_DIR"] = str(self.cache_root / "mise-data")
+        return env
 
     def prepare(self, manifest: Manifest) -> None:
         """Ensure runtimes and tool installs for one manifest."""

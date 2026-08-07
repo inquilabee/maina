@@ -1,9 +1,6 @@
 name: jscpd
 cli: jscpd
 version: 4.0.5
-requires:
-  runtime: node
-  version: 20
 install:
   backend: npm
   package: jscpd

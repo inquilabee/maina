@@ -21,8 +21,9 @@ def preferred_registry() -> Registry:
 
 
 def test_join_tool_id() -> None:
-    assert Registry.join_tool_id("kubectl", "get") == "kubectl/get"
-    assert Registry.join_tool_id("git", "remote/add") == "git/remote/add"
+    assert Registry.join_tool_id("kubectl", "get") == "kubectl-get"
+    assert Registry.join_tool_id("git", "remote/add") == "git-remote-add"
+    assert Registry.join_tool_id("git", "remote-add") == "git-remote-add"
 
 
 def test_load_jq_flat() -> None:
@@ -40,20 +41,20 @@ def test_load_jscpd_family() -> None:
 
 
 def test_kubectl_get_uses_general_json() -> None:
-    manifest = preferred_registry().load("kubectl/get")
+    manifest = preferred_registry().load("kubectl-get")
     assert manifest.parser == "json"
     assert manifest.parser_path is None
 
 
 def test_git_remote_add_keeps_family_parser() -> None:
-    manifest = preferred_registry().load("git/remote/add")
+    manifest = preferred_registry().load("git-remote-add")
     assert manifest.parser == "add.py"
     assert manifest.parser_path is not None
     assert manifest.parser_path.name == "add.py"
 
 
 def test_kubectl_get_inheritance() -> None:
-    manifest = preferred_registry().load("kubectl/get")
+    manifest = preferred_registry().load("kubectl-get")
     assert manifest.cli == "kubectl"
     assert manifest.subcommands == ["get"]
     assert "namespace" in manifest.args
@@ -62,12 +63,12 @@ def test_kubectl_get_inheritance() -> None:
 
 def test_git_remote_add_subcommand_chain() -> None:
     registry = preferred_registry()
-    by_slash = registry.load("git/remote/add")
-    by_kw = registry.load(Registry.join_tool_id("git", "remote/add"))
-    assert by_slash.subcommands == ["remote", "add"]
-    assert by_kw.subcommands == by_slash.subcommands
-    tool = Tool("git", subcommand="remote/add")
-    assert tool.id == "git/remote/add"
+    by_id = registry.load("git-remote-add")
+    by_kw = registry.load(Registry.join_tool_id("git", "remote-add"))
+    assert by_id.subcommands == ["remote", "add"]
+    assert by_kw.subcommands == by_id.subcommands
+    tool = Tool("git", subcommand="remote-add")
+    assert tool.id == "git-remote-add"
 
 
 def test_abstract_refuses_run() -> None:
@@ -79,10 +80,42 @@ def test_list_commands() -> None:
     registry = preferred_registry()
     tops = registry.list_commands(None)
     assert "jq" in tops
-    assert "kubectl" in tops
+    assert "base" not in tops
+    assert "kubectl" not in tops
+    assert "git" not in tops
+    assert "kubectl-get" in tops
+    assert "kubectl-apply" in tops
+    assert "git-remote-add" in tops
     children = registry.list_commands("kubectl")
-    assert "kubectl/get" in children
-    assert "kubectl/apply" in children
+    assert "kubectl-get" in children
+    assert "kubectl-apply" in children
+    assert "kubectl" not in children
+
+
+def test_list_commands_excludes_abstract(tmp_path: Path) -> None:
+    root = tmp_path / "registry"
+    write_yaml(root / "base.yaml", {"abstract": True, "cli": "base"})
+    write_yaml(root / "leaf.yaml", {"cli": "leaf", "install": {"backend": "path"}})
+    write_yaml(
+        root / "family" / "family.yaml",
+        {"cli": "family", "abstract": True, "install": {"backend": "path"}},
+    )
+    write_yaml(
+        root / "family" / "child.yaml",
+        {
+            "extends": "family",
+            "subcommand": "child",
+            "abstract": False,
+            "install": {"backend": "path"},
+        },
+    )
+    registry = Registry(root)
+    tops = registry.list_commands(None)
+    assert "leaf" in tops
+    assert "family-child" in tops
+    assert "base" not in tops
+    assert "family" not in tops
+    assert registry.list_commands("family") == ["family-child"]
 
 
 def test_extends_cycle(tmp_path: Path) -> None:
@@ -91,3 +124,123 @@ def test_extends_cycle(tmp_path: Path) -> None:
     write_yaml(root / "b.yaml", {"cli": "b", "extends": "a"})
     with pytest.raises(ManifestError, match="cycle"):
         Registry(root).load("a")
+
+
+def test_base_auto_extends_when_present(tmp_path: Path) -> None:
+    root = tmp_path / "registry"
+    write_yaml(
+        root / "base.yaml",
+        {"abstract": True, "requires": {"python": "3.14", "node": "latest"}},
+    )
+    write_yaml(root / "demo.yaml", {"cli": "demo", "install": {"backend": "path"}})
+    manifest = Registry(root).load("demo")
+    assert manifest.requires.runtimes == {"python": "3.14", "node": "latest"}
+    assert not manifest.abstract
+
+
+def test_base_does_not_auto_extend_itself(tmp_path: Path) -> None:
+    root = tmp_path / "registry"
+    write_yaml(
+        root / "base.yaml",
+        {"abstract": True, "requires": {"python": "3.14", "node": "latest"}},
+    )
+    base = Registry(root).load("base")
+    assert base.abstract
+    assert base.requires.runtimes == {"python": "3.14", "node": "latest"}
+
+
+def test_extends_parent_also_gets_base(tmp_path: Path) -> None:
+    root = tmp_path / "registry"
+    write_yaml(
+        root / "base.yaml",
+        {"abstract": True, "requires": {"python": "3.14", "node": "latest"}},
+    )
+    write_yaml(
+        root / "parent.yaml",
+        {"cli": "parent", "abstract": True, "install": {"backend": "path"}},
+    )
+    write_yaml(
+        root / "child.yaml",
+        {"extends": "parent", "subcommand": "child", "abstract": False},
+    )
+    child = Registry(root).load("child")
+    assert child.requires.runtimes == {"python": "3.14", "node": "latest"}
+    assert child.cli == "parent"
+
+
+def test_requires_map_override_merges(tmp_path: Path) -> None:
+    root = tmp_path / "registry"
+    write_yaml(
+        root / "base.yaml",
+        {"abstract": True, "requires": {"python": "3.14", "node": "latest"}},
+    )
+    write_yaml(
+        root / "demo.yaml",
+        {
+            "cli": "demo",
+            "requires": {"node": "22", "ruby": "3.3"},
+            "install": {"backend": "path"},
+        },
+    )
+    manifest = Registry(root).load("demo")
+    assert manifest.requires.runtimes == {
+        "python": "3.14",
+        "node": "22",
+        "ruby": "3.3",
+    }
+    assert manifest.requires.version_for("node") == "22"
+    assert manifest.requires.get("python") == "3.14"
+
+
+def test_requires_legacy_form(tmp_path: Path) -> None:
+    root = tmp_path / "registry"
+    write_yaml(
+        root / "demo.yaml",
+        {
+            "cli": "demo",
+            "requires": {"runtime": "node", "version": "20"},
+            "install": {"backend": "path"},
+        },
+    )
+    manifest = Registry(root).load("demo")
+    assert manifest.requires.runtimes == {"node": "20"}
+
+
+def test_requires_legacy_merges_with_base(tmp_path: Path) -> None:
+    root = tmp_path / "registry"
+    write_yaml(
+        root / "base.yaml",
+        {"abstract": True, "requires": {"python": "3.14", "node": "latest"}},
+    )
+    write_yaml(
+        root / "demo.yaml",
+        {
+            "cli": "demo",
+            "requires": {"runtime": "node", "version": "20"},
+            "install": {"backend": "path"},
+        },
+    )
+    manifest = Registry(root).load("demo")
+    assert manifest.requires.runtimes == {"python": "3.14", "node": "20"}
+
+
+def test_requires_rejects_mixed_legacy_and_pins(tmp_path: Path) -> None:
+    root = tmp_path / "registry"
+    write_yaml(
+        root / "demo.yaml",
+        {
+            "cli": "demo",
+            "requires": {"runtime": "node", "python": "3.14"},
+            "install": {"backend": "path"},
+        },
+    )
+    with pytest.raises(ManifestError, match="cannot mix"):
+        Registry(root).load("demo")
+
+
+def test_shipped_tools_inherit_base_requires() -> None:
+    manifest = preferred_registry().load("jq")
+    assert manifest.requires.runtimes["python"] == "3.14"
+    assert manifest.requires.runtimes["node"] == "latest"
+    jscpd = preferred_registry().load("jscpd")
+    assert jscpd.requires.version_for("node") == "latest"

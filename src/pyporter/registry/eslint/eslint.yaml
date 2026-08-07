@@ -1,9 +1,6 @@
 name: eslint
 cli: eslint
 version: 8.57.1
-requires:
-  runtime: node
-  version: 20
 install:
   backend: npm
   package: eslint

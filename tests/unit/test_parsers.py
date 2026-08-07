@@ -63,12 +63,30 @@ def test_register_parser_callable() -> None:
 
 
 def test_builtins_satisfy_parser_protocol() -> None:
-    from pyporter.core.parsers import parse_json, parse_lines, parse_text
+    from pyporter.core.parsers import FunctionParser, parse_json, parse_lines, parse_text, parser
     from pyporter.core.protocols import Parser
 
     assert isinstance(parse_json, Parser)
     assert isinstance(parse_lines, Parser)
     assert isinstance(parse_text, Parser)
+    wrapped = parser(parse_json)
+    assert isinstance(wrapped, FunctionParser)
+    assert isinstance(wrapped, Parser)
+    assert parser(wrapped) is wrapped
+
+
+def test_register_wraps_via_parser_factory() -> None:
+    from pyporter.core.parsers import FunctionParser
+
+    resolver = ParserResolver()
+
+    def parse_csv(raw: str, _result: ToolResult) -> list[str]:
+        return raw.split(",")
+
+    resolver.register("csv", parse_csv)
+    registered = resolver.generic_parser("csv")
+    assert isinstance(registered, FunctionParser)
+    assert registered("a,b", make_result()) == ["a", "b"]
 
 
 def test_register_rejects_non_parser() -> None:

@@ -178,7 +178,7 @@ def test_toolrunner_executor_records_cwd(tmp_path: Path) -> None:
 
 def test_family_parser_apply_via_preferred() -> None:
     rt = Runtime.preferred()
-    manifest = rt.registry.load("git/remote/add")
+    manifest = rt.registry.load("git-remote-add")
     assert manifest.parser == "add.py"
     assert manifest.parser_path is not None
     from pyporter.core.result import ToolResult

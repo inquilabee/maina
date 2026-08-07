@@ -1,9 +1,6 @@
 name: markdownlint
 cli: markdownlint
 version: 0.34.0
-requires:
-  runtime: node
-  version: 20
 install:
   backend: npm
   package: markdownlint-cli
