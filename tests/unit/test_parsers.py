@@ -6,10 +6,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from pyporter.core.errors import ManifestError
-from pyporter.core.parsers import ParserResolver, builtin_generals
-from pyporter.core.result import ToolResult
-from pyporter.runtime import Runtime
+from maina.core.errors import ManifestError
+from maina.core.parsers import ParserResolver, builtin_generals
+from maina.core.result import ToolResult
+from maina.runtime import Runtime
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -63,8 +63,8 @@ def test_register_parser_callable() -> None:
 
 
 def test_builtins_satisfy_parser_protocol() -> None:
-    from pyporter.core.parsers import FunctionParser, parse_json, parse_lines, parse_text, parser
-    from pyporter.core.protocols import Parser
+    from maina.core.parsers import FunctionParser, parse_json, parse_lines, parse_text, parser
+    from maina.core.protocols import Parser
 
     assert isinstance(parse_json, Parser)
     assert isinstance(parse_lines, Parser)
@@ -76,7 +76,7 @@ def test_builtins_satisfy_parser_protocol() -> None:
 
 
 def test_register_wraps_via_parser_factory() -> None:
-    from pyporter.core.parsers import FunctionParser
+    from maina.core.parsers import FunctionParser
 
     resolver = ParserResolver()
 

@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from pyporter.core.registry import Manifest
-    from pyporter.core.result import ToolResult
+    from maina.core.registry import Manifest
+    from maina.core.result import ToolResult
 
 
 @runtime_checkable
@@ -18,8 +18,8 @@ class Parser(Protocol):
     """Transform tool stdout into structured ``ToolResult.parsed`` data.
 
     Plain callables (module-level ``parse``, lambdas, bound methods) satisfy this
-    protocol. Prefer wrapping via :func:`pyporter.core.parsers.parser` /
-    :class:`~pyporter.core.parsers.FunctionParser` when registering.
+    protocol. Prefer wrapping via :func:`maina.core.parsers.parser` /
+    :class:`~maina.core.parsers.FunctionParser` when registering.
     """
 
     def __call__(self, raw: str, result: ToolResult) -> Any:

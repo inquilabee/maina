@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from pyporter.core.result import ToolResult
+    from maina.core.result import ToolResult
 
 
 def parse(raw: str, result: ToolResult) -> Any:

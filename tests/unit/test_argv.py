@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from pyporter.core.argparser import ArgParser
-from pyporter.core.errors import ArgError
+from maina.core.argparser import ArgParser
+from maina.core.errors import ArgError
 
 
 def test_build_argv_flags_and_positionals() -> None:

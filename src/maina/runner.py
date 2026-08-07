@@ -7,14 +7,14 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from pyporter.core.argparser import ArgParser
-from pyporter.core.errors import InstallError
-from pyporter.core.parsers import ParserResolver
-from pyporter.core.result import ToolResult
+from maina.core.argparser import ArgParser
+from maina.core.errors import InstallError
+from maina.core.parsers import ParserResolver
+from maina.core.result import ToolResult
 
 if TYPE_CHECKING:
-    from pyporter.core.registry import Manifest
-    from pyporter.installer import Installer
+    from maina.core.registry import Manifest
+    from maina.installer import Installer
 
 # Test-only injectable; not a public pluggable runner API.
 Executor = Callable[..., subprocess.CompletedProcess[str]]

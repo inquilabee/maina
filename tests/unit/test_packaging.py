@@ -6,11 +6,11 @@ from importlib.resources import files
 
 import pytest
 
-from pyporter.runtime import Runtime
+from maina.runtime import Runtime
 
 
 def test_shipped_registry_yaml_via_importlib_resources() -> None:
-    jq_yaml = files("pyporter").joinpath("registry", "jq.yaml")
+    jq_yaml = files("maina").joinpath("registry", "jq.yaml")
     assert jq_yaml.is_file()
     text = jq_yaml.read_text(encoding="utf-8")
     assert "cli: jq" in text

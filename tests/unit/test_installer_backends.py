@@ -8,16 +8,16 @@ from typing import TYPE_CHECKING
 import pytest
 
 from helpers import write_yaml
-from pyporter.backends import PathBackend
-from pyporter.core.errors import InstallError
-from pyporter.core.registry import Manifest, Registry
-from pyporter.installer import Installer
-from pyporter.runtime import Runtime, register
+from maina.backends import PathBackend
+from maina.core.errors import InstallError
+from maina.core.registry import Manifest, Registry
+from maina.installer import Installer
+from maina.runtime import Runtime, register
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from pyporter.core.protocols import InstallContext, LanguageRuntimeProvider
+    from maina.core.protocols import InstallContext, LanguageRuntimeProvider
 
 
 @dataclass

@@ -1,6 +1,6 @@
 # Local tool overlay example
 
-Minimal registry overlay you can register without editing pyporter:
+Minimal registry overlay you can register without editing maina:
 
 ```text
 examples/local_tool/
@@ -9,12 +9,12 @@ examples/local_tool/
 
 ```python
 from pathlib import Path
-import pyporter
+import maina
 
-pyporter.register(pyporter.runtime(), registry_dirs=[Path("examples/local_tool")])
+maina.register(maina.runtime(), registry_dirs=[Path("examples/local_tool")])
 # Requires `hello` on PATH (install.backend: path):
-# pyporter.Tool("hello").run()
-print(pyporter.Tool("hello"))
+# maina.Tool("hello").run()
+print(maina.Tool("hello"))
 ```
 
 Later overlay roots override shipped ids with the same name.

@@ -10,18 +10,18 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pyporter.backends import GithubBackend, NpmBackend, PathBackend
-from pyporter.core.errors import RegisterError
-from pyporter.core.parsers import ParserResolver, builtin_generals
-from pyporter.core.registry import Registry
-from pyporter.installer import Installer
-from pyporter.mise import MiseRuntime
+from maina.backends import GithubBackend, NpmBackend, PathBackend
+from maina.core.errors import RegisterError
+from maina.core.parsers import ParserResolver, builtin_generals
+from maina.core.registry import Registry
+from maina.installer import Installer
+from maina.mise import MiseRuntime
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-    from pyporter.core.parsers import ParserInput
-    from pyporter.core.protocols import InstallerBackend, LanguageRuntimeProvider
+    from maina.core.parsers import ParserInput
+    from maina.core.protocols import InstallerBackend, LanguageRuntimeProvider
 
 
 class RuntimeSession:
@@ -49,7 +49,7 @@ class Runtime:
     """Owns registry overlays, general parsers, installer backends, and language.
 
     This is the composition root. Language runtimes stay behind
-    :class:`~pyporter.core.protocols.LanguageRuntimeProvider` (e.g. ``MiseRuntime``).
+    :class:`~maina.core.protocols.LanguageRuntimeProvider` (e.g. ``MiseRuntime``).
     """
 
     def __init__(
@@ -143,12 +143,12 @@ class Runtime:
 
     @staticmethod
     def resolve_cache_root(path: Path | None = None) -> Path:
-        """Resolve the pyporter cache root (``PYPORTER_CACHE`` / ``~/.cache/pyporter``)."""
+        """Resolve the maina cache root (``MAINA_CACHE`` / ``~/.cache/maina``)."""
         if path is not None:
             root = Path(path)
         else:
-            override = os.environ.get("PYPORTER_CACHE")
-            root = Path(override) if override else Path.home() / ".cache" / "pyporter"
+            override = os.environ.get("MAINA_CACHE")
+            root = Path(override) if override else Path.home() / ".cache" / "maina"
         root.mkdir(parents=True, exist_ok=True)
         return root
 

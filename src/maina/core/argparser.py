@@ -10,8 +10,8 @@ from __future__ import annotations
 import shlex
 from typing import TYPE_CHECKING, Any
 
-from pyporter.core.errors import ArgError
-from pyporter.core.registry import ArgSpec
+from maina.core.errors import ArgError
+from maina.core.registry import ArgSpec
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

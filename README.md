@@ -1,10 +1,10 @@
-# pyporter
+# maina
 
 Call non-Python CLIs from Python. The registry YAML is the source of truth;
 `Tool(name)` loads a manifest and runs it.
 
 ```python
-from pyporter import Tool
+from maina import Tool
 
 jscpd = Tool("jscpd")
 result = jscpd(path=["src"], min_lines=5)
@@ -16,24 +16,24 @@ See `adr/0001-registry-first-tool-runtime.md` and
 
 ## Extendibility
 
-Add local tools, parsers, and installer backends without forking pyporter.
+Add local tools, parsers, and installer backends without forking maina.
 Built-ins use the same `register(...)` path. Open a PR only when a tool is worth
 sharing in the shipped catalog.
 
 ```python
 from pathlib import Path
-import pyporter
+import maina
 
-rt = pyporter.Runtime.preferred()
-pyporter.register(rt, registry_dirs=[Path("tools")])
-pyporter.Tool("mytool", runtime=rt).run(...)
+rt = maina.Runtime.preferred()
+maina.register(rt, registry_dirs=[Path("tools")])
+maina.Tool("mytool", runtime=rt).run(...)
 ```
 
-Or omit the Runtime and mutate the process session: `pyporter.register(registry_dirs=[...])`.
+Or omit the Runtime and mutate the process session: `maina.register(registry_dirs=[...])`.
 Later registry dirs override shipped ids for the same tool id. You can also pass
 `parsers=`, `parsers_dirs=`, `installers=`, and `language=`. Parsers implement the
 `Parser` protocol (`parse(raw, result)` / any matching callable). Use
-`Tool(..., runtime=rt)` or `pyporter.use(rt)` when isolating a composition
+`Tool(..., runtime=rt)` or `maina.use(rt)` when isolating a composition
 Runtime (tests, multiple catalogs).
 
 `extends` parents use registry ids (no `.yaml` suffix), e.g. `extends: kubectl-kubectl`.
@@ -58,12 +58,12 @@ empty args on purpose (`git remote` lists remotes). Prefer `output_format` (not
 ```bash
 uv sync
 uv run shipgate install
-uv run pyporter prepare jq
+uv run maina prepare jq
 uv run python examples/demo.py
 uv run python examples/parsers_dirs/demo.py
 ```
 
-Tool cache: `~/.cache/pyporter` (override with `PYPORTER_CACHE`).
+Tool cache: `~/.cache/maina` (override with `MAINA_CACHE`).
 
 ## Quality gates (ShipGate)
 
@@ -97,19 +97,19 @@ Hooks expect a local `.shipgate/` tree and `scripts/shipgate-link-src.sh` (gitig
 ## CLI
 
 ```bash
-pyporter prepare              # ensure runtimes + tools
-pyporter prepare jscpd        # one tool (and its required runtime)
-pyporter                      # Typer package help
-pyporter help                 # same as bare `pyporter`
-pyporter list                 # concrete (callable) tool ids
-pyporter list kubectl         # children of a parent id (abstract parents ok)
-pyporter run                  # Typer run help
-pyporter run eslint --help    # registry help for that tool
-pyporter run shellcheck --help   # that tool's registry help (also bare: run shellcheck)
-pyporter run jq filter=. null_input
-pyporter run jscpd path=src min_lines=5
-pyporter run kubectl-get resource=pods namespace=default
-pyporter run git-remote-add name=origin url=https://example.com
+maina prepare              # ensure runtimes + tools
+maina prepare jscpd        # one tool (and its required runtime)
+maina                      # Typer package help
+maina help                 # same as bare `maina`
+maina list                 # concrete (callable) tool ids
+maina list kubectl         # children of a parent id (abstract parents ok)
+maina run                  # Typer run help
+maina run eslint --help    # registry help for that tool
+maina run shellcheck --help   # that tool's registry help (also bare: run shellcheck)
+maina run jq filter=. null_input
+maina run jscpd path=src min_lines=5
+maina run kubectl-get resource=pods namespace=default
+maina run git-remote-add name=origin url=https://example.com
 ```
 
 `run` maps `key=value` tokens to `Tool(tool_id).run(**kwargs)`. Repeat a key for

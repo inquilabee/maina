@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from pyporter.mise import MiseRuntime
+from maina.mise import MiseRuntime
 
 if TYPE_CHECKING:
     from pathlib import Path

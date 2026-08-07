@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pyporter
-from pyporter import Tool
+import maina
+from maina import Tool
 
 
 def main() -> None:
     # Optional overlay (same register path as shipped builtins):
     local = Path(__file__).resolve().parent / "local_tool"
     if local.is_dir():
-        pyporter.register(pyporter.runtime(), registry_dirs=[local])
+        maina.register(maina.runtime(), registry_dirs=[local])
 
     print(Tool().help())
     print("---")

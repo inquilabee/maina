@@ -5,11 +5,11 @@ from __future__ import annotations
 import shutil
 from typing import TYPE_CHECKING
 
-from pyporter.core.errors import InstallError
+from maina.core.errors import InstallError
 
 if TYPE_CHECKING:
-    from pyporter.core.protocols import InstallContext
-    from pyporter.core.registry import Manifest
+    from maina.core.protocols import InstallContext
+    from maina.core.registry import Manifest
 
 
 class PathBackend:

@@ -7,14 +7,14 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from pyporter.core.errors import InstallError
+from maina.core.errors import InstallError
 
 
 class MiseRuntime:
     """Instance-scoped owner of mise binary bootstrap and language runtimes.
 
-    Satisfies :class:`~pyporter.core.protocols.LanguageRuntimeProvider`. This is the
-    language runtime provider, not the composition :class:`~pyporter.runtime.Runtime`.
+    Satisfies :class:`~maina.core.protocols.LanguageRuntimeProvider`. This is the
+    language runtime provider, not the composition :class:`~maina.runtime.Runtime`.
     """
 
     def __init__(self, cache_root: Path) -> None:
@@ -23,7 +23,7 @@ class MiseRuntime:
         self.cache_root = root
 
     def mise_bin(self) -> Path:
-        """Locate mise on PATH or under the pyporter cache."""
+        """Locate mise on PATH or under the maina cache."""
         if found := shutil.which("mise"):
             return Path(found)
         cached = self.cache_root / "mise" / "bin" / "mise"
@@ -70,7 +70,7 @@ class MiseRuntime:
 
     @staticmethod
     def _bootstrap_mise(target: Path) -> Path:
-        """Download and install mise into the pyporter cache."""
+        """Download and install mise into the maina cache."""
         target.parent.mkdir(parents=True, exist_ok=True)
         env = os.environ.copy()
         env["MISE_INSTALL_PATH"] = str(target)

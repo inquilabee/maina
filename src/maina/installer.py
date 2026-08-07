@@ -1,4 +1,4 @@
-"""Install and resolve tool executables into the pyporter cache."""
+"""Install and resolve tool executables into the maina cache."""
 
 from __future__ import annotations
 
@@ -8,14 +8,14 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, cast
 
-from pyporter.core.errors import InstallError
-from pyporter.core.protocols import InstallContext, InstallerBackend, LanguageRuntimeProvider
-from pyporter.mise import MiseRuntime
+from maina.core.errors import InstallError
+from maina.core.protocols import InstallContext, InstallerBackend, LanguageRuntimeProvider
+from maina.mise import MiseRuntime
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from pyporter.core.registry import Manifest, Registry, RequiresSpec
+    from maina.core.registry import Manifest, Registry, RequiresSpec
 
 
 class Installer:

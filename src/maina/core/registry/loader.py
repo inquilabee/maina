@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
-from pyporter.core.errors import ManifestError
+from maina.core.errors import ManifestError
 
 from . import ids as registry_ids
 from .specs import (

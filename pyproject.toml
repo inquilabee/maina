@@ -1,5 +1,5 @@
 [project]
-name = "pyporter"
+name = "maina"
 version = "0.1.0"
 description = "Use non-Python CLIs from Python with native-like APIs"
 readme = "README.md"
@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.scripts]
-pyporter = "pyporter.cli:main"
+maina = "maina.cli:main"
 
 [dependency-groups]
 dev = [
@@ -28,12 +28,12 @@ requires = ["uv_build>=0.11.19,<0.12.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = "pyporter"
+module-name = "maina"
 module-root = "src"
 
 [tool.deptry]
 # First-party packages (not reported as missing third-party deps).
-known_first_party = ["pyporter"]
+known_first_party = ["maina"]
 
 # [tool.deptry.per_rule_ignores]
 # DEP002 = ["optional-extra-package"]

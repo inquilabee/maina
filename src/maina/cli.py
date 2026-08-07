@@ -1,4 +1,4 @@
-"""pyporter CLI: prepare, help, and run via Tool."""
+"""maina CLI: prepare, help, and run via Tool."""
 
 from __future__ import annotations
 
@@ -8,22 +8,22 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 
-from pyporter.core.errors import AbstractToolError, ArgError, ManifestError, PorterError
-from pyporter.runtime import runtime
-from pyporter.tool import Tool
+from maina.core.errors import AbstractToolError, ArgError, MainaError, ManifestError
+from maina.runtime import runtime
+from maina.tool import Tool
 
 if TYPE_CHECKING:
-    from pyporter.core.result import ToolResult
+    from maina.core.result import ToolResult
 
 app = typer.Typer(
-    name="pyporter",
+    name="maina",
     help=(
         "Registry-first CLI tool runner.\n\n"
-        "Use `pyporter run <tool_id> key=value ... [-- extra...]` to invoke a "
+        "Use `maina run <tool_id> key=value ... [-- extra...]` to invoke a "
         "registered tool. Pass registry kwargs as key=value tokens (repeat a key "
         "for list values); a bare key sets that flag to true. Tokens after `--` "
-        "become extra argv. `pyporter run <tool_id>` or `... --help` prints that "
-        "tool's registry help. List ids with `pyporter list`."
+        "become extra argv. `maina run <tool_id>` or `... --help` prints that "
+        "tool's registry help. List ids with `maina list`."
     ),
     add_completion=False,
     no_args_is_help=False,
@@ -57,7 +57,7 @@ def root(ctx: typer.Context) -> None:
 
 @app.command("help")
 def help_cmd(ctx: typer.Context) -> None:
-    """Show the same help as ``pyporter`` / ``pyporter --help``."""
+    """Show the same help as ``maina`` / ``maina --help``."""
     parent = ctx.parent if ctx.parent is not None else ctx
     echo_typer_help(parent)
     raise typer.Exit(0)
@@ -116,7 +116,7 @@ def run(
     A bare key sets that flag to true. Tokens after ``--`` become ``extra``.
 
     Nested tool ids use hyphens (``kubectl-get``, ``git-remote-add``).
-    ``pyporter run <tool_id>`` and ``... --help`` print that tool's registry help.
+    ``maina run <tool_id>`` and ``... --help`` print that tool's registry help.
     """
     resolved_id, tokens, wants_help = RunInvocation.resolve(tool_id, list(ctx.args))
     if resolved_id is None:
@@ -132,7 +132,7 @@ def run(
     except (ManifestError, AbstractToolError, ArgError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(2) from exc
-    except PorterError as exc:
+    except MainaError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
 

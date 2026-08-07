@@ -1,33 +1,33 @@
-"""pyporter errors."""
+"""maina errors."""
 
 from __future__ import annotations
 
 
-class PorterError(Exception):
-    """Base error for pyporter."""
+class MainaError(Exception):
+    """Base error for maina."""
 
 
-class ManifestError(PorterError):
+class ManifestError(MainaError):
     """Invalid or missing registry manifest."""
 
 
-class AbstractToolError(PorterError):
+class AbstractToolError(MainaError):
     """Attempted to run an abstract (inheritance-only) tool surface."""
 
 
-class ArgError(PorterError):
+class ArgError(MainaError):
     """Invalid kwargs for a tool surface."""
 
 
-class InstallError(PorterError):
+class InstallError(MainaError):
     """Tool or runtime install/resolve failed."""
 
 
-class RegisterError(PorterError):
+class RegisterError(MainaError):
     """Invalid register path or composition registration failure."""
 
 
-class ToolExitError(PorterError):
+class ToolExitError(MainaError):
     """CLI exited with a non-success code."""
 
     def __init__(

@@ -7,13 +7,13 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-import pyporter
+import maina
 from helpers import write_yaml
-from pyporter.backends import PathBackend
-from pyporter.cli import RunArgParser, RunInvocation, app, main
-from pyporter.core.result import ToolResult
-from pyporter.runtime import Runtime
-from pyporter.tool import Tool
+from maina.backends import PathBackend
+from maina.cli import RunArgParser, RunInvocation, app, main
+from maina.core.result import ToolResult
+from maina.runtime import Runtime
+from maina.tool import Tool
 
 runner = CliRunner()
 
@@ -46,8 +46,8 @@ def test_str_shellcheck_includes_arg_descriptions() -> None:
 def test_str_unbound_is_library_help() -> None:
     text = str(Tool())
     assert "Registered tools:" in text
-    assert "from pyporter import Tool" in text
-    assert "pyporter run" not in text
+    assert "from maina import Tool" in text
+    assert "maina run" not in text
     assert "shellcheck" in text
     bullets = [
         line.strip().removeprefix("- ").strip()
@@ -162,7 +162,7 @@ def test_cli_run_tool_help_flag() -> None:
     assert "Arguments:" in result.stdout
     assert "path:" in result.stdout
     assert "Script file" in result.stdout
-    assert "Usage: pyporter run [OPTIONS]" not in result.stdout
+    assert "Usage: maina run [OPTIONS]" not in result.stdout
 
 
 def test_cli_run_tool_help_short_flag() -> None:
@@ -261,8 +261,8 @@ def test_cli_prepare_path_tool(tmp_path: Any) -> None:
         {"cli": "true", "install": {"backend": "path"}},
     )
     rt = Runtime(cache_root=tmp_path / "cache")
-    pyporter.register(rt, registry_dirs=[root], installers=[PathBackend()])
-    pyporter.use(rt)
+    maina.register(rt, registry_dirs=[root], installers=[PathBackend()])
+    maina.use(rt)
     result = runner.invoke(app, ["prepare", "trueish"])
     assert result.exit_code == 0, result.stdout + result.stderr
     assert "prepared: trueish" in result.stdout
@@ -284,8 +284,8 @@ def test_cli_prepare_skips_abstract(tmp_path: Any) -> None:
         },
     )
     rt = Runtime(cache_root=tmp_path / "cache")
-    pyporter.register(rt, registry_dirs=[root], installers=[PathBackend()])
-    pyporter.use(rt)
+    maina.register(rt, registry_dirs=[root], installers=[PathBackend()])
+    maina.use(rt)
     result = runner.invoke(app, ["prepare"])
     assert result.exit_code == 0, result.stdout + result.stderr
     assert "prepared: child" in result.stdout

@@ -5,26 +5,26 @@ from __future__ import annotations
 import inspect
 from typing import TYPE_CHECKING, Any
 
-from pyporter.core.errors import AbstractToolError
-from pyporter.core.registry import Registry
-from pyporter.runner import ToolRunner
-from pyporter.runtime import runtime as active_runtime
+from maina.core.errors import AbstractToolError
+from maina.core.registry import Registry
+from maina.runner import ToolRunner
+from maina.runtime import runtime as active_runtime
 
 if TYPE_CHECKING:
-    from pyporter.core.registry import ArgSpec, Manifest
-    from pyporter.core.result import ToolResult
-    from pyporter.runtime import Runtime
+    from maina.core.registry import ArgSpec, Manifest
+    from maina.core.result import ToolResult
+    from maina.runtime import Runtime
 
 
 class Tool:
     """Call non-Python CLIs via registry manifests.
 
     Usage:
-      from pyporter import Tool
+      from maina import Tool
       result = Tool("jscpd").run(path=["src"])
       print(result.raw, result.parsed)
 
-    For the ``pyporter`` CLI, run ``pyporter --help``.
+    For the ``maina`` CLI, run ``maina --help``.
     """
 
     def __init__(

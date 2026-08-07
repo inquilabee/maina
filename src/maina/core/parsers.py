@@ -7,21 +7,21 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from pyporter.core.errors import ManifestError
-from pyporter.core.protocols import Parser
+from maina.core.errors import ManifestError
+from maina.core.protocols import Parser
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
     from pathlib import Path
 
-    from pyporter.core.result import ToolResult
+    from maina.core.result import ToolResult
 
     ParserInput = Parser | Callable[[str, ToolResult], Any]
 
 
 @dataclass(slots=True, frozen=True)
 class FunctionParser:
-    """Concrete :class:`~pyporter.core.protocols.Parser` wrapping a plain callable."""
+    """Concrete :class:`~maina.core.protocols.Parser` wrapping a plain callable."""
 
     _fn: Callable[[str, ToolResult], Any]
 
@@ -74,7 +74,7 @@ def builtin_generals() -> dict[str, Parser]:
 
 
 class ParserResolver:
-    """Owns the general parser name→callable map (:class:`~pyporter.core.protocols.Parser`).
+    """Owns the general parser name→callable map (:class:`~maina.core.protocols.Parser`).
 
     Call :meth:`bind` for a run-scoped resolver that applies override / ref / path.
     """
@@ -140,7 +140,7 @@ class ParserResolver:
     @staticmethod
     def load_parser_module(path: Path) -> Parser:
         """Load ``parse`` from a registry ``parsers/*.py`` file."""
-        spec = importlib.util.spec_from_file_location(f"pyporter_parser_{path.stem}", path)
+        spec = importlib.util.spec_from_file_location(f"maina_parser_{path.stem}", path)
         if spec is None or spec.loader is None:
             raise ManifestError(f"cannot load parser module {path}")
         module = importlib.util.module_from_spec(spec)

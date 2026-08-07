@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from pyporter.core.errors import InstallError
+from maina.core.errors import InstallError
 
 # Soft cap for streamed release assets (GitHub binaries, etc.).
 DEFAULT_MAX_BYTES = 512 * 1024 * 1024

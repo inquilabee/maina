@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-from pyporter.core.errors import InstallError, ManifestError, PorterError, RegisterError
-from pyporter.core.parsers import FunctionParser, parser
-from pyporter.core.protocols import (
+from maina.core.errors import InstallError, MainaError, ManifestError, RegisterError
+from maina.core.parsers import FunctionParser, parser
+from maina.core.protocols import (
     InstallContext,
     InstallerBackend,
     LanguageRuntimeProvider,
     Parser,
 )
-from pyporter.core.result import ToolResult
-from pyporter.runtime import Runtime, register, runtime, use
-from pyporter.tool import Tool
+from maina.core.result import ToolResult
+from maina.runtime import Runtime, register, runtime, use
+from maina.tool import Tool
 
 __all__ = [
     "FunctionParser",
@@ -20,9 +20,9 @@ __all__ = [
     "InstallError",
     "InstallerBackend",
     "LanguageRuntimeProvider",
+    "MainaError",
     "ManifestError",
     "Parser",
-    "PorterError",
     "RegisterError",
     "Runtime",
     "Tool",

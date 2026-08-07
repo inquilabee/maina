@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING
 import pytest
 
 from helpers import write_yaml
-from pyporter.core.errors import AbstractToolError, ManifestError
-from pyporter.core.registry import Registry
-from pyporter.runtime import Runtime
-from pyporter.tool import Tool
+from maina.core.errors import AbstractToolError, ManifestError
+from maina.core.registry import Registry
+from maina.runtime import Runtime
+from maina.tool import Tool
 
 if TYPE_CHECKING:
     from pathlib import Path

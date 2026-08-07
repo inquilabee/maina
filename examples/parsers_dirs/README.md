@@ -1,6 +1,6 @@
 # parsers_dirs example
 
-Register a custom general parser without forking pyporter. File stem = parser
+Register a custom general parser without forking maina. File stem = parser
 name (`shout.py` → `parser: shout`).
 
 ```text
@@ -12,16 +12,16 @@ examples/parsers_dirs/
 
 ```python
 from pathlib import Path
-import pyporter
+import maina
 
 here = Path("examples/parsers_dirs")
-rt = pyporter.Runtime.preferred()
-pyporter.register(
+rt = maina.Runtime.preferred()
+maina.register(
     rt,
     registry_dirs=[here / "tools"],
     parsers_dirs=[here / "parsers"],
 )
-pyporter.Tool("echo_shout", runtime=rt).run(message="hi")
+maina.Tool("echo_shout", runtime=rt).run(message="hi")
 ```
 
 Run: `uv run python examples/parsers_dirs/demo.py`

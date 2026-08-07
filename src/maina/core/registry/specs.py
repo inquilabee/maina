@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from pyporter.core.errors import ManifestError
+from maina.core.errors import ManifestError
 
 if TYPE_CHECKING:
     from pathlib import Path

@@ -13,15 +13,15 @@ from unittest.mock import MagicMock
 import pytest
 
 from helpers import write_yaml
-from pyporter.backends.archive import ArchiveFetcher
-from pyporter.backends.npm import NpmBackend
-from pyporter.core.errors import InstallError
-from pyporter.core.registry import InstallSpec, Manifest, Registry, RequiresSpec
-from pyporter.installer import Installer
-from pyporter.runner import ToolRunner
+from maina.backends.archive import ArchiveFetcher
+from maina.backends.npm import NpmBackend
+from maina.core.errors import InstallError
+from maina.core.registry import InstallSpec, Manifest, Registry, RequiresSpec
+from maina.installer import Installer
+from maina.runner import ToolRunner
 
 if TYPE_CHECKING:
-    from pyporter.core.protocols import InstallContext
+    from maina.core.protocols import InstallContext
 
 
 @dataclass
@@ -177,10 +177,10 @@ def test_download_and_extract_happy_path_mock_https(tmp_path: Path) -> None:
 def test_github_backend_resolve_uses_fetcher(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from pyporter.backends.github import GithubBackend
-    from pyporter.core.protocols import InstallContext
+    from maina.backends.github import GithubBackend
+    from maina.core.protocols import InstallContext
 
-    monkeypatch.setattr("pyporter.backends.github.platform_key", lambda: "linux-x86_64")
+    monkeypatch.setattr("maina.backends.github.platform_key", lambda: "linux-x86_64")
     fetcher = RecordingFetcher()
 
     manifest = Manifest(
@@ -349,7 +349,7 @@ def test_npm_node_check_uses_which(tmp_path: Path, monkeypatch: pytest.MonkeyPat
             del runtime, version
             return {"PATH": str(self.cache_root)}
 
-    monkeypatch.setattr("pyporter.backends.npm.shutil.which", fake_which)
+    monkeypatch.setattr("maina.backends.npm.shutil.which", fake_which)
     ctx = MagicMock()
     ctx.language = TrackingLanguage(tmp_path)
     env = {"PATH": "/opt/node_modules/bin:/usr/bin"}
@@ -366,7 +366,7 @@ def test_npm_node_check_uses_which(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 def test_mise_ensure_skips_install_when_present(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from pyporter.mise import MiseRuntime
+    from maina.mise import MiseRuntime
 
     rt = MiseRuntime(cache_root=tmp_path)
     monkeypatch.setattr(rt, "mise_bin", lambda: Path("/fake/mise"))

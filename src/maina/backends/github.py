@@ -5,13 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from pyporter.backends.archive import ArchiveFetcher
-from pyporter.core.errors import InstallError
-from pyporter.core.platform import platform_key
+from maina.backends.archive import ArchiveFetcher
+from maina.core.errors import InstallError
+from maina.core.platform import platform_key
 
 if TYPE_CHECKING:
-    from pyporter.core.protocols import InstallContext
-    from pyporter.core.registry import Manifest
+    from maina.core.protocols import InstallContext
+    from maina.core.registry import Manifest
 
 
 class GithubBackend:
