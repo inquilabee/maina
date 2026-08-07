@@ -268,6 +268,29 @@ def test_cli_prepare_path_tool(tmp_path: Any) -> None:
     assert "prepared: trueish" in result.stdout
 
 
+def test_cli_prepare_rejects_explicit_abstract(tmp_path: Any) -> None:
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "base.yaml",
+        {"cli": "base", "abstract": True, "install": {"backend": "path"}},
+    )
+    write_yaml(
+        root / "child.yaml",
+        {
+            "cli": "true",
+            "extends": "base",
+            "abstract": False,
+            "install": {"backend": "path"},
+        },
+    )
+    rt = Runtime(cache_root=tmp_path / "cache")
+    maina.register(rt, registry_dirs=[root], installers=[PathBackend()])
+    maina.use(rt)
+    result = runner.invoke(app, ["prepare", "base"])
+    assert result.exit_code == 2
+    assert "cannot prepare abstract" in (result.stdout + result.stderr)
+
+
 def test_cli_prepare_skips_abstract(tmp_path: Any) -> None:
     root = tmp_path / "reg"
     write_yaml(

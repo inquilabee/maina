@@ -1,4 +1,4 @@
-extends: kubectl-kubectl
+extends: kubectl
 abstract: false
 subcommand: apply
 args:

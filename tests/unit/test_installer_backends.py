@@ -161,3 +161,93 @@ def test_installer_composes_multi_runtime_path(tmp_path: Path) -> None:
     assert str(tmp_path / "cache" / "bins" / "python" / "3.14" / "bin") in path
     assert str(tmp_path / "cache" / "bins" / "node" / "latest" / "bin") in path
     assert env["MISE_DATA_DIR"] == str(tmp_path / "cache" / "mise-data")
+
+
+def test_npm_fallback_preserves_composed_python_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """npm ensure must prepend onto composed env, not replace PATH via env()."""
+    from maina.backends.npm import NpmBackend
+    from maina.core.protocols import InstallContext
+    from maina.core.registry import Manifest, RequiresSpec
+
+    python_bin = tmp_path / "cache" / "bins" / "python" / "3.14" / "bin"
+    node_bin = tmp_path / "cache" / "bins" / "node" / "latest" / "bin"
+    python_bin.mkdir(parents=True)
+    node_bin.mkdir(parents=True)
+
+    @dataclass
+    class TrackingLanguage:
+        cache_root: Path
+
+        def ensure(self, runtime: str, version: str) -> Path:
+            return self.cache_root / "bins" / runtime / version / "bin"
+
+        def env(self, runtime: str, version: str) -> dict[str, str]:
+            # Simulates MiseRuntime.env: rebuilds PATH from a clean base.
+            del runtime, version
+            return {"PATH": "/usr/bin", "MISE_DATA_DIR": "wiped"}
+
+    def fake_which(cmd: str, path: str | None = None) -> str | None:
+        del path
+        return None if cmd == "node" else "/usr/bin/true"
+
+    monkeypatch.setattr("maina.backends.npm.shutil.which", fake_which)
+    env = {"PATH": f"{python_bin}:/usr/bin", "OTHER": "keep"}
+    lang = TrackingLanguage(tmp_path / "cache")
+    ctx = InstallContext(cache_root=tmp_path / "cache", language=lang)
+    manifest = Manifest(
+        id="prettier",
+        data={"cli": "prettier"},
+        requires=RequiresSpec(runtimes={"python": "3.14"}),
+    )
+    NpmBackend._ensure_node_on_path(manifest, env, ctx)
+    assert str(python_bin) in env["PATH"]
+    assert str(node_bin) in env["PATH"]
+    assert env["OTHER"] == "keep"
+    assert env.get("MISE_DATA_DIR") != "wiped"
+
+
+def test_prepare_ids_rejects_explicit_abstract(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "base.yaml",
+        {"cli": "base", "abstract": True, "install": {"backend": "path"}},
+    )
+    write_yaml(
+        root / "family" / "family.yaml",
+        {"cli": "family", "abstract": True, "install": {"backend": "path"}},
+    )
+    write_yaml(
+        root / "child.yaml",
+        {
+            "cli": "true",
+            "extends": "base",
+            "abstract": False,
+            "install": {"backend": "path"},
+        },
+    )
+    registry = Registry(root)
+    installer = Installer(
+        cache_root=tmp_path / "cache",
+        language=FakeLanguage(tmp_path / "cache"),
+        registry=registry,
+        backends=[PathBackend()],
+    )
+    with pytest.raises(InstallError, match="cannot prepare abstract"):
+        installer.prepare_ids(["base"])
+    with pytest.raises(InstallError, match="cannot prepare abstract"):
+        installer.prepare_ids(["family"])
+    prepared = installer.prepare_ids(None)
+    assert prepared == ["child"]
+    assert installer.prepare_ids(["child"]) == ["child"]
+
+
+def test_prepare_ids_rejects_shipped_abstract() -> None:
+    from maina.runtime import Runtime
+
+    rt = Runtime.preferred()
+    with pytest.raises(InstallError, match="cannot prepare abstract"):
+        rt.installer.prepare_ids(["base"])
+    with pytest.raises(InstallError, match="cannot prepare abstract"):
+        rt.installer.prepare_ids(["kubectl"])

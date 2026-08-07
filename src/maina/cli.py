@@ -8,7 +8,13 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 
-from maina.core.errors import AbstractToolError, ArgError, MainaError, ManifestError
+from maina.core.errors import (
+    AbstractToolError,
+    ArgError,
+    InstallError,
+    MainaError,
+    ManifestError,
+)
 from maina.runtime import runtime
 from maina.tool import Tool
 
@@ -90,8 +96,16 @@ def prepare(
         typer.Argument(help="Tool ids to prepare (default: all non-abstract)"),
     ] = None,
 ) -> None:
-    """Ensure mise runtimes and tool installs."""
-    prepared = runtime().installer.prepare_ids(tools)
+    """Ensure mise runtimes and tool installs.
+
+    Default prepares every concrete tool. Explicit abstract ids (e.g. ``base``,
+    ``kubectl``) fail with a non-zero exit instead of a silent skip.
+    """
+    try:
+        prepared = runtime().installer.prepare_ids(tools)
+    except (ManifestError, InstallError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from exc
     for tid in prepared:
         typer.echo(f"prepared: {tid}")
 

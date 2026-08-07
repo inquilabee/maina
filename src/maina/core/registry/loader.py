@@ -65,11 +65,9 @@ class Registry:
             # ``base`` is an abstract defaults bag; do not force abstract onto leaves.
             if cid == BASE_TOOL_ID and tid != BASE_TOOL_ID:
                 layer.pop("abstract", None)
-            # Normalize legacy requires before map-merge so base freeform pins compose.
+            # Normalize legacy→freeform before merge; preserve null clear / pin drops.
             if "requires" in layer:
-                layer["requires"] = dict(
-                    RequiresSpec.from_mapping(layer["requires"], tool_id=cid).runtimes
-                )
+                layer["requires"] = RequiresSpec.layer_for_merge(layer["requires"], tool_id=cid)
             if (seg := layer.get("subcommand")) is not None and str(seg) != "":
                 subcommands.append(str(seg))
             merged = self.merge_maps(merged, layer) if merged else layer
@@ -212,10 +210,17 @@ class Registry:
 
     @staticmethod
     def merge_maps(parent: dict[str, Any], child: dict[str, Any]) -> dict[str, Any]:
-        """Deep-merge child onto parent using registry inheritance rules."""
+        """Deep-merge child onto parent using registry inheritance rules.
+
+        ``requires: null`` replaces inherited pins. Within a requires map,
+        ``runtime: null`` drops that pin; other map keys still shallow-merge.
+        """
         out = deepcopy(parent)
         for key, value in child.items():
             if key in {"subcommand", "extends"}:
+                continue
+            if key == "requires":
+                out[key] = Registry._merge_requires(out.get(key), value)
                 continue
             if key in MAP_KEYS and isinstance(value, dict) and isinstance(out.get(key), dict):
                 merged = deepcopy(out[key])
@@ -224,3 +229,18 @@ class Registry:
                 continue
             out[key] = deepcopy(value)
         return out
+
+    @staticmethod
+    def _merge_requires(parent: Any, child: Any) -> Any:
+        """Merge requires maps; ``None`` child clears; null pin values drop keys."""
+        if child is None:
+            return None
+        if not isinstance(child, dict):
+            return deepcopy(child)
+        merged: dict[str, Any] = deepcopy(parent) if isinstance(parent, dict) else {}
+        for name, version in child.items():
+            if version is None:
+                merged.pop(name, None)
+            else:
+                merged[name] = deepcopy(version)
+        return merged

@@ -57,12 +57,18 @@ class NpmBackend:
         env: dict[str, str],
         ctx: InstallContext,
     ) -> None:
-        """Ensure a language-provider Node runtime is on PATH."""
-        node_version = manifest.requires.version_for("node") or "latest"
+        """Ensure Node is on *env* PATH without clobbering composed bins.
+
+        ``LanguageRuntimeProvider.env`` typically rebuilds PATH from
+        ``os.environ``, which would drop bins prepended by
+        ``Installer._compose_requires_env``. Prefer ``ensure`` +
+        :meth:`InstallContext.prepend_path` on the existing env.
+        """
+        node_version = manifest.requires.get("node") or "latest"
         if shutil.which("node", path=env.get("PATH")):
             return
-        ctx.language.ensure("node", node_version)
-        env |= ctx.language.env("node", node_version)
+        bin_dir = ctx.language.ensure("node", node_version)
+        ctx.prepend_path(env, bin_dir)
 
     @staticmethod
     def _install_package(

@@ -188,7 +188,7 @@ def test_requires_map_override_merges(tmp_path: Path) -> None:
         "node": "22",
         "ruby": "3.3",
     }
-    assert manifest.requires.version_for("node") == "22"
+    assert manifest.requires.get("node") == "22"
     assert manifest.requires.get("python") == "3.14"
 
 
@@ -243,4 +243,71 @@ def test_shipped_tools_inherit_base_requires() -> None:
     assert manifest.requires.runtimes["python"] == "3.14"
     assert manifest.requires.runtimes["node"] == "latest"
     jscpd = preferred_registry().load("jscpd")
-    assert jscpd.requires.version_for("node") == "latest"
+    assert jscpd.requires.get("node") == "latest"
+
+
+def test_requires_rejects_yaml_float_pins(tmp_path: Path) -> None:
+    root = tmp_path / "registry"
+    root.mkdir(parents=True)
+    # Unquoted 3.10 / 3.14 become YAML floats (3.1 / 3.14) — must fail closed.
+    (root / "bad310.yaml").write_text(
+        "cli: bad310\nrequires:\n  python: 3.10\ninstall:\n  backend: path\n",
+        encoding="utf-8",
+    )
+    (root / "bad314.yaml").write_text(
+        "cli: bad314\nrequires:\n  python: 3.14\ninstall:\n  backend: path\n",
+        encoding="utf-8",
+    )
+    registry = Registry(root)
+    with pytest.raises(ManifestError, match="quoted version"):
+        registry.load("bad310")
+    with pytest.raises(ManifestError, match="quoted version"):
+        registry.load("bad314")
+
+
+def test_requires_null_clears_inherited(tmp_path: Path) -> None:
+    root = tmp_path / "registry"
+    write_yaml(
+        root / "base.yaml",
+        {"abstract": True, "requires": {"python": "3.14", "node": "latest"}},
+    )
+    write_yaml(
+        root / "demo.yaml",
+        {"cli": "demo", "requires": None, "install": {"backend": "path"}},
+    )
+    manifest = Registry(root).load("demo")
+    assert manifest.requires.runtimes == {}
+
+
+def test_requires_null_pin_drops_one(tmp_path: Path) -> None:
+    root = tmp_path / "registry"
+    write_yaml(
+        root / "base.yaml",
+        {"abstract": True, "requires": {"python": "3.14", "node": "latest"}},
+    )
+    write_yaml(
+        root / "demo.yaml",
+        {
+            "cli": "demo",
+            "requires": {"node": None},
+            "install": {"backend": "path"},
+        },
+    )
+    manifest = Registry(root).load("demo")
+    assert manifest.requires.runtimes == {"python": "3.14"}
+
+
+def test_canonical_family_extends() -> None:
+    registry = preferred_registry()
+    kubectl_get = registry.load("kubectl-get")
+    assert kubectl_get.cli == "kubectl"
+    assert kubectl_get.subcommands == ["get"]
+    git_remote = registry.load("git-remote")
+    assert git_remote.cli == "git"
+    assert git_remote.subcommands == ["remote"]
+    git_remote_add = registry.load("git-remote-add")
+    assert git_remote_add.subcommands == ["remote", "add"]
+    # Legacy name-name spellings alias to the canonical family id.
+    assert registry.load("kubectl-kubectl").id == "kubectl"
+    assert registry.load("git-git").id == "git"
+    assert registry.load("git-remote-remote").id == "git-remote"

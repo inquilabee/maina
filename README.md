@@ -36,9 +36,20 @@ Later registry dirs override shipped ids for the same tool id. You can also pass
 `Tool(..., runtime=rt)` or `maina.use(rt)` when isolating a composition
 Runtime (tests, multiple catalogs).
 
-`extends` parents use registry ids (no `.yaml` suffix), e.g. `extends: kubectl-kubectl`.
-See `examples/local_tool/` (overlay registry) and `examples/parsers_dirs/` (custom
-parser via `parsers_dirs`).
+`extends` parents use registry ids (no `.yaml` suffix), e.g. `extends: kubectl`
+(not `kubectl-kubectl`). Family roots resolve from `kubectl/kubectl.yaml` as id
+`kubectl`. See `examples/local_tool/` (overlay registry) and
+`examples/parsers_dirs/` (custom parser via `parsers_dirs`).
+
+Shipped `base.yaml` auto-extends every tool and pins default `python` / `node`
+runtimes. That means `prepare` / `resolve` may `mise ensure` both even for
+path-only tools. Opt out or reduce inherited pins on a child:
+
+- `requires: null` — clear all inherited runtime pins
+- `requires: { node: null }` — drop one pin; other inherited pins remain
+- override a pin with a new version string as usual
+
+Quote version pins in YAML (`python: "3.10"`); unquoted floats are rejected.
 
 ### Catalog notes
 

@@ -1,4 +1,4 @@
-extends: git-remote-remote
+extends: git-remote
 abstract: false
 subcommand: add
 args:

@@ -9,13 +9,20 @@ if TYPE_CHECKING:
 
 
 def normalize_id(tool_id: str) -> str:
-    """Normalize a registry id to hyphen form (strip .yaml, unify separators)."""
+    """Normalize a registry id to hyphen form (strip .yaml, unify separators).
+
+    Trailing duplicate segments (``kubectl-kubectl``, ``git-remote-remote``) are
+    collapsed so family-root paths and ``extends`` share one canonical id.
+    """
     cleaned = tool_id.strip().replace("\\", "-").replace("/", "-").lstrip("-")
     if cleaned.endswith(".yaml"):
         cleaned = cleaned[: -len(".yaml")]
     elif cleaned.endswith(".yml"):
         cleaned = cleaned[: -len(".yml")]
-    return cleaned
+    parts = [p for p in cleaned.split("-") if p]
+    while len(parts) >= 2 and parts[-1] == parts[-2]:
+        parts.pop()
+    return "-".join(parts)
 
 
 def join_tool_id(name: str, subcommand: str | None = None) -> str:

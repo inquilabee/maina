@@ -105,16 +105,31 @@ class Installer:
 
     def prepare(self, manifest: Manifest) -> None:
         """Ensure runtimes and tool installs for one manifest."""
-        if not manifest.abstract:
-            self.resolve(manifest)
+        if manifest.abstract:
+            raise InstallError(
+                f"cannot prepare abstract tool {manifest.id!r}; "
+                "prepare a concrete child id or omit abstracts from prepare"
+            )
+        self.resolve(manifest)
 
     def prepare_ids(self, tool_ids: list[str] | None = None) -> list[str]:
-        """Prepare installs for given ids or all non-abstract manifests."""
-        ids = tool_ids or self.registry.iter_ids()
+        """Prepare installs for given ids or all non-abstract manifests.
+
+        When *tool_ids* is omitted, abstract surfaces are skipped. When the
+        caller names ids explicitly, abstract (or unknown) ids raise
+        :class:`InstallError` instead of succeeding as a silent no-op.
+        """
+        explicit = tool_ids is not None
+        ids = tool_ids if explicit else self.registry.iter_ids()
         prepared: list[str] = []
         for tid in ids:
             manifest = self.registry.load(tid)
             if manifest.abstract:
+                if explicit:
+                    raise InstallError(
+                        f"cannot prepare abstract tool {tid!r}; "
+                        "prepare a concrete child id or omit abstracts from prepare"
+                    )
                 continue
             self.prepare(manifest)
             prepared.append(tid)

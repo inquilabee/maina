@@ -1,3 +1,6 @@
+# Defaults bag auto-prepended onto every other tool. These pins are ensured on
+# every prepare/resolve unless a child clears or drops them (requires: null, or
+# e.g. node: null). Prefer quoting version strings.
 abstract: true
 requires:
   python: "3.14"

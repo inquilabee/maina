@@ -123,7 +123,11 @@ class InstallSpec:
 
 @dataclass(slots=True, frozen=True)
 class RequiresSpec:
-    """Typed ``requires:`` map (runtime→version). Legacy ``runtime``+``version`` supported."""
+    """Typed ``requires:`` map (runtime→version). Legacy ``runtime``+``version`` supported.
+
+    Inheritance: child pins merge onto parents; ``requires: null`` replaces (clears)
+    inherited pins; a freeform ``runtime: null`` drops that pin from the merge.
+    """
 
     runtimes: dict[str, str] = field(default_factory=dict)
 
@@ -131,28 +135,56 @@ class RequiresSpec:
         """Return the pinned version for *name*, or None."""
         return self.runtimes.get(name)
 
-    def version_for(self, name: str) -> str | None:
-        """Alias for :meth:`get` (installer / npm call sites)."""
-        return self.get(name)
-
     @classmethod
     def from_mapping(cls, raw: Any, *, tool_id: str) -> RequiresSpec:
-        """Parse requires map; fail closed on non-maps and mixed forms."""
-        raw = {} if raw is None else raw
+        """Parse requires map; fail closed on non-maps and mixed forms.
+
+        ``None`` means no pins (used after ``requires: null`` clears inheritance).
+        """
+        mapping = cls._require_map(raw, tool_id=tool_id)
+        legacy = cls._legacy_keys(mapping, tool_id=tool_id)
+        return (
+            cls._from_legacy(mapping, tool_id=tool_id)
+            if legacy
+            else cls._from_pins(mapping, tool_id=tool_id)
+        )
+
+    @classmethod
+    def layer_for_merge(cls, raw: Any, *, tool_id: str) -> dict[str, str | None] | None:
+        """Normalize a layer's ``requires`` for inheritance merge.
+
+        Returns ``None`` when the layer sets ``requires: null`` (replace/clear).
+        Freeform ``runtime: null`` values are preserved as drop markers.
+        """
+        if raw is None:
+            return None
+        mapping = cls._require_map(raw, tool_id=tool_id)
+        legacy = cls._legacy_keys(mapping, tool_id=tool_id)
+        return (
+            dict(cls._from_legacy(mapping, tool_id=tool_id).runtimes)
+            if legacy
+            else cls._pins_for_merge(mapping, tool_id=tool_id)
+        )
+
+    @staticmethod
+    def _require_map(raw: Any, *, tool_id: str) -> dict[str, Any]:
+        if raw is None:
+            return {}
         if not isinstance(raw, dict):
             raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} requires must be a map")
+        return raw
+
+    @staticmethod
+    def _legacy_keys(raw: dict[str, Any], *, tool_id: str) -> set[str]:
         keys = set(raw)
         legacy, freeform = keys & LEGACY_REQUIRES_KEYS, keys - LEGACY_REQUIRES_KEYS
         if legacy and freeform:
+            mixed = ", ".join(sorted(str(key) for key in freeform))
             raise ManifestError(
                 f"{MANIFEST_PREFIX}{tool_id!r} requires cannot mix legacy "
-                f"runtime/version with freeform pins ({', '.join(sorted(freeform))})"
+                f"runtime/version with freeform pins ({mixed})"
             )
-        return (
-            cls._from_legacy(raw, tool_id=tool_id)
-            if legacy
-            else cls._from_pins(raw, tool_id=tool_id)
-        )
+        return legacy
 
     @classmethod
     def _from_legacy(cls, raw: dict[str, Any], *, tool_id: str) -> RequiresSpec:
@@ -160,24 +192,90 @@ class RequiresSpec:
         if bad := unknown_keys(raw, LEGACY_REQUIRES_KEYS):
             joined = ", ".join(bad)
             raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} requires unknown keys: {joined}")
-        runtime, version = optional_str(raw.get("runtime")), optional_str(raw.get("version"))
+        runtime = optional_str(raw.get("runtime"))
+        version_raw = raw.get("version")
+        version = (
+            None
+            if version_raw is None
+            else cls._version_scalar(version_raw, tool_id=tool_id, key="version")
+        )
         return cls() if runtime is None else cls(runtimes={runtime: version or "lts"})
 
     @classmethod
     def _from_pins(cls, raw: dict[str, Any], *, tool_id: str) -> RequiresSpec:
-        """Parse freeform runtime→version pins."""
+        """Parse freeform runtime→version pins (final resolved map; no nulls)."""
         pins: dict[str, str] = {}
         for name, value in raw.items():
-            if not isinstance(name, str) or not name.strip():
+            cls._require_runtime_key(name, tool_id=tool_id)
+            if value is None:
                 raise ManifestError(
-                    f"{MANIFEST_PREFIX}{tool_id!r} requires keys must be non-empty strings"
+                    cls._pin_message(
+                        tool_id,
+                        name,
+                        "must be a version string (use requires: null to clear inherited pins)",
+                    )
                 )
-            if value is None or isinstance(value, (dict, list, bool)):
-                raise ManifestError(
-                    f"{MANIFEST_PREFIX}{tool_id!r} requires.{name} must be a version string"
-                )
-            pins[name] = str(value)
+            pins[name] = cls._version_scalar(value, tool_id=tool_id, key=name)
         return cls(runtimes=pins)
+
+    @classmethod
+    def _pins_for_merge(cls, raw: dict[str, Any], *, tool_id: str) -> dict[str, str | None]:
+        """Parse freeform pins for merge; ``null`` values mark pins to drop."""
+        pins: dict[str, str | None] = {}
+        for name, value in raw.items():
+            cls._require_runtime_key(name, tool_id=tool_id)
+            pins[name] = (
+                None if value is None else cls._version_scalar(value, tool_id=tool_id, key=name)
+            )
+        return pins
+
+    @staticmethod
+    def _require_runtime_key(name: Any, *, tool_id: str) -> None:
+        if not isinstance(name, str) or not name.strip():
+            raise ManifestError(
+                f"{MANIFEST_PREFIX}{tool_id!r} requires keys must be non-empty strings"
+            )
+
+    @staticmethod
+    def _pin_message(tool_id: str, key: str, detail: str) -> str:
+        return f"{MANIFEST_PREFIX}{tool_id!r} requires.{key} {detail}"
+
+    @classmethod
+    def _version_scalar(cls, value: Any, *, tool_id: str, key: str) -> str:
+        """Coerce a version pin; reject YAML floats and non-str/int scalars.
+
+        Unquoted YAML ``3.10`` becomes float ``3.1`` — authors must quote pins
+        (``python: "3.10"``).
+        """
+        if isinstance(value, bool) or value is None or isinstance(value, (dict, list)):
+            kind = type(value).__name__
+            raise ManifestError(
+                cls._pin_message(
+                    tool_id,
+                    key,
+                    f'must be a version string (quote pins like "3.10"; got {kind})',
+                )
+            )
+        if isinstance(value, float):
+            raise ManifestError(
+                cls._pin_message(
+                    tool_id,
+                    key,
+                    f"must be a quoted version string (YAML float {value!r} loses precision; "
+                    f'quote like {key}: "3.10")',
+                )
+            )
+        if isinstance(value, int):
+            return str(value)
+        if isinstance(value, str):
+            return value
+        raise ManifestError(
+            cls._pin_message(
+                tool_id,
+                key,
+                f"must be a version string (got {type(value).__name__})",
+            )
+        )
 
 
 @dataclass(slots=True, frozen=True)
