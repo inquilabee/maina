@@ -17,7 +17,7 @@ from pyporter.backends.archive import ArchiveFetcher
 from pyporter.backends.npm import NpmBackend
 from pyporter.core.errors import InstallError
 from pyporter.core.registry import InstallSpec, Manifest, Registry, RequiresSpec
-from pyporter.installer import Installer, install_dir_lock
+from pyporter.installer import Installer
 from pyporter.runner import ToolRunner
 
 if TYPE_CHECKING:
@@ -239,7 +239,7 @@ def test_installer_copies_env_before_backend_mutation(tmp_path: Path) -> None:
 
 def test_install_dir_lock_exclusive(tmp_path: Path) -> None:
     dest = tmp_path / "tools" / "x" / "1"
-    with install_dir_lock(dest):
+    with Installer.install_dir_lock(dest):
         assert (dest / ".porter-install.lock").is_file()
 
 

@@ -119,7 +119,3 @@ class Installer:
             self.prepare(manifest)
             prepared.append(tid)
         return prepared
-
-
-# Back-compat alias for tests/callers that import the module-level lock helper.
-install_dir_lock = Installer.install_dir_lock
