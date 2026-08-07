@@ -5,12 +5,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-import yaml
 
 import pyporter
-from pyporter.errors import ManifestError
+from pyporter.errors import ManifestError, RegisterError
 from pyporter.parsers import ParserResolver
-from pyporter.runtime import Runtime
+from pyporter.runtime import Runtime, resolve_cache_root
+
+from helpers import write_yaml
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -34,13 +35,10 @@ def test_runtime_use_isolates() -> None:
 
 def test_tool_explicit_runtime(tmp_path: Path) -> None:
     root = tmp_path / "tools"
-    root.mkdir()
-    (root / "local.yaml").write_text(
-        yaml.dump({"cli": "echo", "install": {"backend": "path"}}),
-        encoding="utf-8",
-    )
+    write_yaml(root / "local.yaml", {"cli": "echo", "install": {"backend": "path"}})
     rt = Runtime()
-    rt.register(
+    pyporter.register(
+        rt,
         registry_dirs=[root],
         parsers={"text": ParserResolver.parse_text},
         installers=[],
@@ -54,19 +52,41 @@ def test_tool_explicit_runtime(tmp_path: Path) -> None:
 
 def test_register_missing_registry_dir_errors(tmp_path: Path) -> None:
     missing = tmp_path / "nope"
-    with pytest.raises(FileNotFoundError, match="registry"):
-        pyporter.register(registry_dirs=[missing], runtime=Runtime())
+    with pytest.raises(RegisterError, match="registry"):
+        pyporter.register(Runtime(), registry_dirs=[missing])
+
+
+def test_register_rejects_positional_and_runtime_kw() -> None:
+    rt = Runtime()
+    with pytest.raises(ValueError, match="not both"):
+        pyporter.register(rt, runtime=rt)
+
+
+def test_register_runtime_kw_compat(tmp_path: Path) -> None:
+    root = tmp_path / "tools"
+    write_yaml(root / "compat.yaml", {"cli": "echo", "install": {"backend": "path"}})
+    rt = Runtime()
+    pyporter.register(registry_dirs=[root], runtime=rt)
+    assert rt.registry.load("compat").cli == "echo"
 
 
 def test_module_register_appends_overlay(tmp_path: Path) -> None:
     root = tmp_path / "overlay"
-    root.mkdir()
-    (root / "jq.yaml").write_text(
-        yaml.dump({"cli": "jq-overlay", "install": {"backend": "path"}, "parser": "text"}),
-        encoding="utf-8",
+    write_yaml(
+        root / "jq.yaml",
+        {"cli": "jq-overlay", "install": {"backend": "path"}, "parser": "text"},
     )
     pyporter.register(registry_dirs=[root])
     tool = pyporter.Tool("jq")
     assert tool.id == "jq"
     text = str(tool)
     assert "cli: jq-overlay" in text
+
+
+def test_resolve_cache_root_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PYPORTER_CACHE", str(tmp_path / "env-cache"))
+    root = resolve_cache_root(None)
+    assert root == tmp_path / "env-cache"
+    assert root.is_dir()
+    explicit = resolve_cache_root(tmp_path / "explicit")
+    assert explicit == tmp_path / "explicit"

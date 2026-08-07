@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from pyporter.errors import ManifestError
-from pyporter.parsers import ParserResolver
+from pyporter.parsers import ParserResolver, builtin_generals
 from pyporter.result import ToolResult
 from pyporter.runtime import Runtime
 
@@ -27,16 +27,7 @@ def make_result(raw: str = "") -> ToolResult:
 
 
 def builtins_resolver() -> ParserResolver:
-    resolver = ParserResolver()
-    resolver.register_many(
-        {
-            "json": ParserResolver.parse_json,
-            "lines": ParserResolver.parse_lines,
-            "text": ParserResolver.parse_text,
-            "raw": ParserResolver.parse_text,
-        }
-    )
-    return resolver
+    return ParserResolver(generals=builtin_generals())
 
 
 def test_generic_json_semantics() -> None:

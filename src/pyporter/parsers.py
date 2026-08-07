@@ -17,26 +17,45 @@ if TYPE_CHECKING:
 ParserFn = Callable[[str, ToolResult], Any]
 
 
-class ParserResolver:
-    """Instance-scoped owner that resolves and applies output parsers.
+def parse_json(raw: str, _result: ToolResult) -> Any:
+    """Parse JSON when possible; otherwise return stripped text or None."""
+    text = raw.strip()
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return text
 
-    Resolution:
-    - Mode names / general parsers resolve from this instance's map.
-    - ``*.py`` filenames resolve under the tool family's ``parsers/`` dir.
+
+def parse_lines(raw: str, _result: ToolResult) -> list[str]:
+    """Split raw stdout into lines."""
+    return raw.splitlines()
+
+
+def parse_text(raw: str, _result: ToolResult) -> str:
+    """Return raw stdout unchanged."""
+    return raw
+
+
+def builtin_generals() -> dict[str, ParserFn]:
+    """Shipped general parser map (shared by Runtime bootstrap and tests)."""
+    return {
+        "json": parse_json,
+        "lines": parse_lines,
+        "text": parse_text,
+        "raw": parse_text,
+    }
+
+
+class ParserResolver:
+    """Owns the general parser name→callable registry map.
+
+    Call :meth:`bind` for a run-scoped resolver that applies override / ref / path.
     """
 
-    def __init__(
-        self,
-        *,
-        generals: dict[str, ParserFn] | None = None,
-        parser_ref: str | None = None,
-        parser_path: Path | None = None,
-        override: ParserFn | str | None = None,
-    ) -> None:
+    def __init__(self, *, generals: dict[str, ParserFn] | None = None) -> None:
         self._generals: dict[str, ParserFn] = dict(generals) if generals is not None else {}
-        self.parser_ref = parser_ref
-        self.parser_path = parser_path
-        self.override = override
 
     def bind(
         self,
@@ -44,10 +63,10 @@ class ParserResolver:
         parser_ref: str | None = None,
         parser_path: Path | None = None,
         override: ParserFn | str | None = None,
-    ) -> ParserResolver:
-        """Return a run-scoped resolver sharing this instance's general map."""
-        return ParserResolver(
-            generals=self._generals,
+    ) -> BoundParser:
+        """Return a run-scoped binder sharing this instance's general map."""
+        return BoundParser(
+            self,
             parser_ref=parser_ref,
             parser_path=parser_path,
             override=override,
@@ -69,35 +88,6 @@ class ParserResolver:
             paths = sorted(path for path in directory.glob("*.py") if not path.name.startswith("_"))
             for path in paths:
                 self.register(path.stem, self.load_parser_module(path))
-
-    def resolve(self) -> ParserFn | None:
-        """Resolve the effective parser callable for a run."""
-        return (
-            (
-                self.generic_parser(self.override)
-                if isinstance(self.override, str)
-                else self.override
-            )
-            if self.override is not None
-            else (
-                self.load_parser_module(self.parser_path)
-                if self.parser_path is not None
-                else (
-                    self.generic_parser(self.parser_ref)
-                    if self.parser_ref is not None and self.is_general(self.parser_ref)
-                    else None
-                )
-            )
-        )
-
-    def apply(self, result: ToolResult) -> ToolResult:
-        """Attach parsed output onto result when a parser is configured."""
-        resolved = self.resolve()
-        if resolved is None or not result.raw:
-            result.parsed = None
-            return result
-        result.parsed = resolved(result.raw, result)
-        return result
 
     def is_general(self, name: str) -> bool:
         """Return True when *name* is a registered general parser on this instance."""
@@ -128,23 +118,45 @@ class ParserResolver:
             raise ManifestError(f"parser {path} must define parse(raw, result)")
         return cast("ParserFn", parse)
 
-    @staticmethod
-    def parse_json(raw: str, _result: ToolResult) -> Any:
-        """Parse JSON when possible; otherwise return stripped text or None."""
-        text = raw.strip()
-        if not text:
-            return None
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            return text
+    # Back-compat aliases for call sites that still reference classmethods.
+    parse_json = staticmethod(parse_json)
+    parse_lines = staticmethod(parse_lines)
+    parse_text = staticmethod(parse_text)
 
-    @staticmethod
-    def parse_lines(raw: str, _result: ToolResult) -> list[str]:
-        """Split raw stdout into lines."""
-        return raw.splitlines()
 
-    @staticmethod
-    def parse_text(raw: str, _result: ToolResult) -> str:
-        """Return raw stdout unchanged."""
-        return raw
+class BoundParser:
+    """Run-scoped parser bind/apply state over a :class:`ParserResolver` map."""
+
+    def __init__(
+        self,
+        registry: ParserResolver,
+        *,
+        parser_ref: str | None = None,
+        parser_path: Path | None = None,
+        override: ParserFn | str | None = None,
+    ) -> None:
+        self._registry = registry
+        self.parser_ref = parser_ref
+        self.parser_path = parser_path
+        self.override = override
+
+    def resolve(self) -> ParserFn | None:
+        """Resolve the effective parser callable for a run."""
+        if self.override is not None:
+            if isinstance(self.override, str):
+                return self._registry.generic_parser(self.override)
+            return self.override
+        if self.parser_path is not None:
+            return ParserResolver.load_parser_module(self.parser_path)
+        if self.parser_ref is not None and self._registry.is_general(self.parser_ref):
+            return self._registry.generic_parser(self.parser_ref)
+        return None
+
+    def apply(self, result: ToolResult) -> ToolResult:
+        """Attach parsed output onto result when a parser is configured."""
+        resolved = self.resolve()
+        if resolved is None or not result.raw:
+            result.parsed = None
+            return result
+        result.parsed = resolved(result.raw, result)
+        return result

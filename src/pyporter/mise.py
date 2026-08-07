@@ -17,13 +17,8 @@ class MiseRuntime:
     language runtime provider, not the composition :class:`~pyporter.runtime.Runtime`.
     """
 
-    def __init__(self, cache_root: Path | None = None) -> None:
-        override = os.environ.get("PYPORTER_CACHE")
-        root = (
-            cache_root
-            if cache_root is not None
-            else (Path(override) if override else Path.home() / ".cache" / "pyporter")
-        )
+    def __init__(self, cache_root: Path) -> None:
+        root = Path(cache_root)
         root.mkdir(parents=True, exist_ok=True)
         self.cache_root = root
 
@@ -42,6 +37,10 @@ class MiseRuntime:
         data_dir.mkdir(parents=True, exist_ok=True)
         env = os.environ.copy()
         env["MISE_DATA_DIR"] = str(data_dir)
+
+        if resolved := self._mise_which(mise, spec, runtime, env):
+            return resolved
+
         try:
             subprocess.run(
                 [str(mise), "install", spec],

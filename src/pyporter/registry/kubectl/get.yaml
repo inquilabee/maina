@@ -1,20 +1,25 @@
 extends: kubectl/kubectl
+abstract: false
 subcommand: get
 args:
   resource:
     positional: true
     type: string
     required: true
+    description: Resource type (pods, deployments, …)
   namespace:
     flag: -n
     type: string
-  output:
+    description: Kubernetes namespace
+  output_format:
     flag: -o
     type: string
     default: json
+    description: kubectl -o format (json, yaml, wide, …)
   selector:
     flag: -l
     type: string
+    description: Label selector
 parser: json
 output:
   success_codes: [0]

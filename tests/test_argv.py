@@ -56,3 +56,36 @@ def test_build_argv_unknown_kwarg() -> None:
 def test_build_argv_extra_list() -> None:
     argv = ArgParser({}).build("jq", [], {}, extra=["-c", "-r"])
     assert argv == ["jq", "-c", "-r"]
+
+
+def test_build_argv_missing_required() -> None:
+    schema = {"name": {"positional": True, "type": "string", "required": True}}
+    with pytest.raises(ArgError, match="missing required argument: name"):
+        ArgParser(schema).build("git", ["remote", "add"], {})
+
+
+def test_build_argv_flag_rejects_non_bool() -> None:
+    schema = {"silent": {"flag": "--silent", "type": "flag"}}
+    with pytest.raises(ArgError, match="expects bool"):
+        ArgParser(schema).build("tool", [], {"silent": "yes"})
+
+
+def test_build_argv_repeat_false_keeps_single_flag() -> None:
+    schema = {"glob": {"flag": "--glob", "type": "string", "repeat": False}}
+    argv = ArgParser(schema).build("rg", [], {"glob": ["*.py", "*.md"]})
+    assert argv == ["rg", "--glob", "*.py", "*.md"]
+
+
+def test_build_argv_applies_default() -> None:
+    schema = {
+        "format": {"flag": "-f", "type": "string", "default": "gcc"},
+        "path": {"positional": True, "type": "path", "required": True},
+    }
+    argv = ArgParser(schema).build("shellcheck", [], {"path": "x.sh"})
+    assert argv == ["shellcheck", "-f", "gcc", "x.sh"]
+
+
+def test_build_argv_empty_list_omits_flag() -> None:
+    schema = {"glob": {"flag": "--glob", "type": "string", "repeat": True}}
+    argv = ArgParser(schema).build("rg", [], {"glob": []})
+    assert argv == ["rg"]

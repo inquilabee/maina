@@ -4,15 +4,20 @@ from __future__ import annotations
 
 import subprocess
 import time
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from pyporter.argparser import ArgParser
+from pyporter.errors import InstallError
 from pyporter.installer import Installer
 from pyporter.parsers import ParserResolver
 from pyporter.result import ToolResult
 
 if TYPE_CHECKING:
     from pyporter.registry import Manifest
+
+# Test-only injectable; not a public pluggable runner API.
+Executor = Callable[..., subprocess.CompletedProcess[str]]
 
 
 class ToolRunner:
@@ -22,12 +27,14 @@ class ToolRunner:
         self,
         manifest: Manifest,
         *,
-        installer: Installer | None = None,
+        installer: Installer,
         parsers: ParserResolver | None = None,
+        executor: Executor | None = None,
     ) -> None:
         self.manifest = manifest
-        self.installer = installer or Installer()
+        self.installer = installer
         self.parsers = parsers or ParserResolver()
+        self._executor = executor
 
     def run(
         self,
@@ -36,6 +43,7 @@ class ToolRunner:
         extra: str | list[str] | None = None,
         parser: Any = None,
         cwd: str | None = None,
+        timeout: float | None = None,
     ) -> ToolResult:
         """Install/resolve, build argv, execute, and parse."""
         exe, env = self.installer.resolve(self.manifest)
@@ -45,17 +53,25 @@ class ToolRunner:
             kwargs,
             extra=extra,
         )
+        resolved_timeout = self._resolve_timeout(timeout)
         started = time.perf_counter()
-        proc = subprocess.run(
-            argv,
-            check=False,
-            capture_output=True,
-            text=True,
-            env=env,
-            cwd=cwd,
-        )
+        run = self._executor or subprocess.run
+        try:
+            proc = run(
+                argv,
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+                cwd=cwd,
+                timeout=resolved_timeout,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise InstallError(
+                f"{self.manifest.id} timed out after {resolved_timeout}s"
+            ) from exc
         duration_ms = (time.perf_counter() - started) * 1000
-        success_codes = self.manifest.output.get("success_codes", [0])
+        success_codes = self.manifest.output.success_codes
         ok = proc.returncode in set(success_codes)
         result = ToolResult(
             tool=self.manifest.id,
@@ -73,3 +89,12 @@ class ToolRunner:
             override=parser,
         )
         return resolver.apply(result)
+
+    def _resolve_timeout(self, timeout: float | None) -> float | None:
+        """Prefer explicit kwarg, then top-level manifest ``timeout``."""
+        if timeout is not None:
+            return float(timeout)
+        raw = self.manifest.data.get("timeout")
+        if raw is None:
+            return None
+        return float(raw)

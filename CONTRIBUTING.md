@@ -2,7 +2,7 @@
 
 ## Quality
 
-ShipGate runs the **full** suite. Keep these green:
+ShipGate's **full** suite is the merge bar. Keep these green:
 
 ```bash
 uv run shipgate install
@@ -12,6 +12,15 @@ uv run shipgate check
 uv run shipgate refactor check .
 uv run shipgate refactor check --strict src
 ```
+
+Optional local hook (suite `pre-commit` only, not the merge bar):
+
+```bash
+uv sync
+pre-commit install
+```
+
+The hook needs local `.shipgate/` and `scripts/` (gitignored is fine for personal use).
 
 ## Tests
 

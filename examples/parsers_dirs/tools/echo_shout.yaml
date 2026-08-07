@@ -1,0 +1,12 @@
+cli: echo
+install:
+  backend: path
+parser: shout
+args:
+  message:
+    positional: true
+    type: string
+    required: true
+    description: Text passed to echo
+output:
+  success_codes: [0]

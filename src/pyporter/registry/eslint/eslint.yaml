@@ -13,28 +13,35 @@ args:
     repeat: true
     type: path
     required: true
+    description: Files or globs to lint
   fix:
     flag: --fix
     type: flag
+    description: Apply autofixes
   format:
     flag: --format
     type: string
     default: json
+    description: Report format (catalog default json; upstream default stylish)
   no_eslintrc:
     flag: --no-eslintrc
     type: flag
+    description: Ignore .eslintrc.* configs
   env:
     flag: --env
     type: string
     repeat: true
+    description: ESLint env preset (e.g. es2021, node)
   rule:
     flag: --rule
     type: string
     repeat: true
+    description: Inline rule override
   no_error_on_unmatched_pattern:
     flag: --no-error-on-unmatched-pattern
     type: flag
     default: true
+    description: Do not fail when globs match nothing (catalog default true)
 output:
   format: json
   success_codes: [0, 1]

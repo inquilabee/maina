@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: shipgate-pre-commit
+        name: shipgate (suite pre-commit)
+        entry: bash -c 'uv run shipgate install && bash scripts/shipgate-link-src.sh && uv run shipgate check --suite pre-commit'
+        language: system
+        pass_filenames: false
+        always_run: true

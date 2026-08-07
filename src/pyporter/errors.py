@@ -23,6 +23,10 @@ class InstallError(PorterError):
     """Tool or runtime install/resolve failed."""
 
 
+class RegisterError(PorterError):
+    """Invalid register path or composition registration failure."""
+
+
 class ToolExitError(PorterError):
     """CLI exited with a non-success code."""
 

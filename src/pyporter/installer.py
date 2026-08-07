@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import fcntl
 import os
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -16,24 +18,33 @@ if TYPE_CHECKING:
     from pyporter.registry import Manifest
 
 
+@contextmanager
+def install_dir_lock(dest: Path) -> Iterator[None]:
+    """Exclusive lock for a cache install directory (parallel prepare safety)."""
+    dest.mkdir(parents=True, exist_ok=True)
+    lock_path = dest / ".porter-install.lock"
+    with lock_path.open("a+b") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
 class Installer:
     """Dispatcher over registered :class:`InstallerBackend` implementations."""
 
     def __init__(
         self,
         *,
-        cache_root: Path | None = None,
+        cache_root: Path,
+        registry: Registry,
         language: LanguageRuntimeProvider | None = None,
-        registry: Registry | None = None,
         backends: Mapping[str, InstallerBackend] | Sequence[InstallerBackend] | None = None,
     ) -> None:
         self._language = language
-        self.cache_root = cache_root or Path.home() / ".cache" / "pyporter"
-        if cache_root is None and language is not None:
-            cached = getattr(language, "cache_root", None)
-            if isinstance(cached, Path):
-                self.cache_root = cached
-        self.registry = registry if registry is not None else Registry.default()
+        self.cache_root = cache_root
+        self.registry = registry
         self._backends: dict[str, InstallerBackend] = {}
         if backends is not None:
             self.register_backends(backends)
@@ -62,18 +73,21 @@ class Installer:
 
     def resolve(self, manifest: Manifest) -> tuple[str, dict[str, str]]:
         """Resolve argv[0] path/name and process env for a manifest."""
-        backend_name = str(manifest.install.get("backend", "path"))
+        backend_name = manifest.install.backend
         version = manifest.version or "default"
-        env = (
-            self.language.env(str(runtime), str(manifest.requires.get("version", "lts")))
-            if (runtime := manifest.requires.get("runtime"))
-            else os.environ.copy()
-        )
+        if runtime := manifest.requires.runtime:
+            env = self.language.env(runtime, manifest.requires.version or "lts")
+        else:
+            env = os.environ.copy()
+        # Copy at the resolve boundary so backends cannot mutate a shared caller dict.
+        env = dict(env)
         backend = self._backends.get(backend_name)
         if backend is None:
             raise InstallError(f"unknown install backend: {backend_name!r}")
         ctx = InstallContext(cache_root=self.cache_root, language=self.language)
-        return backend.resolve(manifest, version=version, env=env, ctx=ctx)
+        lock_dir = self.cache_root / "tools" / manifest.cli / version
+        with install_dir_lock(lock_dir):
+            return backend.resolve(manifest, version=version, env=env, ctx=ctx)
 
     def prepare(self, manifest: Manifest) -> None:
         """Ensure runtimes and tool installs for one manifest."""

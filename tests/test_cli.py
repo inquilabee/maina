@@ -7,9 +7,14 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
+import pyporter
+from pyporter.backends import PathBackend
 from pyporter.cli import RunArgParser, RunInvocation, app, main
 from pyporter.result import ToolResult
+from pyporter.runtime import Runtime
 from pyporter.tool import Tool
+
+from helpers import write_yaml
 
 runner = CliRunner()
 
@@ -49,7 +54,7 @@ def test_help_returns_str(capsys: pytest.CaptureFixture[str]) -> None:
     returned = tool.help()
     captured = capsys.readouterr()
     assert returned == str(tool)
-    assert captured.out.strip() == str(tool)
+    assert captured.out == ""
 
 
 def test_run_arg_parser_kwargs_and_extra() -> None:
@@ -187,3 +192,41 @@ def test_main_returns_int_for_help() -> None:
     assert main(["--help"]) == 0
     assert main(["run", "shellcheck", "--help"]) == 0
     assert main(["run", "definitely-missing-tool"]) == 2
+
+
+def test_cli_prepare_path_tool(tmp_path: Any) -> None:
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "trueish.yaml",
+        {"cli": "true", "install": {"backend": "path"}},
+    )
+    rt = Runtime(cache_root=tmp_path / "cache")
+    pyporter.register(rt, registry_dirs=[root], installers=[PathBackend()])
+    pyporter.use(rt)
+    result = runner.invoke(app, ["prepare", "trueish"])
+    assert result.exit_code == 0, result.stdout + result.stderr
+    assert "prepared: trueish" in result.stdout
+
+
+def test_cli_prepare_skips_abstract(tmp_path: Any) -> None:
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "base.yaml",
+        {"cli": "base", "abstract": True, "install": {"backend": "path"}},
+    )
+    write_yaml(
+        root / "child.yaml",
+        {
+            "cli": "true",
+            "extends": "base",
+            "abstract": False,
+            "install": {"backend": "path"},
+        },
+    )
+    rt = Runtime(cache_root=tmp_path / "cache")
+    pyporter.register(rt, registry_dirs=[root], installers=[PathBackend()])
+    pyporter.use(rt)
+    result = runner.invoke(app, ["prepare"])
+    assert result.exit_code == 0, result.stdout + result.stderr
+    assert "prepared: child" in result.stdout
+    assert "prepared: base" not in result.stdout

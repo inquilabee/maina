@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -36,6 +37,12 @@ class InstallContext:
         path = self.cache_root / "tools" / name / version / "bin"
         path.mkdir(parents=True, exist_ok=True)
         return path
+
+    @staticmethod
+    def prepend_path(env: dict[str, str], directory: Path | str) -> dict[str, str]:
+        """Prepend *directory* to ``PATH`` in *env* and return *env*."""
+        env["PATH"] = f"{directory}{os.pathsep}{env.get('PATH', '')}"
+        return env
 
 
 @runtime_checkable

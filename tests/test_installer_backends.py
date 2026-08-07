@@ -6,13 +6,14 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import pytest
-import yaml
 
 from pyporter.backends import PathBackend
 from pyporter.errors import InstallError
 from pyporter.installer import Installer
 from pyporter.registry import Manifest, Registry
-from pyporter.runtime import Runtime
+from pyporter.runtime import Runtime, register
+
+from helpers import write_yaml
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -61,11 +62,7 @@ class MockBackend:
 
 def load_backend_manifest(tmp_path: Path, *, backend: str, tool_id: str = "demo") -> Manifest:
     root = tmp_path / "reg"
-    root.mkdir(exist_ok=True)
-    (root / f"{tool_id}.yaml").write_text(
-        yaml.dump({"cli": tool_id, "install": {"backend": backend}}),
-        encoding="utf-8",
-    )
+    write_yaml(root / f"{tool_id}.yaml", {"cli": tool_id, "install": {"backend": backend}})
     return Registry(root).load(tool_id)
 
 
@@ -88,6 +85,7 @@ def test_installer_backend_replace(tmp_path: Path) -> None:
     installer = Installer(
         cache_root=tmp_path / "cache",
         language=FakeLanguage(tmp_path / "cache"),
+        registry=Registry([]),
         backends=[first, second],
     )
     installer.resolve(load_backend_manifest(tmp_path, backend="path"))
@@ -99,6 +97,7 @@ def test_unknown_backend_errors(tmp_path: Path) -> None:
     installer = Installer(
         cache_root=tmp_path / "cache",
         language=FakeLanguage(tmp_path / "cache"),
+        registry=Registry([]),
         backends=[PathBackend()],
     )
     with pytest.raises(InstallError, match="unknown install backend"):
@@ -108,13 +107,9 @@ def test_unknown_backend_errors(tmp_path: Path) -> None:
 def test_runtime_register_custom_backend(tmp_path: Path) -> None:
     mock = MockBackend()
     root = tmp_path / "tools"
-    root.mkdir()
-    (root / "x.yaml").write_text(
-        yaml.dump({"cli": "x", "install": {"backend": "mock"}}),
-        encoding="utf-8",
-    )
+    write_yaml(root / "x.yaml", {"cli": "x", "install": {"backend": "mock"}})
     rt = Runtime(cache_root=tmp_path / "cache", language=FakeLanguage(tmp_path / "cache"))
-    rt.register(registry_dirs=[root], installers=[mock])
+    register(rt, registry_dirs=[root], installers=[mock])
     exe, _env = rt.installer.resolve(rt.registry.load("x"))
     assert exe == "/bin/true"
     assert mock.calls == ["x"]

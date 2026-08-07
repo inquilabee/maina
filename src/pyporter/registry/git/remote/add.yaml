@@ -1,14 +1,17 @@
 extends: git/remote/remote
+abstract: false
 subcommand: add
 args:
   name:
     positional: true
     type: string
     required: true
+    description: Remote name (e.g. origin)
   url:
     positional: true
     type: string
     required: true
+    description: Remote URL
 parser: add.py
 output:
   success_codes: [0]

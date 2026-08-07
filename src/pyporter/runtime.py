@@ -1,4 +1,8 @@
-"""Composition Runtime: registry overlays, parsers, installers, language provider."""
+"""Composition Runtime: registry overlays, parsers, installers, language provider.
+
+``SESSION`` is process-wide and not thread-safe. Concurrent threads that call
+``register`` / ``use`` / ``runtime()`` without external synchronization can race.
+"""
 
 from __future__ import annotations
 
@@ -7,9 +11,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pyporter.backends import GithubBackend, NpmBackend, PathBackend
+from pyporter.errors import RegisterError
 from pyporter.installer import Installer
 from pyporter.mise import MiseRuntime
-from pyporter.parsers import ParserFn, ParserResolver
+from pyporter.parsers import ParserFn, ParserResolver, builtin_generals
 from pyporter.registry import Registry
 
 if TYPE_CHECKING:
@@ -39,6 +44,17 @@ class RuntimeSession:
 SESSION = RuntimeSession()
 
 
+def resolve_cache_root(path: Path | None = None) -> Path:
+    """Resolve the pyporter cache root (``PYPORTER_CACHE`` / ``~/.cache/pyporter``)."""
+    if path is not None:
+        root = Path(path)
+    else:
+        override = os.environ.get("PYPORTER_CACHE")
+        root = Path(override) if override else Path.home() / ".cache" / "pyporter"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
 class Runtime:
     """Owns registry overlays, general parsers, installer backends, and language.
 
@@ -52,7 +68,7 @@ class Runtime:
         cache_root: Path | None = None,
         language: LanguageRuntimeProvider | None = None,
     ) -> None:
-        self._cache_root = self.default_cache_root(cache_root)
+        self._cache_root = resolve_cache_root(cache_root)
         self._registry = Registry([])
         self._parsers = ParserResolver()
         self._language: LanguageRuntimeProvider | None = language
@@ -116,21 +132,17 @@ class Runtime:
     @classmethod
     def preferred(cls) -> Runtime:
         """Empty Runtime + bootstrap register of shipped defaults."""
-        return cls.bootstrap_preferred()
+        return cls._bootstrap_preferred()
 
     @classmethod
-    def bootstrap_preferred(cls) -> Runtime:
+    def _bootstrap_preferred(cls) -> Runtime:
         """Build preferred Runtime by registering shipped plugins (same path as clients)."""
         rt = cls()
         shipped = Path(__file__).resolve().parent / "registry"
-        return rt.register(
+        return register(
+            rt,
             registry_dirs=[shipped],
-            parsers={
-                "json": ParserResolver.parse_json,
-                "lines": ParserResolver.parse_lines,
-                "text": ParserResolver.parse_text,
-                "raw": ParserResolver.parse_text,
-            },
+            parsers=builtin_generals(),
             installers=[
                 PathBackend(),
                 GithubBackend(),
@@ -150,22 +162,11 @@ class Runtime:
         resolved: list[Path] = []
         for path in paths:
             if not path.exists():
-                raise FileNotFoundError(f"{kind} path does not exist: {path}")
+                raise RegisterError(f"{kind} path does not exist: {path}")
             if not path.is_dir():
-                raise NotADirectoryError(f"{kind} path is not a directory: {path}")
+                raise RegisterError(f"{kind} path is not a directory: {path}")
             resolved.append(path)
         return resolved
-
-    @staticmethod
-    def default_cache_root(cache_root: Path | None) -> Path:
-        """Resolve the pyporter cache root (env override wins when unset)."""
-        if cache_root is not None:
-            root = cache_root
-        else:
-            override = os.environ.get("PYPORTER_CACHE")
-            root = Path(override) if override else Path.home() / ".cache" / "pyporter"
-        root.mkdir(parents=True, exist_ok=True)
-        return root
 
 
 def runtime() -> Runtime:
@@ -179,6 +180,8 @@ def use(rt: Runtime) -> Runtime:
 
 
 def register(
+    rt: Runtime | None = None,
+    /,
     *,
     registry_dirs: Path | str | Sequence[Path | str] | None = None,
     parsers: Mapping[str, ParserFn] | None = None,
@@ -187,8 +190,14 @@ def register(
     language: LanguageRuntimeProvider | None = None,
     runtime: Runtime | None = None,
 ) -> Runtime:
-    """Mutate the active Runtime (or ``runtime=`` target); return that Runtime."""
-    target = runtime if runtime is not None else SESSION.get()
+    """Mutate a Runtime (positional or ``runtime=``) or the active session; return it.
+
+    Prefer ``register(rt, ...)``. ``runtime=`` remains for compatibility. Passing both
+    raises ``ValueError``. With neither, mutates ``SESSION.get()``.
+    """
+    if rt is not None and runtime is not None:
+        raise ValueError("pass Runtime positionally or as runtime=, not both")
+    target = rt if rt is not None else runtime if runtime is not None else SESSION.get()
     return target.register(
         registry_dirs=registry_dirs,
         parsers=parsers,

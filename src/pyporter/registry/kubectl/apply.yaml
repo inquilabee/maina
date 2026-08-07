@@ -1,16 +1,20 @@
 extends: kubectl/kubectl
+abstract: false
 subcommand: apply
 args:
   filename:
     flag: -f
     type: path
     required: true
+    description: Manifest file or directory to apply
   namespace:
     flag: -n
     type: string
+    description: Kubernetes namespace
   dry_run:
     flag: --dry-run
     type: string
+    description: dry-run mode (none, client, server)
 output:
   success_codes: [0]
 parser: text

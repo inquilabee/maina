@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
 from typing import TYPE_CHECKING
@@ -32,8 +31,7 @@ class NpmBackend:
         ctx: InstallContext,
     ) -> tuple[str, dict[str, str]]:
         exe = self._resolve_npm(manifest, version, env, ctx)
-        env["PATH"] = f"{exe.parent}{os.pathsep}{env.get('PATH', '')}"
-        return str(exe), env
+        return str(exe), ctx.prepend_path(env, exe.parent)
 
     def _resolve_npm(
         self,
@@ -43,7 +41,7 @@ class NpmBackend:
         ctx: InstallContext,
     ) -> Path:
         """Install an npm package into the tool cache and return its bin path."""
-        package = str(manifest.install.get("package") or manifest.cli)
+        package = manifest.install.package or manifest.cli
         self._ensure_node_on_path(manifest, env, ctx)
         prefix = ctx.cache_root / "tools" / manifest.cli / version / "npm"
         link = prefix / "node_modules" / ".bin" / manifest.cli
@@ -60,8 +58,8 @@ class NpmBackend:
         ctx: InstallContext,
     ) -> None:
         """Ensure a language-provider Node runtime is on PATH."""
-        node_version = str(manifest.requires.get("version", "20"))
-        if "node" in env.get("PATH", ""):
+        node_version = manifest.requires.version or "20"
+        if shutil.which("node", path=env.get("PATH")):
             return
         ctx.language.ensure("node", node_version)
         env |= ctx.language.env("node", node_version)

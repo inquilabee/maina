@@ -11,7 +11,7 @@ examples/local_tool/
 from pathlib import Path
 import pyporter
 
-pyporter.register(registry_dirs=[Path("examples/local_tool")])
+pyporter.register(pyporter.runtime(), registry_dirs=[Path("examples/local_tool")])
 # Requires `hello` on PATH (install.backend: path):
 # pyporter.Tool("hello").run()
 print(pyporter.Tool("hello"))

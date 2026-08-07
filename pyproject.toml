@@ -18,6 +18,7 @@ pyporter = "pyporter.cli:main"
 
 [dependency-groups]
 dev = [
+    "pre-commit>=4.0",
     "pytest>=8.0",
     "shipgate>=0.1.0",
 ]
@@ -36,3 +37,9 @@ known_first_party = ["pyporter"]
 
 # [tool.deptry.per_rule_ignores]
 # DEP002 = ["optional-extra-package"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: hits network, mise, npm, or other external services",
+]

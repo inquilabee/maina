@@ -13,27 +13,34 @@ args:
     repeat: true
     type: path
     required: true
+    description: Paths to scan for clones
   min_lines:
     flag: --min-lines
     type: string
+    description: Minimum lines for a clone
   min_tokens:
     flag: --min-tokens
     type: string
+    description: Minimum tokens for a clone
   format:
     flag: --format
     type: string
     repeat: true
+    description: Language formats to include
   reporters:
     flag: --reporters
     type: string
     default: json
+    description: Reporter list (catalog default json)
   output:
     flag: --output
     type: path
+    description: Directory for reporter artifacts
   silent:
     flag: --silent
     type: flag
     default: true
+    description: Suppress console noise (catalog default true)
 output:
   format: json
   success_codes: [0]

@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from pyporter.backends.archive import ArchiveFetcher
 from pyporter.errors import InstallError
-from pyporter.registry import Registry
+from pyporter.platform import platform_key
 
 if TYPE_CHECKING:
     from pyporter.protocols import InstallContext
@@ -34,14 +33,12 @@ class GithubBackend:
         ctx: InstallContext,
     ) -> tuple[str, dict[str, str]]:
         exe = self._resolve_github(manifest, version, ctx)
-        env["PATH"] = f"{exe.parent}{os.pathsep}{env.get('PATH', '')}"
-        return str(exe), env
+        return str(exe), ctx.prepend_path(env, exe.parent)
 
     def _resolve_github(self, manifest: Manifest, version: str, ctx: InstallContext) -> Path:
         """Download a GitHub release asset into the tool cache if needed."""
-        install = manifest.install
         repo, assets, binary = self._install_parts(manifest)
-        key = Registry.platform_key()
+        key = platform_key()
         asset = assets.get(key)
         if not asset:
             raise InstallError(f"{manifest.id}: no github asset for {key}")
@@ -51,8 +48,8 @@ class GithubBackend:
         if dest.is_file():
             return dest
 
-        tag = install.get("tag") or version
-        url = self._release_url(str(repo), str(asset), tag=str(tag) if tag else None)
+        tag = manifest.install.tag or version
+        url = self._release_url(repo, str(asset), tag=str(tag) if tag else None)
         self._fetcher.download_and_extract(
             url,
             dest_dir,
@@ -66,12 +63,12 @@ class GithubBackend:
     def _install_parts(manifest: Manifest) -> tuple[str, dict[str, Any], str]:
         """Validate and return repo, assets map, and binary name."""
         install = manifest.install
-        repo = install.get("repo")
-        assets = install.get("assets") or {}
-        binary = str(install.get("binary") or manifest.cli)
-        if not repo or not isinstance(assets, dict):
+        repo = install.repo
+        assets = install.assets
+        binary = install.binary or manifest.cli
+        if not repo or not assets:
             raise InstallError(f"{manifest.id}: github install needs repo and assets")
-        return str(repo), assets, binary
+        return repo, assets, binary
 
     @staticmethod
     def _finalize_binary(

@@ -1,18 +1,34 @@
-"""Kwargs → argv mapping from registry arg schema."""
+"""Kwargs → argv mapping from registry arg schema.
+
+``type: path`` in YAML is emit-only metadata (help/docs). Values are still
+passed through as strings like other non-flag types; there is no ``Path``
+coercion at the ArgParser boundary.
+"""
 
 from __future__ import annotations
 
 import shlex
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pyporter.errors import ArgError
+from pyporter.registry import ArgSpec
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 class ArgParser:
     """Instance-scoped kwargs→argv builder for one args schema."""
 
-    def __init__(self, schema: dict[str, Any]) -> None:
-        self.schema = schema
+    def __init__(self, schema: Mapping[str, ArgSpec | Mapping[str, Any]]) -> None:
+        self.schema = {
+            name: (
+                spec
+                if isinstance(spec, ArgSpec)
+                else ArgSpec.from_mapping(name, dict(spec), tool_id="<schema>")
+            )
+            for name, spec in schema.items()
+        }
 
     def build(
         self,
@@ -35,7 +51,7 @@ class ArgParser:
             if value is None:
                 continue
             tokens = self._emit_arg(name, spec, value)
-            bucket = positionals if spec.get("positional") else options
+            bucket = positionals if spec.positional else options
             bucket.extend(tokens)
 
         argv.extend(options)
@@ -44,37 +60,36 @@ class ArgParser:
         return argv
 
     @staticmethod
-    def _resolve_value(name: str, spec: dict[str, Any], kwargs: dict[str, Any]) -> Any:
+    def _resolve_value(name: str, spec: ArgSpec, kwargs: dict[str, Any]) -> Any:
         """Resolve one kwarg, applying defaults and required checks."""
         if name in kwargs:
             return kwargs[name]
-        if "default" in spec:
-            return spec["default"]
-        if not spec.get("required"):
+        if spec.has_default:
+            return spec.default
+        if not spec.required:
             return None
         raise ArgError(f"missing required argument: {name}")
 
     @staticmethod
-    def _emit_arg(name: str, spec: dict[str, Any], value: Any) -> list[str]:
+    def _emit_arg(name: str, spec: ArgSpec, value: Any) -> list[str]:
         """Emit argv tokens for one resolved argument."""
-        if spec.get("type", "string") == "flag":
-            return ArgParser._emit_flag(name, spec.get("flag"), value)
+        if spec.type == "flag":
+            return ArgParser._emit_flag(name, spec.flag, value)
         if isinstance(value, list):
             return ArgParser._emit_list(
                 name,
-                spec.get("flag"),
+                spec.flag,
                 value,
-                repeat=spec.get("repeat"),
-                join=spec.get("join"),
-                positional=spec.get("positional"),
+                repeat=spec.repeat,
+                join=spec.join,
+                positional=spec.positional,
             )
         token = str(value)
-        if spec.get("positional"):
+        if spec.positional:
             return [token]
-        flag = spec.get("flag")
-        if not flag:
+        if not spec.flag:
             raise ArgError(f"argument {name!r} needs a flag or positional: true")
-        return [flag, token]
+        return [spec.flag, token]
 
     @staticmethod
     def _emit_flag(name: str, flag: str | None, value: Any) -> list[str]:
@@ -99,19 +114,13 @@ class ArgParser:
     ) -> list[str]:
         """Emit list values as CSV, positionals, or repeated flags."""
         tokens = [str(v) for v in values]
-        return (
-            (
-                ArgParser._emit_csv(name, flag, tokens, positional=positional)
-                if join == "csv"
-                else (
-                    tokens
-                    if positional or not flag
-                    else ArgParser._emit_flag_list(flag, tokens, repeat=repeat)
-                )
-            )
-            if tokens
-            else []
-        )
+        if not tokens:
+            return []
+        if join == "csv":
+            return ArgParser._emit_csv(name, flag, tokens, positional=positional)
+        if positional or not flag:
+            return tokens
+        return ArgParser._emit_flag_list(flag, tokens, repeat=repeat)
 
     @staticmethod
     def _emit_flag_list(flag: str, tokens: list[str], *, repeat: Any) -> list[str]:
@@ -142,6 +151,8 @@ class ArgParser:
     @staticmethod
     def normalize_extra(extra: str | list[str] | None) -> list[str]:
         """Normalize extra passthrough args to an argv suffix."""
-        return (
-            [] if extra is None else (shlex.split(extra) if isinstance(extra, str) else list(extra))
-        )
+        if extra is None:
+            return []
+        if isinstance(extra, str):
+            return shlex.split(extra)
+        return list(extra)

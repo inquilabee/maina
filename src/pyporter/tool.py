@@ -10,7 +10,7 @@ from pyporter.runner import ToolRunner
 from pyporter.runtime import runtime as active_runtime
 
 if TYPE_CHECKING:
-    from pyporter.registry import Manifest
+    from pyporter.registry import ArgSpec, Manifest
     from pyporter.result import ToolResult
     from pyporter.runtime import Runtime
 
@@ -79,7 +79,7 @@ class Tool:
     def __str__(self) -> str:
         """Format package or bound-tool help text."""
         if self._manifest is None:
-            return self.package_help()
+            return self.package_help(runtime=self._runtime)
         manifest = self._manifest
         lines = [
             f"Tool: {manifest.id}",
@@ -92,19 +92,23 @@ class Tool:
             *self._arg_help_lines(manifest.args),
         ]
         if children := self._registry.list_commands(manifest.id):
-            lines.extend(["", "Child surfaces:", *[f"  - {c}" for c in children]])
+            lines.extend(["", "Child surfaces:", *self.format_tool_id_lines(children)])
         return "\n".join(lines)
 
     def help(self) -> str:
-        """Emit package or bound-tool usage help."""
-        text = str(self)
-        print(text)
-        return text
+        """Format package or bound-tool usage help (does not print)."""
+        return str(self)
+
+    @staticmethod
+    def format_tool_id_lines(ids: list[str]) -> list[str]:
+        """Format a bullet list of tool ids for help text."""
+        return [f"  - {t}" for t in ids] if ids else ["  (none registered)"]
 
     @classmethod
-    def package_help(cls) -> str:
+    def package_help(cls, *, runtime: Runtime | None = None) -> str:
         """Format unbound package usage help."""
-        tops = active_runtime().registry.list_commands(None)
+        rt = runtime if runtime is not None else active_runtime()
+        tops = rt.registry.list_commands(None)
         lines = [
             "pyporter — call non-Python CLIs via registry manifests",
             "",
@@ -120,14 +124,15 @@ class Tool:
             "  pyporter help",
             "",
             "Top-level tools:",
-            *([f"  - {t}" for t in tops] if tops else ["  (none registered)"]),
+            *cls.format_tool_id_lines(tops),
         ]
         return "\n".join(lines)
 
     @classmethod
-    def run_usage_help(cls) -> str:
+    def run_usage_help(cls, *, runtime: Runtime | None = None) -> str:
         """Format help for ``pyporter run`` without a tool id."""
-        tops = active_runtime().registry.list_commands(None)
+        rt = runtime if runtime is not None else active_runtime()
+        tops = rt.registry.list_commands(None)
         lines = [
             "Usage:",
             "  pyporter run <tool_id> [key=value ...] [-- extra...]",
@@ -139,21 +144,20 @@ class Tool:
             "See also: pyporter help",
             "",
             "Top-level tools:",
-            *([f"  - {t}" for t in tops] if tops else ["  (none registered)"]),
+            *cls.format_tool_id_lines(tops),
         ]
         return "\n".join(lines)
 
     @staticmethod
-    def _arg_help_lines(args: dict[str, Any]) -> list[str]:
+    def _arg_help_lines(args: dict[str, ArgSpec]) -> list[str]:
         """Format argument help lines for a manifest args map."""
         if not args:
             return ["  (none declared; use extra=...)"]
         lines: list[str] = []
         for name, spec in args.items():
-            flag = spec.get("flag") or ("positional" if spec.get("positional") else "")
-            typ = spec.get("type", "string")
-            req = "required" if spec.get("required") else "optional"
-            base = f"  {name}: {typ} {flag} ({req})"
-            desc = spec.get("description") or spec.get("help")
+            flag = spec.flag or ("positional" if spec.positional else "")
+            req = "required" if spec.required else "optional"
+            base = f"  {name}: {spec.type} {flag} ({req})"
+            desc = spec.description or spec.help
             lines.append(f"{base} — {desc}" if desc else base)
         return lines

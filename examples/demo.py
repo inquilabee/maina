@@ -12,7 +12,7 @@ def main() -> None:
     # Optional overlay (same register path as shipped builtins):
     local = Path(__file__).resolve().parent / "local_tool"
     if local.is_dir():
-        pyporter.register(registry_dirs=[local])
+        pyporter.register(pyporter.runtime(), registry_dirs=[local])
 
     Tool().help()
     print("---")

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import platform
-import sys
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,7 +15,172 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 MAP_KEYS = frozenset({"args", "install", "env", "output", "requires"})
+# Catalog decoration only — not enforced at resolve/run time.
+IGNORED_MANIFEST_KEYS = frozenset({"platforms", "name"})
 MANIFEST_PREFIX = "manifest "
+
+ARG_KEYS = frozenset(
+    {
+        "type",
+        "flag",
+        "positional",
+        "required",
+        "repeat",
+        "join",
+        "default",
+        "description",
+        "help",
+    }
+)
+INSTALL_KEYS = frozenset({"backend", "repo", "assets", "binary", "tag", "package"})
+REQUIRES_KEYS = frozenset({"runtime", "version"})
+OUTPUT_KEYS = frozenset({"format", "success_codes"})
+
+
+def optional_str(value: Any) -> str | None:
+    """Coerce optional YAML scalars to str, preserving None."""
+    return None if value is None else str(value)
+
+
+def unknown_keys(raw: dict[str, Any], allowed: frozenset[str]) -> list[str]:
+    """Return sorted unknown mapping keys relative to an allowlist."""
+    return sorted(key for key in raw if key not in allowed)
+
+
+@dataclass(slots=True, frozen=True)
+class ArgSpec:
+    """One registry arg entry (kwargs → argv schema).
+
+    ``type: path`` is emit-only metadata for help/docs; values are still
+    stringified like other non-flag types (no ``Path`` coercion).
+    """
+
+    type: str = "string"
+    flag: str | None = None
+    positional: bool = False
+    required: bool = False
+    repeat: bool | None = None
+    join: str | None = None
+    default: Any = field(default=None, hash=False, compare=False)
+    has_default: bool = False
+    description: str | None = None
+    help: str | None = None
+
+    @classmethod
+    def from_mapping(cls, name: str, raw: Any, *, tool_id: str) -> ArgSpec:
+        """Parse one arg map; fail closed on non-maps and unknown keys."""
+        if not isinstance(raw, dict):
+            raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} args.{name} must be a map")
+        if bad := unknown_keys(raw, ARG_KEYS):
+            keys = ", ".join(bad)
+            raise ManifestError(
+                f"{MANIFEST_PREFIX}{tool_id!r} args.{name} unknown keys: {keys}"
+            )
+        return cls(
+            type=str(raw.get("type", "string")),
+            flag=None if raw.get("flag") is None else str(raw["flag"]),
+            positional=bool(raw.get("positional", False)),
+            required=bool(raw.get("required", False)),
+            repeat=raw.get("repeat"),
+            join=None if raw.get("join") is None else str(raw["join"]),
+            default=raw.get("default"),
+            has_default="default" in raw,
+            description=optional_str(raw.get("description")),
+            help=optional_str(raw.get("help")),
+        )
+
+
+@dataclass(slots=True, frozen=True)
+class InstallSpec:
+    """Typed ``install:`` block from a resolved manifest."""
+
+    backend: str = "path"
+    repo: str | None = None
+    assets: dict[str, Any] = field(default_factory=dict)
+    binary: str | None = None
+    tag: str | None = None
+    package: str | None = None
+
+    @classmethod
+    def from_mapping(cls, raw: Any, *, tool_id: str) -> InstallSpec:
+        """Parse install map; fail closed on non-maps and unknown keys."""
+        if raw is None:
+            raw = {}
+        if not isinstance(raw, dict):
+            raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} install must be a map")
+        if bad := unknown_keys(raw, INSTALL_KEYS):
+            keys = ", ".join(bad)
+            raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} install unknown keys: {keys}")
+        assets = raw.get("assets") or {}
+        if not isinstance(assets, dict):
+            raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} install.assets must be a map")
+        backend = raw.get("backend", "path")
+        return cls(
+            backend="path" if backend is None else str(backend),
+            repo=optional_str(raw.get("repo")),
+            assets=dict(assets),
+            binary=optional_str(raw.get("binary")),
+            tag=optional_str(raw.get("tag")),
+            package=optional_str(raw.get("package")),
+        )
+
+
+@dataclass(slots=True, frozen=True)
+class RequiresSpec:
+    """Typed ``requires:`` block (language runtime pins)."""
+
+    runtime: str | None = None
+    version: str | None = None
+
+    @classmethod
+    def from_mapping(cls, raw: Any, *, tool_id: str) -> RequiresSpec:
+        """Parse requires map; fail closed on non-maps and unknown keys."""
+        if raw is None:
+            raw = {}
+        if not isinstance(raw, dict):
+            raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} requires must be a map")
+        if bad := unknown_keys(raw, REQUIRES_KEYS):
+            keys = ", ".join(bad)
+            raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} requires unknown keys: {keys}")
+        return cls(
+            runtime=optional_str(raw.get("runtime")),
+            version=optional_str(raw.get("version")),
+        )
+
+
+@dataclass(slots=True, frozen=True)
+class OutputSpec:
+    """Typed ``output:`` block; ``success_codes`` validated at load."""
+
+    format: str | None = None
+    success_codes: tuple[int, ...] = (0,)
+
+    @classmethod
+    def from_mapping(cls, raw: Any, *, tool_id: str) -> OutputSpec:
+        """Parse output map; fail closed on non-maps / bad success_codes."""
+        if raw is None:
+            raw = {}
+        if not isinstance(raw, dict):
+            raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} output must be a map")
+        if bad := unknown_keys(raw, OUTPUT_KEYS):
+            keys = ", ".join(bad)
+            raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} output unknown keys: {keys}")
+        codes = raw.get("success_codes", [0])
+        if not isinstance(codes, list) or not codes:
+            raise ManifestError(
+                f"{MANIFEST_PREFIX}{tool_id!r} output.success_codes must be a non-empty list"
+            )
+        parsed: list[int] = []
+        for item in codes:
+            if isinstance(item, bool) or not isinstance(item, int):
+                raise ManifestError(
+                    f"{MANIFEST_PREFIX}{tool_id!r} output.success_codes must be integers"
+                )
+            parsed.append(item)
+        return cls(
+            format=optional_str(raw.get("format")),
+            success_codes=tuple(parsed),
+        )
 
 
 @dataclass(slots=True)
@@ -29,6 +192,10 @@ class Manifest:
     subcommands: list[str] = field(default_factory=list)
     path: Path | None = None
     parser_path: Path | None = None
+    install: InstallSpec = field(default_factory=InstallSpec)
+    args: dict[str, ArgSpec] = field(default_factory=dict)
+    output: OutputSpec = field(default_factory=OutputSpec)
+    requires: RequiresSpec = field(default_factory=RequiresSpec)
 
     @property
     def abstract(self) -> bool:
@@ -40,30 +207,6 @@ class Manifest:
         if not cli:
             raise ManifestError(f"{MANIFEST_PREFIX}{self.id!r} missing cli")
         return str(cli)
-
-    @property
-    def args(self) -> dict[str, Any]:
-        raw = self.data.get("args") or {}
-        if not isinstance(raw, dict):
-            raise ManifestError(f"{MANIFEST_PREFIX}{self.id!r} args must be a map")
-        return raw
-
-    @property
-    def install(self) -> dict[str, Any]:
-        raw = self.data.get("install") or {}
-        if not isinstance(raw, dict):
-            raise ManifestError(f"{MANIFEST_PREFIX}{self.id!r} install must be a map")
-        return raw
-
-    @property
-    def requires(self) -> dict[str, Any]:
-        raw = self.data.get("requires") or {}
-        return raw if isinstance(raw, dict) else {}
-
-    @property
-    def output(self) -> dict[str, Any]:
-        raw = self.data.get("output") or {}
-        return raw if isinstance(raw, dict) else {}
 
     @property
     def version(self) -> str | None:
@@ -96,11 +239,6 @@ class Registry:
             raise ManifestError("registry has no roots")
         return self.roots[0]
 
-    @classmethod
-    def default(cls) -> Registry:
-        """Registry rooted at the shipped package ``registry/`` directory."""
-        return cls(Path(__file__).resolve().parent / "registry")
-
     def append_roots(self, roots: Sequence[Path]) -> None:
         """Append overlay roots (later entries override earlier ids)."""
         self.roots.extend(Path(p) for p in roots)
@@ -119,6 +257,9 @@ class Registry:
             merged.pop("extends", None)
             merged.pop("subcommand", None)
 
+        for key in IGNORED_MANIFEST_KEYS:
+            merged.pop(key, None)
+
         parser_path = self._resolve_parser_path(leaf_path, leaf_root, merged.get("parser"))
         return Manifest(
             id=tid,
@@ -126,6 +267,10 @@ class Registry:
             subcommands=subcommands,
             path=leaf_path,
             parser_path=parser_path,
+            install=InstallSpec.from_mapping(merged.get("install"), tool_id=tid),
+            args=Registry.parse_args_map(merged.get("args"), tool_id=tid),
+            output=OutputSpec.from_mapping(merged.get("output"), tool_id=tid),
+            requires=RequiresSpec.from_mapping(merged.get("requires"), tool_id=tid),
         )
 
     def list_commands(self, tool_id: str | None = None) -> list[str]:
@@ -251,6 +396,17 @@ class Registry:
         ]
 
     @staticmethod
+    def parse_args_map(raw: Any, *, tool_id: str) -> dict[str, ArgSpec]:
+        """Parse the args map into typed ArgSpec entries."""
+        if raw is None:
+            raw = {}
+        if not isinstance(raw, dict):
+            raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} args must be a map")
+        return {
+            name: ArgSpec.from_mapping(name, spec, tool_id=tool_id) for name, spec in raw.items()
+        }
+
+    @staticmethod
     def _load_raw_yaml(path: Path) -> dict[str, Any]:
         """Load a single YAML manifest file."""
         try:
@@ -268,32 +424,24 @@ class Registry:
     @staticmethod
     def _top_level_entry_id(path: Path) -> str | None:
         """Return a top-level registry id for a path, or None if skipped."""
-        return (
-            None
-            if path.name == "parsers" or path.name.startswith(".")
-            else (
-                path.stem
-                if path.is_file() and path.suffix == ".yaml"
-                else (path.name if path.is_dir() and Registry._dir_has_manifests(path) else None)
-            )
-        )
+        if path.name == "parsers" or path.name.startswith("."):
+            return None
+        if path.is_file() and path.suffix == ".yaml":
+            return path.stem
+        if path.is_dir() and Registry._dir_has_manifests(path):
+            return path.name
+        return None
 
     @staticmethod
     def _child_entry_id(base: Path, prefix: str, path: Path) -> str | None:
         """Return a child registry id for a path under base, or None if skipped."""
-        return (
-            None
-            if path.name in {"parsers"} or path.name.startswith(".")
-            else (
-                (None if path.stem == base.name else f"{prefix}/{path.stem}")
-                if path.is_file() and path.suffix == ".yaml"
-                else (
-                    f"{prefix}/{path.name}"
-                    if path.is_dir() and Registry._dir_has_manifests(path)
-                    else None
-                )
-            )
-        )
+        if path.name in {"parsers"} or path.name.startswith("."):
+            return None
+        if path.is_file() and path.suffix == ".yaml":
+            return None if path.stem == base.name else f"{prefix}/{path.stem}"
+        if path.is_dir() and Registry._dir_has_manifests(path):
+            return f"{prefix}/{path.name}"
+        return None
 
     @staticmethod
     def _dir_has_manifests(path: Path) -> bool:
@@ -338,31 +486,3 @@ class Registry:
         parts = list(path.relative_to(root).with_suffix("").parts)
         family = len(parts) >= 2 and parts[-1] == parts[-2]
         return "/".join(parts[:-1]) if family else "/".join(parts)
-
-    @staticmethod
-    def current_platform() -> str:
-        """Return linux|macos|windows."""
-        return (
-            "linux"
-            if sys.platform.startswith("linux")
-            else (
-                "macos"
-                if sys.platform == "darwin"
-                else ("windows" if sys.platform.startswith("win") else sys.platform)
-            )
-        )
-
-    @staticmethod
-    def current_arch() -> str:
-        """Return x86_64|arm64."""
-        machine = platform.machine().lower()
-        return (
-            "x86_64"
-            if machine in {"x86_64", "amd64"}
-            else ("arm64" if machine in {"aarch64", "arm64"} else machine)
-        )
-
-    @staticmethod
-    def platform_key() -> str:
-        """Asset key like linux-x86_64."""
-        return f"{Registry.current_platform()}-{Registry.current_arch()}"

@@ -5,18 +5,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-import yaml
 
 from pyporter.errors import ManifestError
 from pyporter.registry import Registry
 
+from helpers import write_yaml
+
 if TYPE_CHECKING:
     from pathlib import Path
-
-
-def write_yaml(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.dump(data), encoding="utf-8")
 
 
 def test_overlay_later_root_wins(tmp_path: Path) -> None:
@@ -53,7 +49,7 @@ def test_overlay_extends_parent_in_other_root(tmp_path: Path) -> None:
     assert manifest.subcommands == ["child"]
     assert "a" in manifest.args
     assert "b" in manifest.args
-    assert manifest.install.get("backend") == "path"
+    assert manifest.install.backend == "path"
 
 
 def test_overlay_list_commands_union(tmp_path: Path) -> None:

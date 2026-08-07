@@ -23,17 +23,29 @@ app = typer.Typer(
 )
 
 
+def split_at_dashdash(tokens: list[str]) -> tuple[list[str], list[str] | None]:
+    """Split tokens on the first ``--``; return (head, tail_without_sep).
+
+    When ``--`` is absent, returns ``(tokens, None)``. When present, the
+    separator itself is omitted from both sides (tail may be empty).
+    """
+    if "--" not in tokens:
+        return tokens, None
+    sep = tokens.index("--")
+    return tokens[:sep], tokens[sep + 1 :]
+
+
 @app.callback(invoke_without_command=True)
 def root(ctx: typer.Context) -> None:
     """Show package help when no subcommand is given."""
     if ctx.invoked_subcommand is None:
-        Tool().help()
+        typer.echo(Tool().help())
 
 
 @app.command("help")
 def help_cmd() -> None:
     """Show package help."""
-    Tool().help()
+    typer.echo(Tool().help())
 
 
 @app.command()
@@ -100,7 +112,7 @@ def run(
 def emit_tool_help(tool_id: str) -> None:
     """Print registry help for a tool id, or exit 2 if the id is unknown."""
     try:
-        Tool(tool_id).help()
+        typer.echo(Tool(tool_id).help())
     except ManifestError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(2) from exc
@@ -163,20 +175,15 @@ class RunInvocation:
         """Return ``(tool_id, tokens, wants_help)`` with help flags stripped from the head."""
         if tool_id in cls.HELP_FLAGS:
             tool_id = None
-        if "--" in tokens:
-            head, tail = cls._split_extra(tokens)
+        head, tail = split_at_dashdash(tokens)
+        if tail is not None:
             wants_help = any(t in cls.HELP_FLAGS for t in head)
             head = [t for t in head if t not in cls.HELP_FLAGS]
-            return tool_id, head + tail, wants_help
+            # Preserve ``--`` in the token stream for RunArgParser / is_empty.
+            return tool_id, [*head, "--", *tail], wants_help
         # Click drops ``--``; only treat sole help flags as help requests.
         wants_help = all(t in cls.HELP_FLAGS for t in tokens) if tokens else False
         return tool_id, ([] if wants_help else tokens), wants_help
-
-    @staticmethod
-    def _split_extra(tokens: list[str]) -> tuple[list[str], list[str]]:
-        """Split tokens at ``--``; tail retains the separator when present."""
-        sep = tokens.index("--")
-        return tokens[:sep], tokens[sep:]
 
     @staticmethod
     def is_empty(tokens: list[str]) -> bool:
@@ -190,15 +197,7 @@ class RunArgParser:
     @classmethod
     def parse(cls, tokens: list[str]) -> tuple[dict[str, Any], list[str] | None]:
         """Split tokens into kwargs and optional extra passthrough after ``--``."""
-        if "--" in tokens:
-            sep = tokens.index("--")
-            kw_tokens = tokens[:sep]
-            extra_tokens = tokens[sep + 1 :]
-            extra: list[str] | None = extra_tokens
-        else:
-            kw_tokens = tokens
-            extra = None
-
+        kw_tokens, extra = split_at_dashdash(tokens)
         kwargs: dict[str, Any] = {}
         for token in kw_tokens:
             if not token:
@@ -228,11 +227,11 @@ class RunArgParser:
     def _coerce(value: str) -> Any:
         """Coerce common boolean spellings; leave other values as strings."""
         lowered = value.lower()
-        return (
-            True
-            if lowered in {"true", "yes", "1"}
-            else (False if lowered in {"false", "no", "0"} else value)
-        )
+        if lowered in {"true", "yes", "1"}:
+            return True
+        if lowered in {"false", "no", "0"}:
+            return False
+        return value
 
 
 def emit_result(result: ToolResult) -> None:

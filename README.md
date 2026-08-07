@@ -24,14 +24,33 @@ sharing in the shipped catalog.
 from pathlib import Path
 import pyporter
 
-pyporter.register(registry_dirs=[Path("tools")])
-pyporter.Tool("mytool").run(...)
+rt = pyporter.Runtime.preferred()
+pyporter.register(rt, registry_dirs=[Path("tools")])
+pyporter.Tool("mytool", runtime=rt).run(...)
 ```
 
+Or omit the Runtime and mutate the process session: `pyporter.register(registry_dirs=[...])`.
 Later registry dirs override shipped ids for the same tool id. You can also pass
 `parsers=`, `parsers_dirs=`, `installers=`, and `language=`. Use
 `Tool(..., runtime=rt)` or `pyporter.use(rt)` when isolating a composition
 Runtime (tests, multiple catalogs).
+
+`extends` parents use registry ids (no `.yaml` suffix), e.g. `extends: kubectl/kubectl`.
+See `examples/local_tool/` (overlay registry) and `examples/parsers_dirs/` (custom
+parser via `parsers_dirs`).
+
+### Catalog notes
+
+Some shipped manifests set flag defaults that differ from upstream CLIs so
+parsed/machine output is usable out of the box:
+
+- **eslint** — `format` defaults to `json` (upstream stylish); `no_error_on_unmatched_pattern` defaults to true.
+- **jscpd** — `reporters` defaults to `json`; `silent` defaults to true.
+
+Pass the kwargs explicitly to override. Intermediate `git/remote` is callable with
+empty args on purpose (`git remote` lists remotes). Prefer `output_format` (not
+`output`) when an arg would clash with the top-level `output:` block — see
+`kubectl/get`.
 
 ## Setup
 
@@ -40,6 +59,7 @@ uv sync
 uv run shipgate install
 uv run pyporter prepare jq
 uv run python examples/demo.py
+uv run python examples/parsers_dirs/demo.py
 ```
 
 Tool cache: `~/.cache/pyporter` (override with `PYPORTER_CACHE`).
@@ -60,7 +80,18 @@ uv run shipgate refactor list
 uv run shipgate refactor explain default-get
 ```
 
-`shipgate check` must pass before merge.
+Full `shipgate check` (no `--suite`) is the merge bar.
+
+### Pre-commit
+
+Local commits can run the lighter `pre-commit` suite via [pre-commit](https://pre-commit.com/):
+
+```bash
+uv sync
+pre-commit install
+```
+
+The hook runs `shipgate check --suite pre-commit`. It expects a local `.shipgate/` tree and `scripts/` (including `scripts/shipgate-link-src.sh`). Those may be gitignored; that is fine for personal use.
 
 ## CLI
 
@@ -79,3 +110,7 @@ pyporter run git/remote/add name=origin url=https://example.com
 list values; a bare key sets a flag to true. Tokens after `--` become `extra`.
 With no kwargs (or `--help` / `-h`), `run <tool_id>` prints that tool's registry help
 instead of attempting a run.
+
+Registry arg `type: path` is emit-only metadata (help/docs); values are still
+passed as strings. Top-level YAML `name:` / `platforms:` are ignored at load
+(not enforced).

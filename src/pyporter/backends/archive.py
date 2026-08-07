@@ -16,9 +16,22 @@ import requests
 
 from pyporter.errors import InstallError
 
+# Soft cap for streamed release assets (GitHub binaries, etc.).
+DEFAULT_MAX_BYTES = 512 * 1024 * 1024
+_CHUNK_SIZE = 64 * 1024
+
 
 class ArchiveFetcher:
     """Download https assets and extract binaries into a destination directory."""
+
+    def __init__(
+        self,
+        *,
+        session: requests.Session | None = None,
+        max_bytes: int = DEFAULT_MAX_BYTES,
+    ) -> None:
+        self._session = session or requests.Session()
+        self.max_bytes = max_bytes
 
     def download_and_extract(
         self,
@@ -42,18 +55,40 @@ class ArchiveFetcher:
                 asset_name=asset_name,
             )
 
-    @staticmethod
-    def fetch_https(url: str, dest: Path) -> None:
-        """Download a URL that must use the https scheme."""
+    def fetch_https(self, url: str, dest: Path) -> None:
+        """Stream a URL that must use the https scheme, enforcing a size cap."""
         parsed = urlparse(url)
         if parsed.scheme != "https" or not parsed.netloc:
             raise InstallError(f"refusing non-https download URL: {url}")
         try:
-            response = requests.get(url, timeout=120)
-            response.raise_for_status()
-            dest.write_bytes(response.content)
+            with self._session.get(url, timeout=120, stream=True) as response:
+                response.raise_for_status()
+                self._write_capped_stream(response, dest, url=url)
         except requests.RequestException as exc:
             raise InstallError(f"download failed for {url}: {exc}") from exc
+
+    def _write_capped_stream(self, response: requests.Response, dest: Path, *, url: str) -> None:
+        """Write response body to dest, rejecting Content-Length or body over max_bytes."""
+        content_length = response.headers.get("Content-Length")
+        if content_length is not None:
+            try:
+                if int(content_length) > self.max_bytes:
+                    raise InstallError(
+                        f"download exceeds size cap ({self.max_bytes} bytes): {url}"
+                    )
+            except ValueError:
+                pass
+        total = 0
+        with dest.open("wb") as out:
+            for chunk in response.iter_content(chunk_size=_CHUNK_SIZE):
+                if not chunk:
+                    continue
+                total += len(chunk)
+                if total > self.max_bytes:
+                    raise InstallError(
+                        f"download exceeds size cap ({self.max_bytes} bytes): {url}"
+                    )
+                out.write(chunk)
 
     def extract_archive(
         self,
@@ -67,11 +102,11 @@ class ArchiveFetcher:
         """Extract or copy a downloaded asset into dest_dir."""
         name = asset_name.lower()
         if name.endswith((".tar.gz", ".tgz")):
-            self.safe_extract_tar_gz(archive, tmp_path)
+            self.safe_extract_tar(archive, tmp_path, mode="r:gz")
             self.find_and_copy_binary(tmp_path, dest_dir, binary)
             return
         if name.endswith(".tar.xz"):
-            self.safe_extract_tar_xz(archive, tmp_path)
+            self.safe_extract_tar(archive, tmp_path, mode="r:xz")
             self.find_and_copy_binary(tmp_path, dest_dir, binary)
             return
         if name.endswith(".zip"):
@@ -83,31 +118,41 @@ class ArchiveFetcher:
     @staticmethod
     def assert_safe_member(dest: Path, member_name: str) -> None:
         """Reject archive members that escape the destination directory."""
-        member_path = (dest / member_name).resolve()
-        if not str(member_path).startswith(str(dest.resolve())):
+        root = dest.resolve()
+        member_path = (root / member_name).resolve()
+        if not member_path.is_relative_to(root):
             raise InstallError(f"unsafe path in archive: {member_name}")
 
     @classmethod
+    def safe_extract_tar(cls, archive: Path, dest: Path, *, mode: str) -> None:
+        """Extract a tar archive (``r:gz`` / ``r:xz``) after rejecting path-escape members."""
+        dest = dest.resolve()
+        with tarfile.open(archive, mode) as tar:
+            cls._extract_tar_members(tar, dest)
+
+    # Back-compat aliases for callers/tests that named the old helpers.
+    @classmethod
     def safe_extract_tar_gz(cls, archive: Path, dest: Path) -> None:
         """Extract a .tar.gz archive after rejecting path-escape members."""
-        dest = dest.resolve()
-        with tarfile.open(archive, "r:gz") as tar:
-            cls._extract_tar_members(tar, dest)
+        cls.safe_extract_tar(archive, dest, mode="r:gz")
 
     @classmethod
     def safe_extract_tar_xz(cls, archive: Path, dest: Path) -> None:
         """Extract a .tar.xz archive after rejecting path-escape members."""
-        dest = dest.resolve()
-        with tarfile.open(archive, "r:xz") as tar:
-            cls._extract_tar_members(tar, dest)
+        cls.safe_extract_tar(archive, dest, mode="r:xz")
 
     @classmethod
     def _extract_tar_members(cls, tar: tarfile.TarFile, dest: Path) -> None:
         """Validate then extract every member of an open tar archive."""
-        for member in tar.getmembers():
+        members = tar.getmembers()
+        for member in members:
             cls.assert_safe_member(dest, member.name)
-        for member in tar.getmembers():
-            tar.extract(member, dest)
+        try:
+            tar.extractall(dest, members=members, filter="data")
+        except TypeError:
+            # Python 3.11 without filter= support.
+            for member in members:
+                tar.extract(member, dest)
 
     @classmethod
     def safe_extract_zip(cls, archive: Path, dest: Path) -> None:
