@@ -11,6 +11,8 @@ from maina.runner import ToolRunner
 from maina.runtime import runtime as active_runtime
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from maina.core.registry import ArgSpec, Manifest
     from maina.core.result import ToolResult
     from maina.runtime import Runtime
@@ -51,9 +53,16 @@ class Tool:
         extra: str | list[str] | None = None,
         parser: Any = None,
         cwd: str | None = None,
+        timeout: float | None = None,
+        env_allow: Iterable[str] | None = None,
         **kwargs: Any,
     ) -> ToolResult:
-        """Run this tool surface with native kwargs."""
+        """Run this tool surface with native kwargs.
+
+        ``timeout`` caps the subprocess (seconds); ``env_allow`` trims the
+        environment forwarded to the tool to essentials plus the named keys
+        (see :meth:`maina.runner.ToolRunner.run`).
+        """
         if self._manifest is None:
             raise AbstractToolError("Tool() with no name cannot run; use help() or pass a name")
         if self._manifest.abstract:
@@ -69,6 +78,8 @@ class Tool:
             extra=extra,
             parser=parser,
             cwd=cwd,
+            timeout=timeout,
+            env_allow=env_allow,
         )
 
     def __call__(
@@ -77,9 +88,18 @@ class Tool:
         extra: str | list[str] | None = None,
         parser: Any = None,
         cwd: str | None = None,
+        timeout: float | None = None,
+        env_allow: Iterable[str] | None = None,
         **kwargs: Any,
     ) -> ToolResult:
-        return self.run(extra=extra, parser=parser, cwd=cwd, **kwargs)
+        return self.run(
+            extra=extra,
+            parser=parser,
+            cwd=cwd,
+            timeout=timeout,
+            env_allow=env_allow,
+            **kwargs,
+        )
 
     def commands(self) -> list[str]:
         """List concrete child surfaces (or all concrete ids if unbound)."""

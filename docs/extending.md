@@ -1,0 +1,80 @@
+# Extending maina
+
+Add local tools, parsers, and install backends without forking. Built-ins use
+the same `register(...)` path.
+
+## The Runtime
+
+`Runtime` is the composition root. It owns the registry overlay roots, the
+general-parser map, the installer backend map, and the language provider.
+`Runtime.preferred()` builds one with the shipped defaults registered.
+
+```python
+from pathlib import Path
+import maina
+
+rt = maina.Runtime.preferred()
+maina.register(
+    rt,
+    registry_dirs=[Path("tools")],   # later roots override shipped ids
+    parsers={"csv": parse_csv},
+    parsers_dirs=[Path("parsers")],
+    installers=[MyBackend()],
+    language=MyRuntimeProvider(),
+)
+maina.Tool("mytool", runtime=rt).run(...)
+```
+
+`register(...)` with no Runtime mutates the process-wide session instead:
+
+```python
+maina.register(registry_dirs=["tools"])
+maina.Tool("mytool").run(...)
+```
+
+## Isolation and threads
+
+The process-wide session is **not thread-safe**. For concurrent or nested use:
+
+- pass an explicit `Tool(..., runtime=rt)` (preferred), or
+- scope a swap to a block:
+
+```python
+with maina.isolated(rt):
+    maina.Tool("mytool").run(...)
+# prior Runtime restored here
+```
+
+## Overlay registries
+
+A `registry_dirs` root is just a directory of manifest YAML laid out
+[like the shipped one](manifests.md#file-layout-and-ids). A later root
+overriding an existing id replaces that tool; new ids are added. Use it to pin
+different versions, add private tools, or tweak `args` defaults.
+
+## Custom install backends
+
+A backend is any object with a `name` property and a `resolve(...)` method
+matching the `InstallerBackend` protocol:
+
+```python
+class MyBackend:
+    @property
+    def name(self) -> str:
+        return "mybackend"
+
+    def resolve(self, manifest, *, version, env, ctx):
+        exe = ...  # obtain / locate the executable
+        return str(exe), ctx.prepend_path(env, exe.parent)
+```
+
+`ctx` is an `InstallContext` (cache root, language provider,
+`tool_bin_dir(...)`, `prepend_path(...)`). Optionally add a side-effect-free
+`probe(self, manifest, *, version, ctx) -> bool` so `maina prepare --check` can
+report your backend's tools.
+
+## Custom language provider
+
+Implement `LanguageRuntimeProvider` (`ensure(runtime, version) -> Path` and
+`env(runtime, version) -> dict`) and pass it as `language=`. `MiseRuntime` is
+the default.

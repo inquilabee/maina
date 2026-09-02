@@ -43,6 +43,7 @@ class RecordingFetcher(ArchiveFetcher):
     def __init__(self) -> None:
         super().__init__()
         self.calls: list[tuple[str, Path, str, str]] = []
+        self.sha256_seen: list[str | None] = []
 
     def download_and_extract(
         self,
@@ -51,8 +52,10 @@ class RecordingFetcher(ArchiveFetcher):
         *,
         binary: str,
         asset_name: str,
+        sha256: str | None = None,
     ) -> None:
         self.calls.append((url, dest_dir, binary, asset_name))
+        self.sha256_seen.append(sha256)
         dest_dir.mkdir(parents=True, exist_ok=True)
         exe = dest_dir / binary
         exe.write_text("#!/bin/sh\n", encoding="utf-8")
@@ -138,17 +141,20 @@ def test_fetch_https_rejects_non_https(tmp_path: Path) -> None:
         ArchiveFetcher().fetch_https("http://example.com/a.bin", tmp_path / "x")
 
 
-def test_download_and_extract_happy_path_mock_https(tmp_path: Path) -> None:
-    """Mock HTTPS download; extract a tar.gz that contains the named binary."""
+def demo_targz(binary_name: str = "bin/demo") -> bytes:
+    """A tiny gzipped tar containing one executable payload at *binary_name*."""
     archive_bytes = io.BytesIO()
     with tarfile.open(fileobj=archive_bytes, mode="w:gz") as tar:
         payload = b"#!/bin/sh\necho ok\n"
-        info = tarfile.TarInfo(name="bin/demo")
+        info = tarfile.TarInfo(name=binary_name)
         info.size = len(payload)
         info.mode = 0o755
         tar.addfile(info, io.BytesIO(payload))
-    body = archive_bytes.getvalue()
+    return archive_bytes.getvalue()
 
+
+def mock_targz_fetcher(body: bytes) -> tuple[ArchiveFetcher, MagicMock]:
+    """ArchiveFetcher wired to a MagicMock session that returns *body*."""
     fetcher = ArchiveFetcher()
     response = MagicMock()
     response.headers = {"Content-Length": str(len(body))}
@@ -159,7 +165,12 @@ def test_download_and_extract_happy_path_mock_https(tmp_path: Path) -> None:
     session = MagicMock()
     session.get = MagicMock(return_value=response)
     fetcher._session = session
+    return fetcher, session
 
+
+def test_download_and_extract_happy_path_mock_https(tmp_path: Path) -> None:
+    """Mock HTTPS download; extract a tar.gz that contains the named binary."""
+    fetcher, session = mock_targz_fetcher(demo_targz())
     dest = tmp_path / "out"
     fetcher.download_and_extract(
         "https://example.com/releases/demo.tar.gz",
@@ -172,6 +183,61 @@ def test_download_and_extract_happy_path_mock_https(tmp_path: Path) -> None:
     assert exe.read_bytes().startswith(b"#!/bin/sh")
     session.get.assert_called_once()
     assert session.get.call_args.args[0].startswith("https://")
+
+
+def test_download_and_extract_sha256_match_ok(tmp_path: Path) -> None:
+    import hashlib
+
+    body = demo_targz()
+    digest = hashlib.sha256(body).hexdigest()
+    fetcher, _session = mock_targz_fetcher(body)
+    dest = tmp_path / "out"
+    fetcher.download_and_extract(
+        "https://example.com/releases/demo.tar.gz",
+        dest,
+        binary="demo",
+        asset_name="demo.tar.gz",
+        sha256=digest.upper(),  # case-insensitive
+    )
+    assert (dest / "demo").is_file()
+
+
+def test_download_and_extract_sha256_mismatch_rejected(tmp_path: Path) -> None:
+    body = demo_targz()
+    fetcher, _session = mock_targz_fetcher(body)
+    with pytest.raises(InstallError, match="sha256 mismatch"):
+        fetcher.download_and_extract(
+            "https://example.com/releases/demo.tar.gz",
+            tmp_path / "out",
+            binary="demo",
+            asset_name="demo.tar.gz",
+            sha256="0" * 64,
+        )
+    assert not (tmp_path / "out" / "demo").exists()
+
+
+def test_github_backend_passes_sha256_from_manifest(tmp_path: Path) -> None:
+    from maina.backends.github import GithubBackend
+    from maina.core.protocols import InstallContext
+
+    fetcher = RecordingFetcher()
+    manifest = Manifest(
+        id="demo",
+        data={"cli": "demo"},
+        install=InstallSpec(
+            backend="github",
+            repo="acme/demo",
+            assets={"linux-x86_64": "demo.tar.gz"},
+            binary="demo",
+            sha256={"linux-x86_64": "abc123"},
+        ),
+    )
+    backend = GithubBackend(fetcher=fetcher)
+    ctx = InstallContext(cache_root=tmp_path / "cache", language=FakeLanguage(tmp_path / "cache"))
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("maina.backends.github.platform_key", lambda: "linux-x86_64")
+        backend.resolve(manifest, version="default", env={}, ctx=ctx)
+    assert fetcher.sha256_seen == ["abc123"]
 
 
 def test_github_backend_resolve_uses_fetcher(
@@ -240,7 +306,7 @@ def test_installer_copies_env_before_backend_mutation(tmp_path: Path) -> None:
 def test_install_dir_lock_exclusive(tmp_path: Path) -> None:
     dest = tmp_path / "tools" / "x" / "1"
     with Installer.install_dir_lock(dest):
-        assert (dest / ".porter-install.lock").is_file()
+        assert (dest / ".maina-install.lock").is_file()
 
 
 def test_toolrunner_timeout_maps_to_install_error(tmp_path: Path) -> None:

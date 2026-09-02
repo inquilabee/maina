@@ -9,7 +9,7 @@ import pytest
 
 from helpers import write_yaml
 from maina.backends import PathBackend
-from maina.core.errors import InstallError
+from maina.core.errors import InstallError, UnsupportedPlatformError
 from maina.core.registry import Manifest, Registry
 from maina.installer import Installer
 from maina.runtime import Runtime, register
@@ -251,3 +251,60 @@ def test_prepare_ids_rejects_shipped_abstract() -> None:
         rt.installer.prepare_ids(["base"])
     with pytest.raises(InstallError, match="cannot prepare abstract"):
         rt.installer.prepare_ids(["kubectl"])
+
+
+def test_check_ids_reports_satisfied_and_missing(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "here.yaml", {"cli": "true", "install": {"backend": "path"}})
+    write_yaml(root / "gone.yaml", {"cli": "no-such-binary-x", "install": {"backend": "path"}})
+    registry = Registry(root)
+    installer = Installer(
+        cache_root=tmp_path / "cache",
+        language=FakeLanguage(tmp_path / "cache"),
+        registry=registry,
+        backends=[PathBackend()],
+    )
+    satisfied, missing = installer.check_ids()
+    assert satisfied == ["here"]
+    assert missing == ["gone"]
+    # is_satisfied on an abstract manifest is a no-op "satisfied".
+    write_yaml(root / "base.yaml", {"cli": "base", "abstract": True})
+    assert installer.is_satisfied(Registry(root).load("base")) is True
+
+
+def test_check_ids_unknown_backend_is_missing(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "x.yaml", {"cli": "x", "install": {"backend": "mystery"}})
+    registry = Registry(root)
+    installer = Installer(
+        cache_root=tmp_path / "cache",
+        language=FakeLanguage(tmp_path / "cache"),
+        registry=registry,
+        backends=[PathBackend()],
+    )
+    assert installer.is_satisfied(registry.load("x")) is False
+
+
+def test_resolve_rejects_unsupported_platform(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("maina.installer.current_platform", lambda: "windows")
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "maconly.yaml",
+        {"cli": "maconly", "platforms": ["macos", "linux"], "install": {"backend": "path"}},
+    )
+    registry = Registry(root)
+    installer = Installer(
+        cache_root=tmp_path / "cache",
+        language=FakeLanguage(tmp_path / "cache"),
+        registry=registry,
+        backends=[PathBackend()],
+    )
+    with pytest.raises(UnsupportedPlatformError, match="not supported on windows"):
+        installer.resolve(registry.load("maconly"))
+    # Implicit prepare_ids skips it instead of raising.
+    assert installer.prepare_ids(None) == []
+    # Explicit prepare_ids surfaces the error.
+    with pytest.raises(UnsupportedPlatformError):
+        installer.prepare_ids(["maconly"])

@@ -268,6 +268,27 @@ def test_cli_prepare_path_tool(tmp_path: Any) -> None:
     assert "prepared: trueish" in result.stdout
 
 
+def test_cli_prepare_check_reports_state(tmp_path: Any) -> None:
+    root = tmp_path / "reg"
+    # `true` is on PATH → satisfied; a bogus cli → missing.
+    write_yaml(root / "trueish.yaml", {"cli": "true", "install": {"backend": "path"}})
+    write_yaml(
+        root / "nope.yaml",
+        {"cli": "definitely-not-a-real-binary", "install": {"backend": "path"}},
+    )
+    rt = Runtime(cache_root=tmp_path / "cache")
+    maina.register(rt, registry_dirs=[root], installers=[PathBackend()])
+    maina.use(rt)
+    result = runner.invoke(app, ["prepare", "--check"])
+    assert result.exit_code == 1, result.stdout + result.stderr
+    assert "satisfied: trueish" in result.stdout
+    assert "missing: nope" in result.stdout
+
+    ok = runner.invoke(app, ["prepare", "trueish", "--check"])
+    assert ok.exit_code == 0, ok.stdout + ok.stderr
+    assert ok.stdout.strip() == "satisfied: trueish"
+
+
 def test_cli_prepare_rejects_explicit_abstract(tmp_path: Any) -> None:
     root = tmp_path / "reg"
     write_yaml(

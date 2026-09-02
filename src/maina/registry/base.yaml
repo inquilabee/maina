@@ -1,7 +1,6 @@
-# Defaults bag auto-prepended onto every other tool. These pins are ensured on
-# every prepare/resolve unless a child clears or drops them (requires: null, or
-# e.g. node: null). Prefer quoting version strings.
+# Defaults bag auto-prepended onto every other tool via the implicit ``extends``
+# chain. Shipped base carries no runtime pins: static binaries (github/path
+# backends) need nothing, and the npm backend provisions Node on its own. Pin
+# runtimes here only in your own overlay base.yaml, or per tool with
+# ``requires: { node: "22" }`` (``requires: null`` on a child clears inherited pins).
 abstract: true
-requires:
-  python: "3.14"
-  node: latest

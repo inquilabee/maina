@@ -7,7 +7,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from maina.core.errors import InstallError
+from maina.core.errors import RuntimeProvisionError
 
 
 class MiseRuntime:
@@ -51,12 +51,12 @@ class MiseRuntime:
             )
         except subprocess.CalledProcessError as exc:
             detail = exc.stderr or exc.stdout or str(exc)
-            raise InstallError(f"mise install {spec} failed: {detail}") from exc
+            raise RuntimeProvisionError(f"mise install {spec} failed: {detail}") from exc
 
         resolved = self._mise_which(mise, spec, runtime, env)
         if resolved is not None:
             return resolved
-        raise InstallError(f"could not resolve mise runtime binary for {spec}")
+        raise RuntimeProvisionError(f"could not resolve mise runtime binary for {spec}")
 
     def env(self, runtime: str, version: str) -> dict[str, str]:
         """Environment with mise runtime bin prepended to PATH."""
@@ -77,7 +77,7 @@ class MiseRuntime:
         curl = shutil.which("curl")
         shell = shutil.which("sh")
         if not curl or not shell:
-            raise InstallError("curl and sh are required to bootstrap mise")
+            raise RuntimeProvisionError("curl and sh are required to bootstrap mise")
         try:
             script = subprocess.run(
                 [curl, "-fsSL", "https://mise.run"],
@@ -94,13 +94,13 @@ class MiseRuntime:
                 text=True,
             )
         except (OSError, subprocess.CalledProcessError) as exc:
-            raise InstallError(f"failed to bootstrap mise: {exc}") from exc
+            raise RuntimeProvisionError(f"failed to bootstrap mise: {exc}") from exc
         if target.is_file():
             target.chmod(target.stat().st_mode | 0o111)
             return target
         if which := shutil.which("mise"):
             return Path(which)
-        raise InstallError("mise bootstrap completed but binary not found")
+        raise RuntimeProvisionError("mise bootstrap completed but binary not found")
 
     @staticmethod
     def _mise_which(mise: Path, spec: str, runtime: str, env: dict[str, str]) -> Path | None:

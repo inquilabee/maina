@@ -11,7 +11,11 @@ result = jscpd(path=["src"], min_lines=5)
 print(result.raw, result.parsed)
 ```
 
-See `adr/0001-registry-first-tool-runtime.md` and
+Full documentation is in [`docs/`](docs/index.md) (built with MkDocs):
+[quickstart](docs/quickstart.md), [manifest schema](docs/manifests.md),
+[install backends](docs/backends.md), [parsers](docs/parsers.md),
+[extending maina](docs/extending.md), [architecture](docs/architecture.md).
+Design notes: `adr/0001-registry-first-tool-runtime.md`,
 `adr/0002-runtime-register-extendibility.md`.
 
 ## Extendibility
@@ -32,24 +36,50 @@ maina.Tool("mytool", runtime=rt).run(...)
 Or omit the Runtime and mutate the process session: `maina.register(registry_dirs=[...])`.
 Later registry dirs override shipped ids for the same tool id. You can also pass
 `parsers=`, `parsers_dirs=`, `installers=`, and `language=`. Parsers implement the
-`Parser` protocol (`parse(raw, result)` / any matching callable). Use
-`Tool(..., runtime=rt)` or `maina.use(rt)` when isolating a composition
-Runtime (tests, multiple catalogs).
+`Parser` protocol (`parse(raw, result)` / any matching callable).
+
+The process-wide session is not thread-safe. For concurrent or nested use pass an
+explicit `Tool(..., runtime=rt)`, or scope a swap to a block with
+`with maina.isolated(rt): ...` (restores the prior Runtime on exit).
+
+`Tool.run` / the call form take `timeout=<seconds>` and `env_allow=[...]`. With
+`env_allow` set, only essential vars (`PATH`, locale, temp, `MISE_DATA_DIR`) plus
+the named keys reach the tool subprocess — secrets in `os.environ` stay out of
+third-party binaries. A subprocess that overruns raises `ToolTimeoutError`; a
+`mise` bootstrap failure raises `RuntimeProvisionError` (both subclass
+`InstallError`).
 
 `extends` parents use registry ids (no `.yaml` suffix), e.g. `extends: kubectl`
 (not `kubectl-kubectl`). Family roots resolve from `kubectl/kubectl.yaml` as id
 `kubectl`. See `examples/local_tool/` (overlay registry) and
 `examples/parsers_dirs/` (custom parser via `parsers_dirs`).
 
-Shipped `base.yaml` auto-extends every tool and pins default `python` / `node`
-runtimes. That means `prepare` / `resolve` may `mise ensure` both even for
-path-only tools. Opt out or reduce inherited pins on a child:
+Shipped `base.yaml` auto-extends every tool but carries **no** runtime pins, so a
+static binary never drags `mise`. The `npm` backend provisions Node on its own.
+Pin runtimes where you actually need them:
 
-- `requires: null` — clear all inherited runtime pins
-- `requires: { node: null }` — drop one pin; other inherited pins remain
-- override a pin with a new version string as usual
+- in your own overlay `base.yaml` (org-wide), or
+- per tool: `requires: { node: "22" }`
+- `requires: null` on a child clears every inherited pin;
+  `requires: { node: null }` drops just one
 
 Quote version pins in YAML (`python: "3.10"`); unquoted floats are rejected.
+
+A manifest may declare `platforms: [linux, macos]`. On any other host `resolve`
+raises `UnsupportedPlatformError` up front, and `maina prepare` (no ids) skips
+that tool instead of failing.
+
+For a `github` install, optionally pin asset digests:
+
+```yaml
+install:
+  backend: github
+  sha256:
+    linux-x86_64: <hex>
+    macos-arm64: <hex>
+```
+
+A download whose SHA-256 does not match is rejected before `chmod +x`.
 
 ### Catalog notes
 
@@ -75,6 +105,20 @@ uv run python examples/parsers_dirs/demo.py
 ```
 
 Tool cache: `~/.cache/maina` (override with `MAINA_CACHE`).
+
+Docs site (local preview):
+
+```bash
+uv run mkdocs serve      # http://127.0.0.1:8000
+uv run mkdocs build --strict
+```
+
+Unit tests are hermetic by default; the network/mise suite is opt-in:
+
+```bash
+uv run pytest              # unit only
+uv run pytest -m integration
+```
 
 ## Quality gates (ShipGate)
 

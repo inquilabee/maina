@@ -10,8 +10,9 @@ from maina.core.errors import ManifestError
 if TYPE_CHECKING:
     from pathlib import Path
 
-# Catalog decoration only — not enforced at resolve/run time.
-IGNORED_MANIFEST_KEYS = frozenset({"platforms", "name"})
+# Dropped from the merged manifest before use (pure catalog decoration).
+# ``platforms`` is kept and enforced at resolve time (see ``Manifest.platforms``).
+IGNORED_MANIFEST_KEYS = frozenset({"name"})
 MANIFEST_PREFIX = "manifest "
 BASE_TOOL_ID = "base"
 
@@ -28,7 +29,7 @@ ARG_KEYS = frozenset(
         "help",
     }
 )
-INSTALL_KEYS = frozenset({"backend", "repo", "assets", "binary", "tag", "package"})
+INSTALL_KEYS = frozenset({"backend", "repo", "assets", "binary", "tag", "package", "sha256"})
 # Legacy singular form only — freeform pins use runtime names as keys.
 LEGACY_REQUIRES_KEYS = frozenset({"runtime", "version"})
 REQUIRES_KEYS = LEGACY_REQUIRES_KEYS  # back-compat alias for importers
@@ -38,6 +39,11 @@ OUTPUT_KEYS = frozenset({"format", "success_codes"})
 def optional_str(value: Any) -> str | None:
     """Coerce optional YAML scalars to str, preserving None."""
     return None if value is None else str(value)
+
+
+def manifest_error(subject: str, detail: str) -> ManifestError:
+    """A ``ManifestError`` for *subject* (a tool id) with a consistent prefix."""
+    return ManifestError(f"{MANIFEST_PREFIX}{subject!r} {detail}")
 
 
 def unknown_keys(raw: dict[str, Any], allowed: frozenset[str]) -> list[str]:
@@ -68,10 +74,10 @@ class ArgSpec:
     def from_mapping(cls, name: str, raw: Any, *, tool_id: str) -> ArgSpec:
         """Parse one arg map; fail closed on non-maps and unknown keys."""
         if not isinstance(raw, dict):
-            raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} args.{name} must be a map")
+            raise manifest_error(tool_id, f"args.{name} must be a map")
         if bad := unknown_keys(raw, ARG_KEYS):
             keys = ", ".join(bad)
-            raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} args.{name} unknown keys: {keys}")
+            raise manifest_error(tool_id, f"args.{name} unknown keys: {keys}")
         return cls(
             type=str(raw.get("type", "string")),
             flag=None if raw.get("flag") is None else str(raw["flag"]),
@@ -96,6 +102,7 @@ class InstallSpec:
     binary: str | None = None
     tag: str | None = None
     package: str | None = None
+    sha256: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def from_mapping(cls, raw: Any, *, tool_id: str) -> InstallSpec:
@@ -103,13 +110,13 @@ class InstallSpec:
         if raw is None:
             raw = {}
         if not isinstance(raw, dict):
-            raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} install must be a map")
+            raise manifest_error(tool_id, "install must be a map")
         if bad := unknown_keys(raw, INSTALL_KEYS):
             keys = ", ".join(bad)
-            raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} install unknown keys: {keys}")
+            raise manifest_error(tool_id, f"install unknown keys: {keys}")
         assets = raw.get("assets") or {}
         if not isinstance(assets, dict):
-            raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} install.assets must be a map")
+            raise manifest_error(tool_id, "install.assets must be a map")
         backend = raw.get("backend", "path")
         return cls(
             backend="path" if backend is None else str(backend),
@@ -118,7 +125,19 @@ class InstallSpec:
             binary=optional_str(raw.get("binary")),
             tag=optional_str(raw.get("tag")),
             package=optional_str(raw.get("package")),
+            sha256=cls._parse_sha256(raw.get("sha256"), tool_id=tool_id),
         )
+
+    @staticmethod
+    def _parse_sha256(raw: Any, *, tool_id: str) -> dict[str, str]:
+        """Parse the optional ``install.sha256`` map (platform key → hex digest)."""
+        if raw is None:
+            return {}
+        if not isinstance(raw, dict):
+            raise manifest_error(
+                tool_id, "install.sha256 must be a map of platform key to hex digest"
+            )
+        return {str(key): str(value) for key, value in raw.items()}
 
 
 @dataclass(slots=True, frozen=True)
@@ -171,7 +190,7 @@ class RequiresSpec:
         if raw is None:
             return {}
         if not isinstance(raw, dict):
-            raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} requires must be a map")
+            raise manifest_error(tool_id, "requires must be a map")
         return raw
 
     @staticmethod
@@ -180,9 +199,9 @@ class RequiresSpec:
         legacy, freeform = keys & LEGACY_REQUIRES_KEYS, keys - LEGACY_REQUIRES_KEYS
         if legacy and freeform:
             mixed = ", ".join(sorted(str(key) for key in freeform))
-            raise ManifestError(
-                f"{MANIFEST_PREFIX}{tool_id!r} requires cannot mix legacy "
-                f"runtime/version with freeform pins ({mixed})"
+            raise manifest_error(
+                tool_id,
+                f"requires cannot mix legacy runtime/version with freeform pins ({mixed})",
             )
         return legacy
 
@@ -191,7 +210,7 @@ class RequiresSpec:
         """Parse legacy singular ``runtime`` / ``version`` form."""
         if bad := unknown_keys(raw, LEGACY_REQUIRES_KEYS):
             joined = ", ".join(bad)
-            raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} requires unknown keys: {joined}")
+            raise manifest_error(tool_id, f"requires unknown keys: {joined}")
         runtime = optional_str(raw.get("runtime"))
         version_raw = raw.get("version")
         version = (
@@ -232,9 +251,7 @@ class RequiresSpec:
     @staticmethod
     def _require_runtime_key(name: Any, *, tool_id: str) -> None:
         if not isinstance(name, str) or not name.strip():
-            raise ManifestError(
-                f"{MANIFEST_PREFIX}{tool_id!r} requires keys must be non-empty strings"
-            )
+            raise manifest_error(tool_id, "requires keys must be non-empty strings")
 
     @staticmethod
     def _pin_message(tool_id: str, key: str, detail: str) -> str:
@@ -291,21 +308,17 @@ class OutputSpec:
         if raw is None:
             raw = {}
         if not isinstance(raw, dict):
-            raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} output must be a map")
+            raise manifest_error(tool_id, "output must be a map")
         if bad := unknown_keys(raw, OUTPUT_KEYS):
             keys = ", ".join(bad)
-            raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} output unknown keys: {keys}")
+            raise manifest_error(tool_id, f"output unknown keys: {keys}")
         codes = raw.get("success_codes", [0])
         if not isinstance(codes, list) or not codes:
-            raise ManifestError(
-                f"{MANIFEST_PREFIX}{tool_id!r} output.success_codes must be a non-empty list"
-            )
+            raise manifest_error(tool_id, "output.success_codes must be a non-empty list")
         parsed: list[int] = []
         for item in codes:
             if isinstance(item, bool) or not isinstance(item, int):
-                raise ManifestError(
-                    f"{MANIFEST_PREFIX}{tool_id!r} output.success_codes must be integers"
-                )
+                raise manifest_error(tool_id, "output.success_codes must be integers")
             parsed.append(item)
         return cls(
             format=optional_str(raw.get("format")),
@@ -335,7 +348,7 @@ class Manifest:
     def cli(self) -> str:
         cli = self.data.get("cli")
         if not cli:
-            raise ManifestError(f"{MANIFEST_PREFIX}{self.id!r} missing cli")
+            raise manifest_error(self.id, "missing cli")
         return str(cli)
 
     @property
@@ -348,11 +361,39 @@ class Manifest:
         value = self.data.get("parser")
         return None if value is None else str(value)
 
+    @property
+    def platforms(self) -> tuple[str, ...]:
+        """Declared host platforms (``linux`` / ``macos`` / ``windows``).
+
+        Empty tuple means "any". Enforced at resolve time so an unsupported
+        host fails with a clear message instead of a missing-asset error.
+        """
+        raw = self.data.get("platforms")
+        if raw is None:
+            return ()
+        if not isinstance(raw, list) or any(not isinstance(item, str) for item in raw):
+            raise manifest_error(self.id, "platforms must be a list of strings")
+        return tuple(raw)
+
+    @property
+    def env(self) -> dict[str, str]:
+        """Static environment variables layered onto the tool subprocess.
+
+        Applied after any ``env_allow`` filtering, so manifest-declared vars are
+        always forwarded. Empty when the manifest has no ``env`` block.
+        """
+        raw = self.data.get("env")
+        if raw is None:
+            return {}
+        if not isinstance(raw, dict):
+            raise manifest_error(self.id, "env must be a map")
+        return {str(key): str(value) for key, value in raw.items()}
+
 
 def parse_args_map(raw: Any, *, tool_id: str) -> dict[str, ArgSpec]:
     """Parse the args map into typed ArgSpec entries."""
     if raw is None:
         raw = {}
     if not isinstance(raw, dict):
-        raise ManifestError(f"{MANIFEST_PREFIX}{tool_id!r} args must be a map")
+        raise manifest_error(tool_id, "args must be a map")
     return {name: ArgSpec.from_mapping(name, spec, tool_id=tool_id) for name, spec in raw.items()}

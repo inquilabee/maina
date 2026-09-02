@@ -40,4 +40,10 @@ todos.md
 
 # cache files and dir
 *cache*
-docs/
+
+# Local powerhouse planning notes (the published docs site lives elsewhere in docs/)
+docs/plans/
+docs/reviews/
+
+# MkDocs build output
+site/

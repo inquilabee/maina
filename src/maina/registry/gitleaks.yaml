@@ -1,0 +1,44 @@
+name: gitleaks
+cli: gitleaks
+version: 8.30.1
+platforms: [linux, macos]
+# Asset names mirror ShipGate's proven `gitleaks_{version}_{os}_{arch}.tar.gz`
+# template (arch x86_64 -> x64). Verified end-to-end by the integration suite.
+install:
+  backend: github
+  repo: gitleaks/gitleaks
+  tag: v8.30.1
+  binary: gitleaks
+  assets:
+    linux-x86_64: gitleaks_8.30.1_linux_x64.tar.gz
+    linux-arm64: gitleaks_8.30.1_linux_arm64.tar.gz
+    macos-x86_64: gitleaks_8.30.1_darwin_x64.tar.gz
+    macos-arm64: gitleaks_8.30.1_darwin_arm64.tar.gz
+args:
+  command:
+    positional: true
+    type: string
+    default: dir
+    description: gitleaks subcommand such as dir, git or stdin
+  path:
+    positional: true
+    type: path
+    description: Path to scan
+  config:
+    flag: --config
+    type: path
+  report_format:
+    flag: --report-format
+    type: string
+  report_path:
+    flag: --report-path
+    type: string
+  no_banner:
+    flag: --no-banner
+    type: flag
+    default: true
+output:
+  format: text
+  # 0 = clean, 1 = leaks found (not a crash).
+  success_codes: [0, 1]
+parser: text

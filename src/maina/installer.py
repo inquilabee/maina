@@ -8,7 +8,8 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, cast
 
-from maina.core.errors import InstallError
+from maina.core.errors import InstallError, UnsupportedPlatformError
+from maina.core.platform import current_platform
 from maina.core.protocols import InstallContext, InstallerBackend, LanguageRuntimeProvider
 from maina.mise import MiseRuntime
 
@@ -51,7 +52,7 @@ class Installer:
     def install_dir_lock(dest: Path) -> Iterator[None]:
         """Exclusive lock for a cache install directory (parallel prepare safety)."""
         dest.mkdir(parents=True, exist_ok=True)
-        lock_path = dest / ".porter-install.lock"
+        lock_path = dest / ".maina-install.lock"
         with lock_path.open("a+b") as lock_file:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             try:
@@ -71,8 +72,19 @@ class Installer:
         for backend in items:
             self._backends[backend.name] = backend
 
+    @staticmethod
+    def _require_supported_platform(manifest: Manifest) -> None:
+        """Fail early when the host is not in the manifest's ``platforms`` list."""
+        allowed = manifest.platforms
+        host = current_platform()
+        if allowed and host not in allowed:
+            raise UnsupportedPlatformError(
+                f"{manifest.id}: not supported on {host} (manifest platforms: {', '.join(allowed)})"
+            )
+
     def resolve(self, manifest: Manifest) -> tuple[str, dict[str, str]]:
         """Resolve argv[0] path/name and process env for a manifest."""
+        self._require_supported_platform(manifest)
         backend_name = manifest.install.backend
         version = manifest.version or "default"
         # Copy at the resolve boundary so backends cannot mutate a shared caller dict.
@@ -103,34 +115,79 @@ class Installer:
         env["MISE_DATA_DIR"] = str(self.cache_root / "mise-data")
         return env
 
+    def is_satisfied(self, manifest: Manifest) -> bool:
+        """True when *manifest* needs no install work on this host.
+
+        Side-effect free: no download, no ``mise`` call. Abstract surfaces and
+        tools unsupported on this host count as satisfied (nothing to do). A
+        backend without a ``probe`` method is treated as not satisfied.
+        """
+        if manifest.abstract:
+            return True
+        if manifest.platforms and current_platform() not in manifest.platforms:
+            return True
+        backend = self._backends.get(manifest.install.backend)
+        probe = getattr(backend, "probe", None)
+        if probe is None:
+            return False
+        ctx = InstallContext(cache_root=self.cache_root, language=self.language)
+        satisfied: bool = probe(manifest, version=manifest.version or "default", ctx=ctx)
+        return satisfied
+
+    ABSTRACT_PREPARE_HINT = "prepare a concrete child id or omit abstracts from prepare"
+
+    @classmethod
+    def _abstract_error(cls, tool_id: str) -> InstallError:
+        return InstallError(
+            f"cannot prepare abstract tool {tool_id!r}; {cls.ABSTRACT_PREPARE_HINT}"
+        )
+
+    def _selected_manifests(self, tool_ids: list[str] | None) -> Iterator[tuple[str, Manifest]]:
+        """Yield ``(id, manifest)`` for concrete, host-supported tools.
+
+        Explicit abstract ids raise :class:`InstallError`; when *tool_ids* is
+        omitted, abstract surfaces and tools unsupported on this host are
+        skipped.
+        """
+        explicit = tool_ids is not None
+        ids = tool_ids if explicit else self.registry.iter_ids()
+        for tid in ids:
+            manifest = self.registry.load(tid)
+            if manifest.abstract:
+                if explicit:
+                    raise self._abstract_error(tid)
+                continue
+            if not explicit and manifest.platforms and current_platform() not in manifest.platforms:
+                continue
+            yield tid, manifest
+
+    def check_ids(self, tool_ids: list[str] | None = None) -> tuple[list[str], list[str]]:
+        """Return ``(satisfied, missing)`` ids without installing anything.
+
+        Same id selection and abstract handling as :meth:`prepare_ids`.
+        """
+        satisfied: list[str] = []
+        missing: list[str] = []
+        for tid, manifest in self._selected_manifests(tool_ids):
+            (satisfied if self.is_satisfied(manifest) else missing).append(tid)
+        return satisfied, missing
+
     def prepare(self, manifest: Manifest) -> None:
         """Ensure runtimes and tool installs for one manifest."""
         if manifest.abstract:
-            raise InstallError(
-                f"cannot prepare abstract tool {manifest.id!r}; "
-                "prepare a concrete child id or omit abstracts from prepare"
-            )
+            raise self._abstract_error(manifest.id)
         self.resolve(manifest)
 
     def prepare_ids(self, tool_ids: list[str] | None = None) -> list[str]:
         """Prepare installs for given ids or all non-abstract manifests.
 
-        When *tool_ids* is omitted, abstract surfaces are skipped. When the
-        caller names ids explicitly, abstract (or unknown) ids raise
-        :class:`InstallError` instead of succeeding as a silent no-op.
+        When *tool_ids* is omitted, abstract surfaces and tools unsupported on
+        this host are skipped. When the caller names ids explicitly, abstract
+        (or unknown) ids raise :class:`InstallError` and an unsupported host
+        raises :class:`UnsupportedPlatformError` instead of a silent no-op.
         """
-        explicit = tool_ids is not None
-        ids = tool_ids if explicit else self.registry.iter_ids()
         prepared: list[str] = []
-        for tid in ids:
-            manifest = self.registry.load(tid)
-            if manifest.abstract:
-                if explicit:
-                    raise InstallError(
-                        f"cannot prepare abstract tool {tid!r}; "
-                        "prepare a concrete child id or omit abstracts from prepare"
-                    )
-                continue
+        for tid, manifest in self._selected_manifests(tool_ids):
             self.prepare(manifest)
             prepared.append(tid)
         return prepared

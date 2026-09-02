@@ -35,3 +35,8 @@ class PathBackend:
         if not found:
             raise InstallError(f"{manifest.cli!r} not found on PATH")
         return found, env
+
+    def probe(self, manifest: Manifest, *, version: str, ctx: InstallContext) -> bool:
+        """True when the CLI already resolves on PATH (no side effects)."""
+        del version, ctx
+        return self._which(manifest.cli) is not None

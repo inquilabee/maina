@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gzip
+import hashlib
 import lzma
 import shutil
 import stat
@@ -43,19 +44,36 @@ class ArchiveFetcher:
         *,
         binary: str,
         asset_name: str,
+        sha256: str | None = None,
     ) -> None:
-        """Download an asset and extract/copy the binary into dest_dir."""
+        """Download an asset and extract/copy the binary into dest_dir.
+
+        When *sha256* is given, the downloaded asset must match that hex digest
+        before it is extracted; a mismatch raises :class:`InstallError`.
+        """
         dest_dir.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             archive = tmp_path / asset_name
             self.fetch_https(url, archive)
+            if sha256:
+                self._verify_sha256(archive, expected=sha256, url=url)
             self.extract_archive(
                 archive,
                 tmp_path,
                 dest_dir,
                 binary=binary,
                 asset_name=asset_name,
+            )
+
+    @staticmethod
+    def _verify_sha256(archive: Path, *, expected: str, url: str) -> None:
+        """Raise unless *archive* hashes to *expected* (case-insensitive hex)."""
+        with archive.open("rb") as handle:
+            actual = hashlib.file_digest(handle, "sha256").hexdigest()
+        if actual.lower() != expected.strip().lower():
+            raise InstallError(
+                f"sha256 mismatch for {url}: expected {expected.strip().lower()}, got {actual}"
             )
 
     def fetch_https(self, url: str, dest: Path) -> None:

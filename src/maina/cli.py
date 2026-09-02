@@ -95,14 +95,30 @@ def prepare(
         list[str] | None,
         typer.Argument(help="Tool ids to prepare (default: all non-abstract)"),
     ] = None,
+    check: Annotated[
+        bool,
+        typer.Option("--check", help="Report install state; do not download or run mise"),
+    ] = False,
 ) -> None:
     """Ensure mise runtimes and tool installs.
 
     Default prepares every concrete tool. Explicit abstract ids (e.g. ``base``,
-    ``kubectl``) fail with a non-zero exit instead of a silent skip.
+    ``kubectl``) fail with a non-zero exit instead of a silent skip. With
+    ``--check`` nothing is installed: each id prints ``satisfied`` or
+    ``missing`` and the command exits non-zero if anything is missing.
     """
+    installer = runtime().installer
     try:
-        prepared = runtime().installer.prepare_ids(tools)
+        if check:
+            satisfied, missing = installer.check_ids(tools)
+            for tid in satisfied:
+                typer.echo(f"satisfied: {tid}")
+            for tid in missing:
+                typer.echo(f"missing: {tid}")
+            if missing:
+                raise typer.Exit(1)
+            return
+        prepared = installer.prepare_ids(tools)
     except (ManifestError, InstallError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(2) from exc

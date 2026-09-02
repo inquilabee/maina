@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import os
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -18,7 +19,7 @@ from maina.installer import Installer
 from maina.mise import MiseRuntime
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Iterator, Mapping, Sequence
 
     from maina.core.parsers import ParserInput
     from maina.core.protocols import InstallerBackend, LanguageRuntimeProvider
@@ -182,6 +183,23 @@ def runtime() -> Runtime:
 def use(rt: Runtime) -> Runtime:
     """Replace the process-wide active composition Runtime."""
     return SESSION.set(rt)
+
+
+@contextmanager
+def isolated(rt: Runtime | None = None) -> Iterator[Runtime]:
+    """Swap the active Runtime for the block, restoring the prior one on exit.
+
+    ``with maina.isolated(rt): ...`` scopes an alternate catalog to a block
+    without leaking it into the rest of the process. For concurrent isolation
+    prefer an explicit ``Tool(..., runtime=rt)`` — this swap is process-wide and
+    not thread-safe.
+    """
+    previous = SESSION.current
+    SESSION.set(rt if rt is not None else Runtime.preferred())
+    try:
+        yield SESSION.get()
+    finally:
+        SESSION.current = previous
 
 
 def register(

@@ -13,11 +13,17 @@ dependencies = [
     "typer>=0.12",
 ]
 
+[project.urls]
+Homepage = "https://github.com/inquilabee/maina"
+Documentation = "https://inquilabee.github.io/maina/"
+Repository = "https://github.com/inquilabee/maina"
+
 [project.scripts]
 maina = "maina.cli:main"
 
 [dependency-groups]
 dev = [
+    "mkdocs-material>=9.5",
     "pre-commit>=4.0",
     "pytest>=8.0",
     "shipgate>=0.1.0",
@@ -40,6 +46,8 @@ known_first_party = ["maina"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Hermetic by default; run the network/mise/npm suite with: pytest -m integration
+addopts = "-m 'not integration'"
 markers = [
     "integration: hits network, mise, npm, or other external services",
 ]

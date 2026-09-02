@@ -35,6 +35,13 @@ class GithubBackend:
         exe = self._resolve_github(manifest, version, ctx)
         return str(exe), ctx.prepend_path(env, exe.parent)
 
+    @staticmethod
+    def probe(manifest: Manifest, *, version: str, ctx: InstallContext) -> bool:
+        """True when the cached release binary already exists (no download)."""
+        binary = manifest.install.binary or manifest.cli
+        cached = ctx.cache_root / "tools" / manifest.cli / version / "bin" / binary
+        return cached.is_file()
+
     def _resolve_github(self, manifest: Manifest, version: str, ctx: InstallContext) -> Path:
         """Download a GitHub release asset into the tool cache if needed."""
         repo, assets, binary = self._install_parts(manifest)
@@ -55,6 +62,7 @@ class GithubBackend:
             dest_dir,
             binary=binary,
             asset_name=str(asset),
+            sha256=manifest.install.sha256.get(key),
         )
         self._finalize_binary(manifest.id, dest, dest_dir, binary, str(asset))
         return dest

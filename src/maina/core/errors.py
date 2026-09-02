@@ -23,6 +23,40 @@ class InstallError(MainaError):
     """Tool or runtime install/resolve failed."""
 
 
+class RuntimeProvisionError(InstallError):
+    """A language runtime (mise-managed Node/Python/...) could not be provisioned.
+
+    Subclass of :class:`InstallError` so existing ``except InstallError`` handlers
+    keep working while callers that care can distinguish a runtime bootstrap
+    failure from a missing tool binary.
+    """
+
+
+class UnsupportedPlatformError(InstallError):
+    """The host platform is not in a manifest's declared ``platforms`` list."""
+
+
+class ToolTimeoutError(InstallError):
+    """A tool subprocess exceeded its resolved timeout.
+
+    Subclass of :class:`InstallError` for back-compat; carries the tool id,
+    timeout, and argv so callers can report or retry.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        tool: str,
+        timeout: float,
+        command: list[str],
+    ) -> None:
+        super().__init__(message)
+        self.tool = tool
+        self.timeout = timeout
+        self.command = command
+
+
 class RegisterError(MainaError):
     """Invalid register path or composition registration failure."""
 

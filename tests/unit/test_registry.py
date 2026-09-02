@@ -238,12 +238,14 @@ def test_requires_rejects_mixed_legacy_and_pins(tmp_path: Path) -> None:
         Registry(root).load("demo")
 
 
-def test_shipped_tools_inherit_base_requires() -> None:
-    manifest = preferred_registry().load("jq")
-    assert manifest.requires.runtimes["python"] == "3.14"
-    assert manifest.requires.runtimes["node"] == "latest"
-    jscpd = preferred_registry().load("jscpd")
-    assert jscpd.requires.get("node") == "latest"
+def test_shipped_tools_carry_no_surprise_runtime_pins() -> None:
+    # Shipped base.yaml has no runtime pins: a static binary must not drag mise.
+    registry = preferred_registry()
+    assert registry.load("jq").requires.runtimes == {}
+    assert registry.load("shellcheck").requires.runtimes == {}
+    # npm tools may still declare node explicitly where they need it.
+    jscpd = registry.load("jscpd")
+    assert jscpd.requires.runtimes == {} or jscpd.requires.get("node") is not None
 
 
 def test_requires_rejects_yaml_float_pins(tmp_path: Path) -> None:

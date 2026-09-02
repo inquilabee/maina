@@ -11,7 +11,7 @@ import pytest
 
 from helpers import write_yaml
 from maina.backends import PathBackend
-from maina.core.errors import InstallError
+from maina.core.errors import ToolTimeoutError
 from maina.core.parsers import ParserResolver, builtin_generals
 from maina.core.registry import Registry
 from maina.installer import Installer
@@ -60,10 +60,10 @@ def test_toolrunner_path_backend_echo_success(tmp_path: Path) -> None:
     )
     registry = Registry(root)
     runner = ToolRunner(registry.load("echo"), installer=path_installer(tmp_path, registry))
-    result = runner.run({"msg": "hello-porter"})
+    result = runner.run({"msg": "hello-maina"})
     assert result.ok
     assert result.exit_code == 0
-    assert "hello-porter" in result.raw
+    assert "hello-maina" in result.raw
     assert result.command[0].endswith("echo") or result.command[0] == "echo"
 
 
@@ -141,8 +141,10 @@ def test_toolrunner_timeout_kwarg(tmp_path: Path) -> None:
     )
     registry = Registry(root)
     runner = ToolRunner(registry.load("sleep"), installer=path_installer(tmp_path, registry))
-    with pytest.raises(InstallError, match="timed out"):
+    with pytest.raises(ToolTimeoutError, match="timed out") as excinfo:
         runner.run({"seconds": "30"}, timeout=0.05)
+    assert excinfo.value.tool == "sleep"
+    assert excinfo.value.timeout == pytest.approx(0.05)
 
 
 def test_toolrunner_executor_records_cwd(tmp_path: Path) -> None:
@@ -202,3 +204,63 @@ def test_family_parser_apply_via_preferred() -> None:
 def test_fake_language_protocol(tmp_path: Path) -> None:
     lang: LanguageRuntimeProvider = FakeLanguage(tmp_path)
     assert lang.ensure("node", "20") == tmp_path
+
+
+def test_toolrunner_env_allow_trims_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SUPER_SECRET", "leak-me")
+    monkeypatch.setenv("KEEP_ME", "ok")
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "echo.yaml",
+        {"cli": "echo", "install": {"backend": "path"}, "output": {"success_codes": [0]}},
+    )
+    registry = Registry(root)
+    seen: dict[str, Any] = {}
+
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        seen["env"] = kwargs.get("env")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    runner = ToolRunner(
+        registry.load("echo"),
+        installer=path_installer(tmp_path, registry),
+        executor=fake_run,
+    )
+    runner.run({}, env_allow=["KEEP_ME"])
+    env = seen["env"]
+    assert "PATH" in env
+    assert env.get("KEEP_ME") == "ok"
+    assert "SUPER_SECRET" not in env
+
+    # Default (no env_allow) forwards the full environment.
+    runner.run({})
+    assert "SUPER_SECRET" in seen["env"]
+
+
+def test_toolrunner_manifest_env_survives_env_allow(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "echo.yaml",
+        {
+            "cli": "echo",
+            "install": {"backend": "path"},
+            "env": {"TOOL_FLAG": "on"},
+            "output": {"success_codes": [0]},
+        },
+    )
+    registry = Registry(root)
+    seen: dict[str, Any] = {}
+
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        seen["env"] = kwargs.get("env")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    runner = ToolRunner(
+        registry.load("echo"),
+        installer=path_installer(tmp_path, registry),
+        executor=fake_run,
+    )
+    runner.run({}, env_allow=[])
+    assert seen["env"]["TOOL_FLAG"] == "on"

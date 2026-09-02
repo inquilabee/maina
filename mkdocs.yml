@@ -1,0 +1,42 @@
+site_name: maina
+site_description: Call non-Python CLIs from Python with native-like APIs
+site_url: https://inquilabee.github.io/maina/
+repo_url: https://github.com/inquilabee/maina
+docs_dir: docs
+exclude_docs: |
+  plans/
+  reviews/
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: black
+      accent: amber
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: black
+      accent: amber
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - CLI: cli.md
+  - Manifest schema: manifests.md
+  - Install backends: backends.md
+  - Parsers: parsers.md
+  - Extending maina: extending.md
+  - ShipGate catalog parity: shipgate-catalog-parity.md
+  - Architecture: architecture.md

@@ -33,6 +33,21 @@ class NpmBackend:
         exe = self._resolve_npm(manifest, version, env, ctx)
         return str(exe), ctx.prepend_path(env, exe.parent)
 
+    @staticmethod
+    def probe(manifest: Manifest, *, version: str, ctx: InstallContext) -> bool:
+        """True when the npm bin link already exists in the cache (no install)."""
+        link = (
+            ctx.cache_root
+            / "tools"
+            / manifest.cli
+            / version
+            / "npm"
+            / "node_modules"
+            / ".bin"
+            / manifest.cli
+        )
+        return link.exists()
+
     def _resolve_npm(
         self,
         manifest: Manifest,
