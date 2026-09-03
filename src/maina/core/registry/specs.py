@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -55,7 +56,9 @@ ARG_KEYS = frozenset(
     }
 )
 ARG_TYPES = frozenset({"string", "flag", "path"})
-INSTALL_KEYS = frozenset({"backend", "repo", "assets", "binary", "tag", "package", "sha256"})
+INSTALL_KEYS = frozenset(
+    {"backend", "repo", "assets", "binary", "tag", "package", "sha256", "allow_scripts"}
+)
 
 
 def is_unsafe_segment(text: str) -> bool:
@@ -172,6 +175,7 @@ class InstallSpec:
     tag: str | None = None
     package: str | None = None
     sha256: dict[str, str] = field(default_factory=dict)
+    allow_scripts: bool = False
 
     @classmethod
     def from_mapping(cls, raw: Any, *, tool_id: str) -> InstallSpec:
@@ -183,21 +187,56 @@ class InstallSpec:
         if bad := unknown_keys(raw, INSTALL_KEYS):
             keys = ", ".join(bad)
             raise manifest_error(tool_id, f"install unknown keys: {keys}")
-        assets = raw.get("assets") or {}
-        if not isinstance(assets, dict):
-            raise manifest_error(tool_id, "install.assets must be a map")
-        backend = raw.get("backend", "path")
         return cls(
-            backend="path" if backend is None else str(backend),
-            repo=optional_str(raw.get("repo")),
-            assets=dict(assets),
+            backend="path" if raw.get("backend") is None else str(raw.get("backend", "path")),
+            repo=cls._parse_repo(raw.get("repo"), tool_id=tool_id),
+            assets=cls._parse_assets(raw.get("assets"), tool_id=tool_id),
             binary=safe_segment(
                 raw.get("binary"), field_name="install.binary", tool_id=tool_id, allow_none=True
             ),
             tag=optional_str(raw.get("tag")),
             package=optional_str(raw.get("package")),
             sha256=cls._parse_sha256(raw.get("sha256"), tool_id=tool_id),
+            allow_scripts=raw.get("allow_scripts", False) is True,
         )
+
+    def identity_key(self) -> str:
+        """Short stable hash of what this spec fetches (repo/tag/asset/sha256).
+
+        Two manifests that share ``cli`` + ``version`` but differ here must not
+        share a cache directory.
+        """
+        payload = repr(
+            (
+                self.backend,
+                self.repo,
+                self.tag,
+                sorted(self.assets.items()),
+                sorted(self.sha256.items()),
+                self.package,
+            )
+        )
+        return hashlib.blake2s(payload.encode("utf-8"), digest_size=5).hexdigest()
+
+    @staticmethod
+    def _parse_repo(raw: Any, *, tool_id: str) -> str | None:
+        if raw is None:
+            return None
+        text = str(raw)
+        parts = text.split("/")
+        if len(parts) != 2 or not all(parts) or any(is_unsafe_segment(p) for p in parts):
+            raise manifest_error(tool_id, f"install.repo {text!r} must be 'owner/name'")
+        return text
+
+    @staticmethod
+    def _parse_assets(raw: Any, *, tool_id: str) -> dict[str, Any]:
+        assets = raw or {}
+        if not isinstance(assets, dict):
+            raise manifest_error(tool_id, "install.assets must be a map")
+        return {
+            str(key): safe_segment(value, field_name=f"install.assets.{key}", tool_id=tool_id)
+            for key, value in assets.items()
+        }
 
     @staticmethod
     def _parse_sha256(raw: Any, *, tool_id: str) -> dict[str, str]:

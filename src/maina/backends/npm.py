@@ -64,7 +64,15 @@ class NpmBackend:
         return (
             link
             if link.exists()
-            else self._install_package(manifest.cli, package, version, prefix, link, env)
+            else self._install_package(
+                manifest.cli,
+                package,
+                version,
+                prefix,
+                link,
+                env,
+                allow_scripts=manifest.install.allow_scripts,
+            )
         )
 
     @staticmethod
@@ -94,6 +102,8 @@ class NpmBackend:
         prefix: Path,
         link: Path,
         env: dict[str, str],
+        *,
+        allow_scripts: bool = False,
     ) -> Path:
         """npm install a package into prefix and return its bin link."""
         prefix.mkdir(parents=True, exist_ok=True)
@@ -110,7 +120,7 @@ class NpmBackend:
         npm = shutil.which("npm", path=env.get("PATH"))
         if not npm:
             raise InstallError("npm not found; ensure node runtime via mise")
-        NpmBackend._npm_install(npm, prefix, pkg_spec, env)
+        NpmBackend._npm_install(npm, prefix, pkg_spec, env, allow_scripts=allow_scripts)
         if not (link.is_file() or link.is_symlink()):
             raise InstallError(f"npm install of {pkg_spec} did not produce {cli}")
         resolved = link.resolve()
@@ -124,20 +134,35 @@ class NpmBackend:
     INSTALL_TIMEOUT = 600
 
     @staticmethod
-    def _npm_install(npm: str, prefix: Path, pkg_spec: str, env: dict[str, str]) -> None:
-        """Run npm install --prefix for a package (local, no lockfile churn)."""
+    def _npm_install(
+        npm: str,
+        prefix: Path,
+        pkg_spec: str,
+        env: dict[str, str],
+        *,
+        allow_scripts: bool = False,
+    ) -> None:
+        """Run npm install --prefix for a package (local, no lockfile churn).
+
+        ``--ignore-scripts`` by default: a third-party package's install /
+        postinstall lifecycle scripts run with the composed environment, so a
+        manifest must opt in with ``install.allow_scripts: true``.
+        """
+        argv = [
+            npm,
+            "install",
+            "--prefix",
+            str(prefix),
+            "--no-fund",
+            "--no-audit",
+            "--no-package-lock",
+        ]
+        if not allow_scripts:
+            argv.append("--ignore-scripts")
+        argv.append(pkg_spec)
         try:
             subprocess.run(
-                [
-                    npm,
-                    "install",
-                    "--prefix",
-                    str(prefix),
-                    "--no-fund",
-                    "--no-audit",
-                    "--no-package-lock",
-                    pkg_spec,
-                ],
+                argv,
                 check=True,
                 env=env,
                 capture_output=True,

@@ -64,7 +64,9 @@ class GithubBackend:
         if dest.is_file():
             return dest
 
-        tag = manifest.install.tag or version
+        # ``version`` is the identity-keyed cache segment; the release tag is the
+        # manifest's own version (or an explicit ``install.tag``).
+        tag = manifest.install.tag or manifest.version
         url = self._release_url(repo, str(asset), tag=str(tag) if tag else None)
         self._fetcher.download_and_extract(
             url,

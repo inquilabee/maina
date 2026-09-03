@@ -103,15 +103,21 @@ install:
 | Field | Backends | Meaning |
 | --- | --- | --- |
 | `backend` | all | `path` (default), `github`, `npm`, or a registered custom name. |
-| `repo` | `github` | `owner/name` GitHub repository. |
-| `assets` | `github` | Platform key (`linux-x86_64`, `macos-arm64`, ...) to release asset name. |
+| `repo` | `github` | `owner/name` GitHub repository (validated at load). |
+| `assets` | `github` | Platform key (`linux-x86_64`, `macos-arm64`, ...) to release asset name (each a single safe path segment). |
 | `binary` | `github` | Executable name inside the asset. Defaults to `cli`. |
 | `tag` | `github` | Release tag. Defaults to `version`; `latest` uses the latest release. |
 | `sha256` | `github` | Optional platform key to hex digest. A mismatch aborts before `chmod +x`. |
 | `package` | `npm` | npm package name. Defaults to `cli`. |
+| `allow_scripts` | `npm` | `true` lets `npm install` run the package's lifecycle scripts. Default `false` (`--ignore-scripts`). |
 
 `.tar.gz`, `.tar.xz`, `.zip`, `.gz`, `.xz`, and bare-binary assets are all
 handled. Archive members that escape the destination are rejected.
+
+The `github` / `npm` cache directory is keyed by `cli` + `version` **and** a
+hash of `repo` / `tag` / `assets` / `sha256` / `package`, so two manifests that
+share `cli` + `version` but fetch different things never collide and a changed
+digest pin forces a fresh download.
 
 ## requires
 

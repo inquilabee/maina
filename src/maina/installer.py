@@ -14,15 +14,21 @@ try:
 except ImportError:  # pragma: no cover - Windows
     _fcntl = None
 
+from maina.core.envfilter import filter_env
 from maina.core.errors import InstallError, UnsupportedPlatformError
 from maina.core.platform import current_platform
 from maina.core.protocols import InstallContext, InstallerBackend, LanguageRuntimeProvider
 from maina.mise import MiseRuntime
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from pathlib import Path
 
     from maina.core.registry import Manifest, Registry, RequiresSpec
+
+# Backends that key their cache by tool identity (repo/tag/asset/sha256), not
+# just cli+version.
+IDENTITY_BACKENDS = frozenset({"github", "npm"})
 
 
 class Installer:
@@ -100,13 +106,34 @@ class Installer:
                 f"{manifest.id}: not supported on {host} (manifest platforms: {', '.join(allowed)})"
             )
 
-    def resolve(self, manifest: Manifest) -> tuple[str, dict[str, str]]:
-        """Resolve argv[0] path/name and process env for a manifest."""
+    @staticmethod
+    def _cache_version(manifest: Manifest) -> str:
+        """Cache dir segment: ``<version>`` or ``<version>-<identity8>``.
+
+        github / npm tools include a short hash of repo/tag/asset/sha256/package
+        so two manifests that share cli+version but differ in *what* they fetch
+        do not collide (and a digest pin is not bypassed by a stale cache hit).
+        """
+        version = manifest.version or "default"
+        return (
+            f"{version}-{manifest.install.identity_key()}"
+            if manifest.install.backend in IDENTITY_BACKENDS
+            else version
+        )
+
+    def resolve(
+        self, manifest: Manifest, *, env_allow: Iterable[str] | None = None
+    ) -> tuple[str, dict[str, str]]:
+        """Resolve argv[0] path/name and process env for a manifest.
+
+        ``env_allow`` trims the environment handed to install-phase subprocesses
+        (npm / mise) the same way it trims the tool's own environment.
+        """
         self._require_supported_platform(manifest)
         backend_name = manifest.install.backend
-        version = manifest.version or "default"
+        version = self._cache_version(manifest)
         # Copy at the resolve boundary so backends cannot mutate a shared caller dict.
-        env = dict(self._compose_requires_env(manifest.requires))
+        env = dict(filter_env(self._compose_requires_env(manifest.requires), env_allow))
         backend = self._backends.get(backend_name)
         if backend is None:
             raise InstallError(f"unknown install backend: {backend_name!r}")
@@ -153,7 +180,7 @@ class Installer:
         if probe is None:
             return False
         ctx = InstallContext(cache_root=self.cache_root, language=self.language)
-        satisfied: bool = probe(manifest, version=manifest.version or "default", ctx=ctx)
+        satisfied: bool = probe(manifest, version=self._cache_version(manifest), ctx=ctx)
         return satisfied
 
     ABSTRACT_PREPARE_HINT = "prepare a concrete child id or omit abstracts from prepare"

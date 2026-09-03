@@ -8,6 +8,7 @@ from collections.abc import Callable, Iterable
 from typing import TYPE_CHECKING, Any
 
 from maina.core.argparser import ArgParser
+from maina.core.envfilter import ESSENTIAL_ENV, filter_env
 from maina.core.errors import ToolTimeoutError
 from maina.core.parsers import ParserResolver
 from maina.core.result import ToolResult
@@ -19,21 +20,7 @@ if TYPE_CHECKING:
 # Test-only injectable; not a public pluggable runner API.
 Executor = Callable[..., subprocess.CompletedProcess[str]]
 
-# Always forwarded to the tool subprocess even when ``env_allow`` is set: without
-# these a tool cannot find its own binary, its runtime data dir, or locale.
-ESSENTIAL_ENV = frozenset(
-    {
-        "PATH",
-        "MISE_DATA_DIR",
-        "HOME",
-        "LANG",
-        "LC_ALL",
-        "TMPDIR",
-        "TEMP",
-        "TMP",
-        "SYSTEMROOT",
-    }
-)
+__all__ = ["ESSENTIAL_ENV", "Executor", "ToolRunner"]
 
 
 class ToolRunner:
@@ -72,10 +59,11 @@ class ToolRunner:
         The manifest's own ``env`` block is layered on afterwards and always
         forwarded. ``stdin`` is written to the tool's stdin.
         """
-        exe, env = self.installer.resolve(self.manifest)
-        # Filter the inherited environment, then always overlay the manifest's
-        # own vars (empty dict when the manifest declares none).
-        env = {**self._filter_env(env, env_allow), **self.manifest.env}
+        exe, env = self.installer.resolve(self.manifest, env_allow=env_allow)
+        # resolve() already trimmed the base env for install subprocesses; trim
+        # again here (backends may have re-read os.environ) and overlay the
+        # manifest's own vars (empty dict when the manifest declares none).
+        env = {**filter_env(env, env_allow), **self.manifest.env}
         argv = ArgParser(self.manifest.args).build(
             exe,
             self.manifest.subcommands,
@@ -131,11 +119,3 @@ class ToolRunner:
             return float(timeout)
         raw = self.manifest.data.get("timeout")
         return None if raw is None else float(raw)
-
-    @staticmethod
-    def _filter_env(env: dict[str, str], env_allow: Iterable[str] | None) -> dict[str, str]:
-        """Return *env* unchanged, or trimmed to essentials + *env_allow* keys."""
-        if env_allow is None:
-            return env
-        keep = ESSENTIAL_ENV | set(env_allow)
-        return {key: value for key, value in env.items() if key in keep}

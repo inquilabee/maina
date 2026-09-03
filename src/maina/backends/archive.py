@@ -76,7 +76,8 @@ class ArchiveFetcher:
         dest_dir.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            archive = tmp_path / asset_name
+            # asset_name is validated at manifest load, but never let it escape.
+            archive = tmp_path / Path(asset_name).name
             self.fetch_https(url, archive)
             if sha256:
                 self._verify_sha256(archive, expected=sha256, url=url)

@@ -297,7 +297,9 @@ def test_npm_install_rejects_out_of_cache_bin(
     prefix = tmp_path / "cache" / "tools" / "tool" / "1" / "npm"
     link = prefix / "node_modules" / ".bin" / "tool"
 
-    def fake_npm_install(npm: str, target: Path, pkg_spec: str, env: dict[str, str]) -> None:
+    def fake_npm_install(
+        npm: str, target: Path, pkg_spec: str, env: dict[str, str], **_kw: object
+    ) -> None:
         del npm, pkg_spec, env
         link_root = target / "node_modules" / ".bin"
         link_root.mkdir(parents=True)
@@ -315,7 +317,9 @@ def test_npm_install_accepts_in_cache_bin(tmp_path: Path, monkeypatch: pytest.Mo
     prefix = tmp_path / "cache" / "tools" / "tool" / "1" / "npm"
     link = prefix / "node_modules" / ".bin" / "tool"
 
-    def fake_npm_install(npm: str, target: Path, pkg_spec: str, env: dict[str, str]) -> None:
+    def fake_npm_install(
+        npm: str, target: Path, pkg_spec: str, env: dict[str, str], **_kw: object
+    ) -> None:
         del npm, pkg_spec, env
         real = target / "node_modules" / "tool" / "bin" / "tool.js"
         real.parent.mkdir(parents=True)

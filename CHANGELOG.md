@@ -49,8 +49,14 @@ First tagged release.
   unless it declares `abstract: true` itself.
 - `args.<name>.joiner` emits `--flag=value` as one token.
 - `args` inheritance merges per field (override `default:`, keep `flag`).
-- `cli` / `version` / `install.binary` must be single safe path segments;
-  a manifest can no longer write outside the cache root.
+- `cli` / `version` / `install.binary` / every `install.assets` value must be
+  single safe path segments, and `install.repo` must be `owner/name`; a manifest
+  can no longer write outside the cache root.
+- The `github` / `npm` cache key now includes a hash of
+  `repo`/`tag`/`assets`/`sha256`/`package`, so a manifest can't reuse another's
+  cached binary or bypass a changed digest pin.
+- `env_allow` now also trims the environment handed to `npm install` / `mise`;
+  `npm install` runs with `--ignore-scripts` unless `install.allow_scripts: true`.
 - Optional `schema: 1` top-level key.
 - A hyphenated manifest filename in a subdirectory (`family/my-tool.yaml`) and
   `.yml` files now resolve.

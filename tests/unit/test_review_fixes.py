@@ -321,3 +321,113 @@ def test_cli_run_coercion_is_type_aware(tmp_path: Path) -> None:
     flags = frozenset(name for name, spec in schema.items() if spec.type == "flag")
     kwargs, _ = RunArgParser.parse(["count=1", "silent=1"], flag_names=flags)
     assert kwargs == {"count": "1", "silent": True}
+
+
+# --- review C: install-path security (B1, B2, B3) -------------------------------
+
+
+def test_install_asset_name_traversal_rejected(tmp_path: Path) -> None:
+    reg = make_reg(
+        tmp_path,
+        {
+            "t.yaml": {
+                "cli": "t",
+                "install": {
+                    "backend": "github",
+                    "repo": "acme/t",
+                    "assets": {"linux-x86_64": "../../../etc/evil"},
+                },
+            }
+        },
+    )
+    with pytest.raises(ManifestError, match="not a safe path segment"):
+        reg.load("t")
+
+
+def test_install_repo_shape_validated(tmp_path: Path) -> None:
+    reg = make_reg(
+        tmp_path,
+        {"t.yaml": {"cli": "t", "install": {"backend": "github", "repo": "not-a-repo"}}},
+    )
+    with pytest.raises(ManifestError, match="owner/name"):
+        reg.load("t")
+
+
+def test_identity_key_distinguishes_specs() -> None:
+    from maina.core.registry import InstallSpec
+
+    a = InstallSpec(backend="github", repo="acme/x", tag="v1", assets={"k": "x-1.tgz"})
+    b = InstallSpec(backend="github", repo="other/x", tag="v1", assets={"k": "x-1.tgz"})
+    c = InstallSpec(backend="github", repo="acme/x", tag="v1", assets={"k": "x-1.tgz"})
+    assert a.identity_key() != b.identity_key()
+    assert a.identity_key() == c.identity_key()
+
+
+def test_cache_version_includes_identity_for_github(tmp_path: Path) -> None:
+    reg = make_reg(
+        tmp_path,
+        {
+            "t.yaml": {
+                "cli": "t",
+                "version": "1.7.1",
+                "install": {
+                    "backend": "github",
+                    "repo": "acme/t",
+                    "assets": {"linux-x86_64": "t-1.7.1.tgz"},
+                },
+            },
+            "p.yaml": {"cli": "p", "version": "1.0", "install": {"backend": "path"}},
+        },
+    )
+    inst = Installer(cache_root=tmp_path / "c", registry=reg, backends=[PathBackend()])
+    gh = inst._cache_version(reg.load("t"))
+    assert gh.startswith("1.7.1-")
+    assert len(gh) > len("1.7.1-")
+    assert inst._cache_version(reg.load("p")) == "1.0"
+
+
+def test_env_allow_reaches_install_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MY_SECRET", "leak")
+    seen: dict[str, dict[str, str]] = {}
+
+    class RecordingBackend:
+        name = "rec"
+
+        def resolve(
+            self, manifest: object, *, version: str, env: dict[str, str], ctx: object
+        ) -> tuple[str, dict[str, str]]:
+            del manifest, version, ctx
+            seen["env"] = dict(env)
+            return "/bin/true", env
+
+    reg = make_reg(tmp_path, {"t.yaml": {"cli": "t", "install": {"backend": "rec"}}})
+    inst = Installer(cache_root=tmp_path / "c", registry=reg, backends=[RecordingBackend()])
+    inst.resolve(reg.load("t"), env_allow=["KEEP"])
+    assert "MY_SECRET" not in seen["env"]
+    assert "PATH" in seen["env"]
+
+
+def test_npm_install_uses_ignore_scripts_by_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import maina.backends.npm as npm_mod
+    from maina.backends.npm import NpmBackend
+
+    calls: list[list[str]] = []
+
+    class _Result:
+        returncode = 0
+        stderr = ""
+
+    def fake_run(argv: list[str], **_kw: object) -> _Result:
+        calls.append(list(argv))
+        return _Result()
+
+    monkeypatch.setattr(npm_mod.subprocess, "run", fake_run)
+    NpmBackend._npm_install("/usr/bin/npm", tmp_path / "x", "jscpd@1", {"PATH": "/usr/bin"})
+    assert "--ignore-scripts" in calls[0]
+    calls.clear()
+    NpmBackend._npm_install(
+        "/usr/bin/npm", tmp_path / "x", "jscpd@1", {"PATH": "/usr/bin"}, allow_scripts=True
+    )
+    assert "--ignore-scripts" not in calls[0]
