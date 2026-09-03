@@ -121,6 +121,8 @@ class NpmBackend:
             )
         return link
 
+    INSTALL_TIMEOUT = 600
+
     @staticmethod
     def _npm_install(npm: str, prefix: Path, pkg_spec: str, env: dict[str, str]) -> None:
         """Run npm install --prefix for a package (local, no lockfile churn)."""
@@ -140,6 +142,11 @@ class NpmBackend:
                 env=env,
                 capture_output=True,
                 text=True,
+                timeout=NpmBackend.INSTALL_TIMEOUT,
             )
+        except subprocess.TimeoutExpired as exc:
+            raise InstallError(
+                f"npm install {pkg_spec} timed out after {NpmBackend.INSTALL_TIMEOUT}s"
+            ) from exc
         except subprocess.CalledProcessError as exc:
             raise InstallError(f"npm install {pkg_spec} failed: {exc.stderr or exc}") from exc

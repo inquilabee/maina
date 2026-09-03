@@ -15,7 +15,7 @@ import pytest
 from helpers import write_yaml
 from maina.backends.archive import ArchiveFetcher
 from maina.backends.npm import NpmBackend
-from maina.core.errors import InstallError
+from maina.core.errors import InstallError, MainaError, ToolTimeoutError
 from maina.core.registry import InstallSpec, Manifest, Registry, RequiresSpec
 from maina.installer import Installer
 from maina.runner import ToolRunner
@@ -351,7 +351,7 @@ def test_install_dir_lock_exclusive(tmp_path: Path) -> None:
         assert (dest / ".maina-install.lock").is_file()
 
 
-def test_toolrunner_timeout_maps_to_install_error(tmp_path: Path) -> None:
+def test_toolrunner_timeout_raises_tool_timeout_error(tmp_path: Path) -> None:
     root = tmp_path / "reg"
     write_yaml(
         root / "sleepy.yaml",
@@ -391,8 +391,11 @@ def test_toolrunner_timeout_maps_to_install_error(tmp_path: Path) -> None:
         raise subprocess.TimeoutExpired(cmd=["/bin/true"], timeout=0.01)
 
     runner = ToolRunner(manifest, installer=installer, executor=boom)
-    with pytest.raises(InstallError, match="timed out"):
+    with pytest.raises(ToolTimeoutError, match="timed out") as excinfo:
         runner.run({})
+    # A run-phase timeout is a MainaError but not an InstallError.
+    assert isinstance(excinfo.value, MainaError)
+    assert not isinstance(excinfo.value, InstallError)
 
 
 def test_toolrunner_executor_smoke(tmp_path: Path) -> None:

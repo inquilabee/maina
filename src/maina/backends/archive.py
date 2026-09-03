@@ -186,6 +186,19 @@ class ArchiveFetcher:
             raise InstallError(f"unsafe path in archive: {member_name}")
 
     @classmethod
+    def assert_safe_link(cls, dest: Path, member: tarfile.TarInfo) -> None:
+        """Reject symlink / hardlink members whose target escapes *dest*."""
+        if not (member.issym() or member.islnk()):
+            return
+        root = dest.resolve()
+        # A symlink target is relative to the link's own directory; a hardlink
+        # target is relative to the archive root.
+        anchor = root / Path(member.name).parent if member.issym() else root
+        resolved = (anchor / member.linkname).resolve()
+        if not resolved.is_relative_to(root):
+            raise InstallError(f"unsafe link target in archive: {member.name} -> {member.linkname}")
+
+    @classmethod
     def safe_extract_tar(cls, archive: Path, dest: Path, *, mode: TarReadMode) -> None:
         """Extract a tar archive (``r:gz`` / ``r:xz``) after rejecting path-escape members."""
         dest = dest.resolve()
@@ -209,12 +222,17 @@ class ArchiveFetcher:
         members = tar.getmembers()
         for member in members:
             cls.assert_safe_member(dest, member.name)
+            cls.assert_safe_link(dest, member)
         try:
             tar.extractall(dest, members=members, filter="data")
-        except TypeError:
-            # Python 3.11 without filter= support.
-            for member in members:
-                tar.extract(member, dest)
+        except TypeError as exc:
+            # tarfile gained ``filter=`` in 3.11.4 / 3.12; older patch levels are
+            # unsupported by CPython and would extract without a data filter.
+            raise InstallError(
+                "unsafe: this Python lacks tarfile data-filter support (upgrade to 3.11.4+ / 3.12+)"
+            ) from exc
+        except tarfile.TarError as exc:
+            raise InstallError(f"failed to extract archive: {exc}") from exc
 
     @classmethod
     def safe_extract_zip(cls, archive: Path, dest: Path) -> None:
@@ -228,29 +246,40 @@ class ArchiveFetcher:
 
     @classmethod
     def copy_raw_asset(cls, archive: Path, out: Path, *, name: str) -> None:
-        """Copy a non-archive (possibly compressed) asset to out."""
+        """Copy a non-archive (possibly compressed) asset to out, atomically."""
+        tmp = out.with_name(f".{out.name}.part")
         if name.endswith(".gz"):
-            with gzip.open(archive, "rb") as src, out.open("wb") as dst:
+            with gzip.open(archive, "rb") as src, tmp.open("wb") as dst:
                 shutil.copyfileobj(src, dst)
         elif name.endswith(".xz"):
-            with lzma.open(archive, "rb") as src, out.open("wb") as dst:
+            with lzma.open(archive, "rb") as src, tmp.open("wb") as dst:
                 shutil.copyfileobj(src, dst)
         else:
-            shutil.copy2(archive, out)
-        cls.make_executable(out)
+            shutil.copy2(archive, tmp)
+        cls.make_executable(tmp)
+        tmp.replace(out)
 
     @classmethod
     def find_and_copy_binary(cls, tree: Path, dest_dir: Path, binary: str) -> None:
-        """Locate binary in an extracted tree and copy it to dest_dir."""
-        matches = [p for p in tree.rglob(binary) if p.is_file()]
-        if not matches:
-            files = [p for p in tree.rglob("*") if p.is_file()]
-            if len(files) != 1:
-                raise InstallError(f"binary {binary!r} not found in archive")
-            matches = files
+        """Locate binary in an extracted tree and copy it to dest_dir, atomically."""
+        source = cls._locate_binary(tree, binary)
         dest = dest_dir / binary
-        shutil.copy2(matches[0], dest)
-        cls.make_executable(dest)
+        tmp = dest.with_name(f".{dest.name}.part")
+        shutil.copy2(source, tmp)
+        cls.make_executable(tmp)
+        tmp.replace(dest)
+
+    @staticmethod
+    def _locate_binary(tree: Path, binary: str) -> Path:
+        """The file to install as *binary* from an extracted tree."""
+        if by_name := [p for p in tree.rglob(binary) if p.is_file()]:
+            return by_name[0]
+        # Single-file fallback only when that file is itself executable —
+        # otherwise an archive could ship one arbitrary file as "the binary".
+        executable = [p for p in tree.rglob("*") if p.is_file() and p.stat().st_mode & 0o111]
+        if len(executable) != 1:
+            raise InstallError(f"binary {binary!r} not found in archive")
+        return executable[0]
 
     @staticmethod
     def make_executable(path: Path) -> None:

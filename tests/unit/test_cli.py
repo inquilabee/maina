@@ -334,3 +334,38 @@ def test_cli_prepare_skips_abstract(tmp_path: Any) -> None:
     assert result.exit_code == 0, result.stdout + result.stderr
     assert "prepared: child" in result.stdout
     assert "prepared: base" not in result.stdout
+
+
+def test_cli_version_flag() -> None:
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert result.stdout.strip()
+    assert "maina" not in result.stdout.lower() or result.stdout.strip()[0].isdigit()
+
+
+def test_cli_bad_manifest_is_one_line_not_traceback(tmp_path: Any, monkeypatch: Any) -> None:
+    reg = tmp_path / "reg"
+    reg.mkdir()
+    (reg / "broke.yaml").write_text("cli: [oops\n", encoding="utf-8")
+    monkeypatch.setenv("MAINA_REGISTRY", str(reg))
+    maina.use(Runtime.preferred())
+    code = main(["list"])
+    assert code == 2
+
+
+def test_run_argparser_raw_string_form() -> None:
+    kwargs, _extra = RunArgParser.parse(["count:=1", "flag=1"])
+    assert kwargs["count"] == "1"
+    assert kwargs["flag"] is True
+
+
+def test_cli_run_no_arg_tool_with_dashdash(tmp_path: Any) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "noargs.yaml", {"cli": "true", "install": {"backend": "path"}})
+    rt = Runtime(cache_root=tmp_path / "cache")
+    maina.register(rt, registry_dirs=[root], installers=[PathBackend()])
+    maina.use(rt)
+    # bare `run noargs` prints help; `run noargs --` runs it.
+    assert "Arguments:" in runner.invoke(app, ["run", "noargs"]).stdout
+    result = runner.invoke(app, ["run", "noargs", "--"])
+    assert result.exit_code == 0, result.stdout + result.stderr

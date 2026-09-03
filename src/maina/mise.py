@@ -9,6 +9,15 @@ from pathlib import Path
 
 from maina.core.errors import RuntimeProvisionError
 
+# `mise.run` is an unpinned installer script. Downloading and piping it into a
+# shell is opt-in: set MAINA_ALLOW_MISE_BOOTSTRAP=1 (or put `mise` on PATH).
+BOOTSTRAP_ENV = "MAINA_ALLOW_MISE_BOOTSTRAP"
+# Pin the mise release the bootstrap installs (mise.run honours MISE_VERSION).
+PINNED_MISE_VERSION = "v2025.1.0"
+# subprocess timeouts (seconds) for runtime provisioning.
+MISE_INSTALL_TIMEOUT = 600
+MISE_QUERY_TIMEOUT = 60
+
 
 class MiseRuntime:
     """Instance-scoped owner of mise binary bootstrap and language runtimes.
@@ -27,7 +36,15 @@ class MiseRuntime:
         if found := shutil.which("mise"):
             return Path(found)
         cached = self.cache_root / "mise" / "bin" / "mise"
-        return cached if cached.is_file() else self._bootstrap_mise(cached)
+        if cached.is_file():
+            return cached
+        if os.environ.get(BOOTSTRAP_ENV, "").strip() not in {"1", "true", "yes"}:
+            raise RuntimeProvisionError(
+                "mise is required to provision a language runtime but was not found "
+                f"on PATH. Install mise, or set {BOOTSTRAP_ENV}=1 to let maina run "
+                "the mise.run installer (curl | sh)."
+            )
+        return self._bootstrap_mise(cached)
 
     def ensure(self, runtime: str, version: str) -> Path:
         """Ensure a mise-managed language runtime is installed; return its bin dir."""
@@ -48,7 +65,12 @@ class MiseRuntime:
                 env=env,
                 capture_output=True,
                 text=True,
+                timeout=MISE_INSTALL_TIMEOUT,
             )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeProvisionError(
+                f"mise install {spec} timed out after {MISE_INSTALL_TIMEOUT}s"
+            ) from exc
         except subprocess.CalledProcessError as exc:
             detail = exc.stderr or exc.stdout or str(exc)
             raise RuntimeProvisionError(f"mise install {spec} failed: {detail}") from exc
@@ -73,7 +95,7 @@ class MiseRuntime:
         """Download and install mise into the maina cache."""
         target.parent.mkdir(parents=True, exist_ok=True)
         env = os.environ.copy()
-        env["MISE_INSTALL_PATH"] = str(target)
+        env |= {"MISE_INSTALL_PATH": str(target), "MISE_VERSION": PINNED_MISE_VERSION}
         curl = shutil.which("curl")
         shell = shutil.which("sh")
         if not curl or not shell:
@@ -84,6 +106,7 @@ class MiseRuntime:
                 check=True,
                 capture_output=True,
                 text=True,
+                timeout=MISE_QUERY_TIMEOUT,
             )
             subprocess.run(
                 [shell],
@@ -92,7 +115,10 @@ class MiseRuntime:
                 env=env,
                 capture_output=True,
                 text=True,
+                timeout=MISE_INSTALL_TIMEOUT,
             )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeProvisionError("mise bootstrap timed out") from exc
         except (OSError, subprocess.CalledProcessError) as exc:
             raise RuntimeProvisionError(f"failed to bootstrap mise: {exc}") from exc
         if target.is_file():
@@ -104,13 +130,23 @@ class MiseRuntime:
 
     @staticmethod
     def _mise_which(mise: Path, spec: str, runtime: str, env: dict[str, str]) -> Path | None:
-        """Resolve a runtime binary path via mise which/exec."""
+        """Resolve a runtime binary path via mise which/exec (None if unresolved)."""
+        try:
+            return MiseRuntime._mise_which_uncaught(mise, spec, runtime, env)
+        except subprocess.TimeoutExpired:
+            return None
+
+    @staticmethod
+    def _mise_which_uncaught(
+        mise: Path, spec: str, runtime: str, env: dict[str, str]
+    ) -> Path | None:
         which = subprocess.run(
             [str(mise), "which", "--toolchain", spec, runtime],
             check=False,
             env=env,
             capture_output=True,
             text=True,
+            timeout=MISE_QUERY_TIMEOUT,
         )
         if which.returncode == 0 and which.stdout.strip():
             return Path(which.stdout.strip()).parent
@@ -122,6 +158,7 @@ class MiseRuntime:
             env=env,
             capture_output=True,
             text=True,
+            timeout=MISE_QUERY_TIMEOUT,
         )
         if exe.returncode == 0 and (path := exe.stdout.strip()):
             return Path(path).parent

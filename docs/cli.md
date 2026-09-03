@@ -34,8 +34,8 @@ Call `Tool(tool_id).run(**kwargs)`.
 - Each `key=value` token becomes a keyword argument. Repeat a key for a list
   value.
 - A bare `key` sets that flag to `true`.
-- `true` / `yes` / `1` and `false` / `no` / `0` are coerced to booleans; other
-  values stay strings.
+- `true` / `yes` / `1` and `false` / `no` / `0` in a `key=value` are coerced to
+  booleans. Use `key:=value` to force the literal string (`count:=1`).
 - Tokens after `--` are passed through as `extra` argv.
 
 ```bash
@@ -45,10 +45,13 @@ maina run jscpd path=src -- --silent
 ```
 
 `maina run <tool_id>` with no tokens, or `maina run <tool_id> --help`, prints
-that tool's registry help instead of running it.
+that tool's manifest help. To run a tool that has **no required arguments**,
+pass an explicit empty separator: `maina run <tool_id> --`.
 
 Exit codes: `0` on success, `1` when the tool ran but reported a non-success
-code, `2` for an unknown id or bad arguments.
+code, `2` for an unknown id, a bad manifest, or bad arguments.
+
+`maina --version` prints the installed version.
 
 ## `maina prepare [TOOLS...] [--check]`
 

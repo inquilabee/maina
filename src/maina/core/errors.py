@@ -26,9 +26,8 @@ class InstallError(MainaError):
 class RuntimeProvisionError(InstallError):
     """A language runtime (mise-managed Node/Python/...) could not be provisioned.
 
-    Subclass of :class:`InstallError` so existing ``except InstallError`` handlers
-    keep working while callers that care can distinguish a runtime bootstrap
-    failure from a missing tool binary.
+    Subclass of :class:`InstallError` so ``except InstallError`` covers a runtime
+    bootstrap failure too; callers that care can catch this specifically.
     """
 
 
@@ -36,11 +35,11 @@ class UnsupportedPlatformError(InstallError):
     """The host platform is not in a manifest's declared ``platforms`` list."""
 
 
-class ToolTimeoutError(InstallError):
+class ToolTimeoutError(MainaError):
     """A tool subprocess exceeded its resolved timeout.
 
-    Subclass of :class:`InstallError` for back-compat; carries the tool id,
-    timeout, and argv so callers can report or retry.
+    This is a *run*-phase failure (not an install failure); it carries the tool
+    id, timeout, and argv so callers can report or retry.
     """
 
     def __init__(

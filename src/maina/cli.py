@@ -33,6 +33,7 @@ app = typer.Typer(
     ),
     add_completion=False,
     no_args_is_help=False,
+    pretty_exceptions_enable=False,
 )
 
 
@@ -54,8 +55,18 @@ def echo_typer_help(ctx: Any) -> None:
 
 
 @app.callback(invoke_without_command=True)
-def root(ctx: typer.Context) -> None:
+def root(
+    ctx: typer.Context,
+    show_version: Annotated[
+        bool, typer.Option("--version", help="Print the maina version and exit")
+    ] = False,
+) -> None:
     """Show Typer package help when no subcommand is given."""
+    if show_version:
+        from maina import __version__
+
+        typer.echo(__version__)
+        raise typer.Exit(0)
     if ctx.invoked_subcommand is None:
         echo_typer_help(ctx)
         raise typer.Exit(0)
@@ -172,7 +183,8 @@ def run(
             sys.stderr.write(
                 result.stderr if result.stderr.endswith("\n") else f"{result.stderr}\n"
             )
-        raise typer.Exit(result.exit_code if result.exit_code != 0 else 1)
+        # Docs contract: exit 1 = tool ran and failed; 2 = bad usage / unknown id.
+        raise typer.Exit(1)
 
 
 def emit_tool_help(tool_id: str) -> None:
@@ -253,8 +265,12 @@ class RunInvocation:
 
     @staticmethod
     def is_empty(tokens: list[str]) -> bool:
-        """True when there are no kwargs and no passthrough after ``--``."""
-        return not tokens or tokens == ["--"]
+        """True only when nothing was passed at all.
+
+        A bare ``maina run <id>`` prints help; ``maina run <id> --`` explicitly
+        runs the tool with no arguments (for surfaces with no required args).
+        """
+        return not tokens
 
 
 class RunArgParser:
@@ -268,7 +284,13 @@ class RunArgParser:
         for token in kw_tokens:
             if not token:
                 continue
-            if "=" in token:
+            if ":=" in token:
+                # Raw form: value is always the literal string (no bool coercion).
+                key, _, value = token.partition(":=")
+                if not key:
+                    raise typer.BadParameter(f"invalid run token: {token!r}")
+                cls._assign(kwargs, key, value=value)
+            elif "=" in token:
                 key, _, value = token.partition("=")
                 if not key:
                     raise typer.BadParameter(f"invalid run token: {token!r}")
@@ -320,6 +342,11 @@ def main(argv: list[str] | None = None) -> int:
     except typer.Exit as exc:
         code = exc.exit_code
         return 0 if code is None else int(code)
+    except MainaError as exc:
+        # A bad manifest, unknown id, or install failure is a one-line message,
+        # not a stack trace.
+        typer.echo(str(exc), err=True)
+        return 2
     finally:
         RAW_ARGV.clear()
     return 0 if result is None else int(result)

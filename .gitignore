@@ -47,3 +47,6 @@ docs/reviews/
 
 # MkDocs build output
 site/
+
+# reviewer / scratch notes
+notes/

@@ -4,8 +4,26 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from maina.core.errors import ManifestError
+
 if TYPE_CHECKING:
     from pathlib import Path
+
+UNSAFE_ID_SEGMENTS = frozenset({"", ".", ".."})
+ID_SUFFIXES = (".yaml", ".yml")
+
+
+def strip_yaml_suffix(text: str) -> str:
+    for suffix in ID_SUFFIXES:
+        if text.endswith(suffix):
+            return text[: -len(suffix)]
+    return text
+
+
+def collapse_trailing_dupes(parts: list[str]) -> list[str]:
+    while len(parts) >= 2 and parts[-1] == parts[-2]:
+        parts.pop()
+    return parts
 
 
 def normalize_id(tool_id: str) -> str:
@@ -13,16 +31,13 @@ def normalize_id(tool_id: str) -> str:
 
     Trailing duplicate segments (``kubectl-kubectl``, ``git-remote-remote``) are
     collapsed so family-root paths and ``extends`` share one canonical id.
+    Segments that could escape a registry root (``.``, ``..``) are rejected.
     """
-    cleaned = tool_id.strip().replace("\\", "-").replace("/", "-").lstrip("-")
-    if cleaned.endswith(".yaml"):
-        cleaned = cleaned[: -len(".yaml")]
-    elif cleaned.endswith(".yml"):
-        cleaned = cleaned[: -len(".yml")]
+    cleaned = strip_yaml_suffix(tool_id.strip().replace("\\", "-").replace("/", "-").lstrip("-"))
     parts = [p for p in cleaned.split("-") if p]
-    while len(parts) >= 2 and parts[-1] == parts[-2]:
-        parts.pop()
-    return "-".join(parts)
+    if any(part in UNSAFE_ID_SEGMENTS for part in parts):
+        raise ManifestError(f"unsafe tool id {tool_id!r}: '.'/'..' segments are not allowed")
+    return "-".join(collapse_trailing_dupes(parts))
 
 
 def join_tool_id(name: str, subcommand: str | None = None) -> str:
@@ -45,17 +60,19 @@ def manifest_path_in(root: Path, tool_id: str) -> Path | None:
     ``root/{tid}.yaml``, ``root/a/b/c.yaml`` for ``a-b-c``, and family
     ``root/a/b/c/c.yaml`` (including ``root/kubectl/kubectl.yaml``).
     """
-    direct = root / f"{tool_id}.yaml"
-    if direct.is_file():
-        return direct
     parts = tool_id.split("-")
-    if not parts or parts == [""]:
+    if not parts or any(part in UNSAFE_ID_SEGMENTS for part in parts):
         return None
-    nested = root.joinpath(*parts).with_suffix(".yaml")
-    if nested.is_file():
-        return nested
-    family = root.joinpath(*parts, parts[-1]).with_suffix(".yaml")
-    return family if family.is_file() else None
+    candidates = (
+        root / f"{tool_id}.yaml",
+        root.joinpath(*parts).with_suffix(".yaml"),
+        root.joinpath(*parts, parts[-1]).with_suffix(".yaml"),
+    )
+    root_resolved = root.resolve()
+    for candidate in candidates:
+        if candidate.is_file() and candidate.resolve().is_relative_to(root_resolved):
+            return candidate
+    return None
 
 
 def family_parsers_dir(leaf_path: Path, leaf_root: Path) -> Path:

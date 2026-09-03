@@ -6,9 +6,11 @@
 pip install maina      # or: uv add maina
 ```
 
-maina needs Python 3.11 or newer. `curl` and `sh` are required only if a tool
-pulls a language runtime through [mise](https://mise.jdx.dev/) and mise is not
-already on `PATH`.
+maina needs Python **3.11.4** or newer (older 3.11 patch levels lack the
+`tarfile` data filter and are rejected for github installs). A language runtime
+is pulled through [mise](https://mise.jdx.dev/) only for `requires:` pins and the
+`npm` backend; if `mise` is not on `PATH`, set `MAINA_ALLOW_MISE_BOOTSTRAP=1` to
+let maina run the `mise.run` installer (`curl | sh`) or install mise yourself.
 
 ## Register a catalog
 

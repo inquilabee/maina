@@ -48,12 +48,17 @@ The process-wide session is not thread-safe. For concurrent or nested use pass a
 explicit `Tool(..., runtime=rt)`, or scope a swap to a block with
 `with maina.isolated(rt): ...` (restores the prior Runtime on exit).
 
-`Tool.run` / the call form take `timeout=<seconds>` and `env_allow=[...]`. With
-`env_allow` set, only essential vars (`PATH`, locale, temp, `MISE_DATA_DIR`) plus
-the named keys reach the tool subprocess — secrets in `os.environ` stay out of
-third-party binaries. A subprocess that overruns raises `ToolTimeoutError`; a
-`mise` bootstrap failure raises `RuntimeProvisionError` (both subclass
-`InstallError`).
+`Tool.run` / the call form take `timeout=<seconds>` (bounds the tool subprocess)
+and `env_allow=[...]`. With `env_allow` set, only a fixed essential set — `PATH`,
+`HOME`, `LANG`, `LC_ALL`, `TMPDIR`/`TEMP`/`TMP`, `SYSTEMROOT`, `MISE_DATA_DIR` —
+plus the named keys reach the tool subprocess, keeping other `os.environ` values
+out of third-party binaries. A tool that overruns raises `ToolTimeoutError` (a
+`MainaError`, not an `InstallError`); a runtime provisioning failure raises
+`RuntimeProvisionError` (subclasses `InstallError`).
+
+`requires:` pins and the `npm` backend need [mise](https://mise.jdx.dev/). If
+`mise` is not on `PATH`, maina will not run the `mise.run` installer unless you
+set `MAINA_ALLOW_MISE_BOOTSTRAP=1`; otherwise it raises `RuntimeProvisionError`.
 
 `extends` parents use registry ids (no `.yaml` suffix), e.g. `extends: kubectl`
 (not `kubectl-kubectl`). Family roots resolve from `kubectl/kubectl.yaml` as id

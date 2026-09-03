@@ -113,6 +113,19 @@ def test_list_commands_excludes_abstract(tmp_path: Path) -> None:
     assert registry.list_commands("family") == ["family-child"]
 
 
+def test_tool_id_rejects_dotdot_traversal(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "ok.yaml", {"cli": "true", "install": {"backend": "path"}})
+    write_yaml(
+        tmp_path / "sibling" / "secret.yaml",
+        {"cli": "echo", "install": {"backend": "path"}},
+    )
+    registry = Registry(root)
+    for bad in ("-..-sibling-secret", "..-sibling-secret", ".-ok"):
+        with pytest.raises(ManifestError, match="unsafe tool id"):
+            registry.load(bad)
+
+
 def test_extends_cycle(tmp_path: Path) -> None:
     root = tmp_path / "registry"
     write_yaml(root / "a.yaml", {"cli": "a", "extends": "b"})

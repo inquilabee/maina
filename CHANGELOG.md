@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased
+
+### Security / correctness
+
+- Registry tool ids can no longer contain `.` / `..` segments; a resolved
+  manifest path must stay under a registered root (was: `Tool("-..-x")` could
+  load and run a manifest from outside the registry).
+- The `mise.run` installer (`curl | sh`) is opt-in: set
+  `MAINA_ALLOW_MISE_BOOTSTRAP=1`, else `RuntimeProvisionError`. The bootstrap
+  pins `MISE_VERSION`.
+- `mise` / `npm` provisioning subprocesses now have timeouts.
+- tar extraction requires the data filter (Python 3.11.4+), validates
+  symlink/hardlink targets, and wraps `TarError` as `InstallError`; the
+  single-file archive fallback only accepts an executable file. Binary copies
+  into the cache are atomic (`os.replace`).
+- `requires-python` is now `>=3.11.4`.
+
+### CLI
+
+- `maina --version` / `maina.__version__`.
+- Bad manifests / unknown ids print one line and exit 2 (no Rich traceback).
+- Non-success tool run exits 1 (2 stays "bad usage").
+- `maina run <id> --` runs a no-required-args tool; `key:=value` forces a
+  literal string value.
+
+### API
+
+- `ArgError` and `AbstractToolError` are exported from `maina`.
+- `ToolTimeoutError` subclasses `MainaError` directly (not `InstallError`).
+
 ## 0.1.0
 
 First tagged release.
