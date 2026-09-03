@@ -1,16 +1,23 @@
 # Parsers
 
-A parser turns a tool's stdout into `ToolResult.parsed`. It is any callable
-`(raw: str, result: ToolResult) -> Any`. When no parser applies, or stdout is
-empty, `parsed` is `None`.
+A parser turns a tool's output into `ToolResult.parsed`. It is any callable
+`(raw: str, result: ToolResult) -> Any`. A configured parser is **always
+invoked** — even when stdout is empty — so a linter that reports only on stderr
+(read `result.stderr`) is still parseable. With no parser configured, `parsed`
+is `None`.
+
+A parser that raises never breaks the run: the message lands in
+`result.parse_error` and `parsed` stays `None`. Raise `maina.ParseError` for an
+"output wasn't what I expected" failure.
 
 ## General parsers
 
-Four are registered by name and referenced from a manifest's `parser:` key:
+Registered by name and referenced from a manifest's `parser:` key:
 
 | Name | Behaviour |
 | --- | --- |
-| `json` | `json.loads(raw)`; falls back to the stripped text, or `None` if empty. |
+| `json` | `json.loads(raw)` — **strict**: raises `ParseError` on malformed JSON; `None` if empty. |
+| `json-lenient` | `json.loads(raw)`; falls back to the stripped text; `None` if empty. |
 | `lines` | `raw.splitlines()`. |
 | `text` | `raw` unchanged. |
 | `raw` | alias of `text`. |

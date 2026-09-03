@@ -7,7 +7,7 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from maina.core.errors import ManifestError
+from maina.core.errors import ManifestError, ParseError
 from maina.core.protocols import Parser
 
 if TYPE_CHECKING:
@@ -43,7 +43,18 @@ def parser(fn: ParserInput) -> Parser:
 
 
 def parse_json(raw: str, _result: ToolResult) -> Any:
-    """Parse JSON when possible; otherwise return stripped text or None."""
+    """Parse JSON strictly. ``None`` for empty output; raises on malformed JSON."""
+    text = raw.strip()
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ParseError(f"tool output is not valid JSON: {exc}") from exc
+
+
+def parse_json_lenient(raw: str, _result: ToolResult) -> Any:
+    """Parse JSON when possible; otherwise return the stripped text (or None)."""
     text = raw.strip()
     if not text:
         return None
@@ -67,6 +78,7 @@ def builtin_generals() -> dict[str, Parser]:
     """Shipped general parser map (shared by Runtime bootstrap and tests)."""
     return {
         "json": parser(parse_json),
+        "json-lenient": parser(parse_json_lenient),
         "lines": parser(parse_lines),
         "text": parser(parse_text),
         "raw": parser(parse_text),
@@ -205,10 +217,23 @@ class BoundParser:
         return self._registry.generic_parser(self.parser_ref)
 
     def apply(self, result: ToolResult) -> ToolResult:
-        """Attach parsed output onto result when a parser is configured."""
+        """Run the configured parser and attach ``parsed`` / ``parse_error``.
+
+        The parser is invoked even when stdout is empty (a linter that reports
+        only on stderr is still parseable). A parser that raises never crashes
+        ``run()``: the message lands in ``result.parse_error`` and ``parsed``
+        stays ``None``.
+        """
         resolved = self.resolve()
-        if resolved is None or not result.raw:
+        if resolved is None:
             result.parsed = None
             return result
-        result.parsed = resolved(result.raw, result)
+        try:
+            result.parsed = resolved(result.raw, result)
+        except ParseError as exc:
+            result.parsed = None
+            result.parse_error = str(exc)
+        except Exception as exc:  # ruff:ignore[blind-except] - a parser must not break the run
+            result.parsed = None
+            result.parse_error = f"{type(exc).__name__}: {exc}"
         return result

@@ -103,6 +103,8 @@ class ToolRunner:
             raw=proc.stdout or "",
             stderr=proc.stderr or "",
             command=argv,
+            cwd=cwd,
+            exe=exe,
             version=self.manifest.version,
             duration_ms=duration_ms,
         )

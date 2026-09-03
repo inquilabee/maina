@@ -19,6 +19,19 @@ class ArgError(MainaError):
     """Invalid kwargs for a tool surface."""
 
 
+class ParseError(MainaError):
+    """A configured parser could not turn tool output into structured data."""
+
+
+class ToolExecError(MainaError):
+    """The tool subprocess could not be started (bad cwd, missing exe, ...)."""
+
+    def __init__(self, message: str, *, tool: str, command: list[str]) -> None:
+        super().__init__(message)
+        self.tool = tool
+        self.command = command
+
+
 class InstallError(MainaError):
     """Tool or runtime install/resolve failed."""
 

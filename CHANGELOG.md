@@ -29,6 +29,17 @@
 
 - `ArgError` and `AbstractToolError` are exported from `maina`.
 - `ToolTimeoutError` subclasses `MainaError` directly (not `InstallError`).
+- `ParseError` / `ToolExecError` added and exported.
+
+### Results and parsers
+
+- `parser: json` is now **strict** — malformed JSON raises `ParseError`
+  (recorded in `ToolResult.parse_error`, `parsed=None`, the run does not
+  crash). New `json-lenient` keeps the old swallow-and-return-text behaviour.
+- A configured parser is invoked even when stdout is empty (stderr-only tools
+  are parseable).
+- `ToolResult` gains `parse_error`, `cwd`, `exe`, and `to_dict()` (JSON-safe,
+  stable key set).
 
 ## 0.1.0
 

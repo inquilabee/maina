@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -19,9 +20,41 @@ class ToolResult:
     stderr: str
     command: list[str]
     parsed: Any = None
+    parse_error: str | None = None
+    cwd: str | None = None
+    exe: str | None = None
     version: str | None = None
     duration_ms: float | None = None
     meta: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-safe view with a stable key set.
+
+        A non-serialisable ``parsed`` is dropped and noted in ``parse_error``.
+        """
+        parsed = self.parsed
+        parse_error = self.parse_error
+        try:
+            json.dumps(parsed)
+        except (TypeError, ValueError):
+            kind = type(parsed).__name__
+            parse_error = parse_error or f"parsed value is not JSON-serialisable ({kind})"
+            parsed = None
+        return {
+            "tool": self.tool,
+            "ok": self.ok,
+            "exit_code": self.exit_code,
+            "raw": self.raw,
+            "stderr": self.stderr,
+            "command": list(self.command),
+            "parsed": parsed,
+            "parse_error": parse_error,
+            "cwd": self.cwd,
+            "exe": self.exe,
+            "version": self.version,
+            "duration_ms": self.duration_ms,
+            "meta": dict(self.meta),
+        }
 
     def raise_for_status(self) -> ToolResult:
         """Raise ToolExitError when the run was not ok."""

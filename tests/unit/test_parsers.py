@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from maina.core.errors import ManifestError
+from maina.core.errors import ManifestError, ParseError
 from maina.core.parsers import ParserResolver, builtin_generals
 from maina.core.result import ToolResult
 from maina.runtime import Runtime
@@ -35,7 +35,29 @@ def test_generic_json_semantics() -> None:
     assert parse("", make_result()) is None
     assert parse("   ", make_result()) is None
     assert parse('{"a": 1}', make_result()) == {"a": 1}
-    assert parse("not-json", make_result()) == "not-json"
+    with pytest.raises(ParseError, match="not valid JSON"):
+        parse("not-json", make_result())
+    lenient = builtins_resolver().generic_parser("json-lenient")
+    assert lenient("not-json", make_result()) == "not-json"
+
+
+def test_apply_records_parse_error_not_raise() -> None:
+    out = builtins_resolver().bind(parser_ref="json").apply(make_result("not-json"))
+    assert out.parsed is None
+    assert out.parse_error is not None
+    assert "not valid JSON" in out.parse_error
+
+
+def test_apply_runs_parser_on_empty_stdout() -> None:
+    seen: list[str] = []
+
+    def note(raw: str, _r: ToolResult) -> str:
+        seen.append(raw)
+        return "done"
+
+    out = builtins_resolver().bind(parser_ref=None, override=note).apply(make_result(""))
+    assert seen == [""]
+    assert out.parsed == "done"
 
 
 def test_parser_ref_json_resolves_without_path() -> None:
