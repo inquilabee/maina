@@ -38,6 +38,15 @@ closed, it is not silently ignored).
 | `output` | map | Result interpretation. See [output](#output). |
 | `name` | string | Decoration only; ignored. |
 
+### Schema version
+
+`schema:` is optional and, when present, must be `1` — the only version this
+release understands. It is a forward-compatibility marker: a future maina that
+introduces a `schema: 2` shape will still read a `schema: 1` (or unversioned)
+manifest, and this release fails closed on anything numbered higher rather than
+guessing. Pin it in a catalog you publish so an older maina gives a clear error
+instead of a confusing one.
+
 ## args
 
 Each entry under `args` maps one keyword argument to argv tokens.
@@ -107,7 +116,7 @@ output:
 | --- | --- |
 | `format` | Free-form hint (`json` / `text` / ...); not enforced. |
 | `success_codes` | Exit codes counted as `ok`. Default `[0]`. |
-| `from_file` | When set, the **parse input is this file's contents**, not stdout — for tools that write a report file. The template interpolates `{cwd}` and string/number kwargs; resolved relative to `cwd`. The file used is recorded in `result.meta["parsed_from"]`. |
+| `from_file` | When set, the parser reads **this file** instead of stdout — for tools that write a report file. `result.raw` still holds the tool's stdout; the file contents go on `result.report` and `result.meta["parsed_from"]` records the path. The template interpolates `{cwd}` and any arg by name (including one that only has a manifest `default:`); it is resolved relative to `cwd`. A relative path only — absolute paths and `..` are rejected at load. Any failure (unresolved placeholder, a path that escapes the run directory, a missing file) lands on `result.parse_error`; there is no silent fall back to stdout. |
 
 ## install
 
@@ -130,18 +139,19 @@ install:
 | `repo` | `github` | `owner/name` GitHub repository (validated at load). |
 | `assets` | `github` | Platform key (`linux-x86_64`, `macos-arm64`, ...) to release asset name (each a single safe path segment). |
 | `binary` | `github` | Executable name inside the asset. Defaults to `cli`. |
-| `tag` | `github` | Release tag. Defaults to `version`; `latest` uses the latest release. |
+| `tag` | `github` | Release tag (a single safe path segment). Defaults to `version`; `latest` uses the latest release. |
 | `sha256` | `github` | Optional platform key to hex digest. A mismatch aborts before `chmod +x`. |
-| `package` | `npm` | npm package name. Defaults to `cli`. |
+| `package` | `npm` | npm package name — validated at load (`@scope/name` allowed). Defaults to `cli`. |
 | `allow_scripts` | `npm` | `true` lets `npm install` run the package's lifecycle scripts. Default `false` (`--ignore-scripts`). |
 
 `.tar.gz`, `.tar.xz`, `.zip`, `.gz`, `.xz`, and bare-binary assets are all
 handled. Archive members that escape the destination are rejected.
 
 The `github` / `npm` cache directory is keyed by `cli` + `version` **and** a
-hash of `repo` / `tag` / `assets` / `sha256` / `package`, so two manifests that
-share `cli` + `version` but fetch different things never collide and a changed
-digest pin forces a fresh download.
+hash of `repo` / `tag` / `assets` / `sha256` / `package` / `binary` /
+`allow_scripts`, so two manifests that share `cli` + `version` but fetch or
+unpack different things never collide and a changed digest pin forces a fresh
+download.
 
 ## requires
 
@@ -152,8 +162,9 @@ requires:
   node: "22"
 ```
 
-- Keys are runtime names; values are version strings. **Quote pins** — unquoted
-  `3.10` is a YAML float and is rejected.
+- Keys are runtime names — `[A-Za-z0-9_.+-]+`, validated at load. Values are
+  version strings. **Quote pins** — unquoted `3.10` is a YAML float and is
+  rejected.
 - The legacy singular form `requires: { runtime: node, version: "20" }` is still
   accepted, but not mixed with freeform keys.
 - Inheritance: child pins merge onto the parent's. `requires: null` on a child
@@ -184,13 +195,23 @@ up `base` when a `base.yaml` exists, so the effective chain is
 | `tool` | str | Resolved tool id. |
 | `ok` | bool | `exit_code in success_codes`. |
 | `exit_code` | int | Process return code. |
-| `raw` | str | stdout. |
+| `raw` | str | stdout, exactly as produced. |
 | `stderr` | str | stderr. |
+| `command` | list[str] | The argv that ran (argv[0] is the resolved executable). |
 | `parsed` | any | Parser output, or `None`. |
-| `command` | list[str] | The argv that ran. |
+| `parse_error` | str or None | Why parsing did not happen or failed (a raising parser, a bad/missing `output.from_file`). `parsed` stays `None`; the run never crashes. |
+| `report` | str or None | The `output.from_file` contents when that key is set, else `None`. |
+| `cwd` | str or None | The working directory the tool ran in (the `cwd=` passed to `run`). |
+| `exe` | str or None | The resolved executable path. |
 | `version` | str or None | Manifest `version`. |
 | `duration_ms` | float | Wall time. |
-| `meta` | dict | Free space for parsers. |
+| `meta` | dict | Free space for parsers; maina records `parsed_from` / `parsed_from_missing` here for `output.from_file`. |
+
+`result.parse_input` is what the parser sees — `report` when `output.from_file`
+is set, otherwise `raw`.
+
+`result.to_dict()` returns a JSON-safe view with a stable key set (a
+non-serialisable `parsed` is dropped and noted in `parse_error`).
 
 `result.raise_for_status()` raises `ToolExitError` when `ok` is false and
 returns `result` otherwise.
