@@ -28,11 +28,11 @@ if TYPE_CHECKING:
 class FakeLanguage:
     cache_root: Path
 
-    def ensure(self, runtime: str, version: str) -> Path:
+    def ensure(self, runtime: str, version: str, **_kw: object) -> Path:
         del version
         return self.cache_root / runtime
 
-    def env(self, runtime: str, version: str) -> dict[str, str]:
+    def env(self, runtime: str, version: str, **_kw: object) -> dict[str, str]:
         del version
         return {"PATH": f"/opt/{runtime}/bin:/usr/bin", "MARK": "shared"}
 
@@ -452,11 +452,11 @@ def test_npm_node_check_uses_which(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     class TrackingLanguage:
         cache_root: Path
 
-        def ensure(self, runtime: str, version: str) -> Path:
+        def ensure(self, runtime: str, version: str, **_kw: object) -> Path:
             ensured.append((runtime, version))
             return self.cache_root
 
-        def env(self, runtime: str, version: str) -> dict[str, str]:
+        def env(self, runtime: str, version: str, **_kw: object) -> dict[str, str]:
             del runtime, version
             return {"PATH": str(self.cache_root)}
 
@@ -480,7 +480,7 @@ def test_mise_ensure_skips_install_when_present(
     from maina.mise import MiseRuntime
 
     rt = MiseRuntime(cache_root=tmp_path)
-    monkeypatch.setattr(rt, "mise_bin", lambda: Path("/fake/mise"))
+    monkeypatch.setattr(rt, "mise_bin", lambda **_k: Path("/fake/mise"))
     which_calls: list[str] = []
 
     def fake_which(

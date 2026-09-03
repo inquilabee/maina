@@ -27,11 +27,11 @@ if TYPE_CHECKING:
 class FakeLanguage:
     cache_root: Path
 
-    def ensure(self, runtime: str, version: str) -> Path:
+    def ensure(self, runtime: str, version: str, **_kw: object) -> Path:
         del runtime, version
         return self.cache_root
 
-    def env(self, runtime: str, version: str) -> dict[str, str]:
+    def env(self, runtime: str, version: str, **_kw: object) -> dict[str, str]:
         del runtime, version
         return {"PATH": os.environ.get("PATH", "")}
 

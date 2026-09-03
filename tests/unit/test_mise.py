@@ -19,7 +19,7 @@ def test_mise_env_prepends_ensure_bin(tmp_path: Path, monkeypatch: pytest.Monkey
     bin_dir.mkdir(parents=True)
     ensured: list[tuple[str, str]] = []
 
-    def fake_ensure(runtime: str, version: str) -> Path:
+    def fake_ensure(runtime: str, version: str, **_kw: object) -> Path:
         ensured.append((runtime, version))
         return bin_dir
 
@@ -36,7 +36,7 @@ def test_mise_bin_bootstrap_is_opt_in(tmp_path: Path, monkeypatch: pytest.Monkey
     from maina.core.errors import RuntimeProvisionError
     from maina.mise import MiseRuntime
 
-    monkeypatch.setattr("maina.mise.shutil.which", lambda _name: None)
+    monkeypatch.setattr("maina.mise.shutil.which", lambda *_a, **_k: None)
     monkeypatch.delenv("MAINA_ALLOW_MISE_BOOTSTRAP", raising=False)
     rt = MiseRuntime(cache_root=tmp_path / "cache")
     with pytest.raises(RuntimeProvisionError, match="MAINA_ALLOW_MISE_BOOTSTRAP"):

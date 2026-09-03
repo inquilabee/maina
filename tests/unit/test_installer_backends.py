@@ -26,11 +26,11 @@ class FakeLanguage:
 
     cache_root: Path
 
-    def ensure(self, runtime: str, version: str) -> Path:
+    def ensure(self, runtime: str, version: str, **_kw: object) -> Path:
         del runtime, version
         return self.cache_root
 
-    def env(self, runtime: str, version: str) -> dict[str, str]:
+    def env(self, runtime: str, version: str, **_kw: object) -> dict[str, str]:
         del runtime, version
         return {"PATH": str(self.cache_root)}
 
@@ -126,13 +126,13 @@ def test_installer_composes_multi_runtime_path(tmp_path: Path) -> None:
     class TrackingLanguage:
         cache_root: Path
 
-        def ensure(self, runtime: str, version: str) -> Path:
+        def ensure(self, runtime: str, version: str, **_kw: object) -> Path:
             ensured.append((runtime, version))
             path = self.cache_root / "bins" / runtime / version / "bin"
             path.mkdir(parents=True, exist_ok=True)
             return path
 
-        def env(self, runtime: str, version: str) -> dict[str, str]:
+        def env(self, runtime: str, version: str, **_kw: object) -> dict[str, str]:
             # Deliberately resets PATH — installer must not rely on env() loops.
             bin_dir = self.ensure(runtime, version)
             return {"PATH": str(bin_dir)}
@@ -180,10 +180,10 @@ def test_npm_fallback_preserves_composed_python_path(
     class TrackingLanguage:
         cache_root: Path
 
-        def ensure(self, runtime: str, version: str) -> Path:
+        def ensure(self, runtime: str, version: str, **_kw: object) -> Path:
             return self.cache_root / "bins" / runtime / version / "bin"
 
-        def env(self, runtime: str, version: str) -> dict[str, str]:
+        def env(self, runtime: str, version: str, **_kw: object) -> dict[str, str]:
             # Simulates MiseRuntime.env: rebuilds PATH from a clean base.
             del runtime, version
             return {"PATH": "/usr/bin", "MISE_DATA_DIR": "wiped"}

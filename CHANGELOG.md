@@ -11,6 +11,13 @@
   `MAINA_ALLOW_MISE_BOOTSTRAP=1`, else `RuntimeProvisionError`. The bootstrap
   pins `MISE_VERSION`.
 - `mise` / `npm` provisioning subprocesses now have timeouts.
+- `env_allow` now actually reaches the language-runtime provider:
+  `LanguageRuntimeProvider.ensure` / `.env` take a keyword-only `base_env`, and
+  the installer hands them the already-trimmed environment, so a secret gated
+  out by `env_allow` never reaches a `mise install` / `mise which` subprocess
+  (previously they re-read the full `os.environ`).
+- `mise`'s runtime-resolution fallback shell-quotes the runtime name
+  (`command -v <runtime>`), closing a shell-metacharacter path.
 - tar extraction requires the data filter (Python 3.11.4+), validates
   symlink/hardlink targets, and wraps `TarError` as `InstallError`; the
   single-file archive fallback only accepts an executable file. Binary copies

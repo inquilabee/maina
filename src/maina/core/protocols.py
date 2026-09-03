@@ -31,12 +31,24 @@ class Parser(Protocol):
 class LanguageRuntimeProvider(Protocol):
     """Install and resolve language runtimes (e.g. mise-backed Node)."""
 
-    def ensure(self, runtime: str, version: str) -> Path:
-        """Ensure a language runtime is installed; return its bin directory."""
+    def ensure(self, runtime: str, version: str, *, base_env: dict[str, str] | None = None) -> Path:
+        """Ensure a language runtime is installed; return its bin directory.
+
+        ``base_env`` is the environment the provisioning subprocesses should run
+        with. When ``None`` the provider falls back to the full ``os.environ``;
+        callers that honour ``env_allow`` pass the already-trimmed environment so
+        a secret never reaches ``mise`` / ``npm``.
+        """
         ...
 
-    def env(self, runtime: str, version: str) -> dict[str, str]:
-        """Environment with the language runtime bin prepended to PATH."""
+    def env(
+        self, runtime: str, version: str, *, base_env: dict[str, str] | None = None
+    ) -> dict[str, str]:
+        """Environment with the language runtime bin prepended to PATH.
+
+        ``base_env`` seeds the result (and the provisioning subprocesses) instead
+        of ``os.environ`` when given.
+        """
         ...
 
 

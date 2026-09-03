@@ -25,11 +25,11 @@ if TYPE_CHECKING:
 class FakeLanguage:
     cache_root: Path
 
-    def ensure(self, runtime: str, version: str) -> Path:  # pragma: no cover
+    def ensure(self, runtime: str, version: str, **_kw: object) -> Path:  # pragma: no cover
         del runtime, version
         return self.cache_root
 
-    def env(self, runtime: str, version: str) -> dict[str, str]:  # pragma: no cover
+    def env(self, runtime: str, version: str, **_kw: object) -> dict[str, str]:  # pragma: no cover
         del runtime, version
         return {"PATH": str(self.cache_root)}
 
@@ -127,6 +127,60 @@ def test_env_allow_reaches_install_env(tmp_path: Path, monkeypatch: pytest.Monke
     inst.resolve(reg.load("t"), env_allow=["KEEP"])
     assert "MY_SECRET" not in seen["env"]
     assert "PATH" in seen["env"]
+
+
+def test_env_allow_reaches_language_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A runtime pin routes the trimmed env into ``LanguageRuntimeProvider.ensure``."""
+    monkeypatch.setenv("MY_SECRET", "leak")
+    seen: dict[str, dict[str, str] | None] = {}
+
+    class RecordingLanguage:
+        def __init__(self) -> None:
+            self.bin = tmp_path / "node-bin"
+            self.bin.mkdir()
+
+        def ensure(
+            self, runtime: str, version: str, *, base_env: dict[str, str] | None = None
+        ) -> Path:
+            del runtime, version
+            seen["base_env"] = dict(base_env) if base_env is not None else None
+            return self.bin
+
+        def env(
+            self, runtime: str, version: str, *, base_env: dict[str, str] | None = None
+        ) -> dict[str, str]:
+            del runtime, version, base_env
+            return {"PATH": str(self.bin)}
+
+    class NoopBackend:
+        name = "noop"
+
+        def resolve(
+            self, manifest: object, *, version: str, env: dict[str, str], ctx: object
+        ) -> tuple[str, dict[str, str]]:
+            del manifest, version, ctx
+            return "/bin/true", env
+
+    reg = make_reg(
+        tmp_path,
+        {
+            "base.yaml": {"abstract": True, "requires": {"node": "20"}},
+            "t.yaml": {"cli": "t", "install": {"backend": "noop"}},
+        },
+    )
+    inst = Installer(
+        cache_root=tmp_path / "c",
+        registry=reg,
+        backends=[NoopBackend()],
+        language=RecordingLanguage(),
+    )
+    inst.resolve(reg.load("t"), env_allow=["KEEP"])
+    recorded = seen["base_env"]
+    assert recorded is not None
+    assert "MY_SECRET" not in recorded
+    assert "PATH" in recorded
 
 
 def test_npm_install_uses_ignore_scripts_by_default(

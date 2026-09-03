@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -31,7 +32,12 @@ class MiseRuntime:
         root.mkdir(parents=True, exist_ok=True)
         self.cache_root = root
 
-    def mise_bin(self) -> Path:
+    @staticmethod
+    def _seed_env(base_env: dict[str, str] | None) -> dict[str, str]:
+        """Start from the caller's trimmed env, else the full ``os.environ``."""
+        return dict(base_env) if base_env is not None else os.environ.copy()
+
+    def mise_bin(self, *, base_env: dict[str, str] | None = None) -> Path:
         """Locate mise on PATH or under the maina cache."""
         if found := shutil.which("mise"):
             return Path(found)
@@ -44,15 +50,15 @@ class MiseRuntime:
                 f"on PATH. Install mise, or set {BOOTSTRAP_ENV}=1 to let maina run "
                 "the mise.run installer (curl | sh)."
             )
-        return self._bootstrap_mise(cached)
+        return self._bootstrap_mise(cached, base_env)
 
-    def ensure(self, runtime: str, version: str) -> Path:
+    def ensure(self, runtime: str, version: str, *, base_env: dict[str, str] | None = None) -> Path:
         """Ensure a mise-managed language runtime is installed; return its bin dir."""
-        mise = self.mise_bin()
+        mise = self.mise_bin(base_env=base_env)
         spec = f"{runtime}@{version}"
         data_dir = self.cache_root / "mise-data"
         data_dir.mkdir(parents=True, exist_ok=True)
-        env = os.environ.copy()
+        env = self._seed_env(base_env)
         env["MISE_DATA_DIR"] = str(data_dir)
 
         if resolved := self._mise_which(mise, spec, runtime, env):
@@ -80,10 +86,12 @@ class MiseRuntime:
             return resolved
         raise RuntimeProvisionError(f"could not resolve mise runtime binary for {spec}")
 
-    def env(self, runtime: str, version: str) -> dict[str, str]:
+    def env(
+        self, runtime: str, version: str, *, base_env: dict[str, str] | None = None
+    ) -> dict[str, str]:
         """Environment with mise runtime bin prepended to PATH."""
-        bin_dir = self.ensure(runtime, version)
-        env = os.environ.copy()
+        bin_dir = self.ensure(runtime, version, base_env=base_env)
+        env = self._seed_env(base_env)
         env |= {
             "PATH": f"{bin_dir}{os.pathsep}{env.get('PATH', '')}",
             "MISE_DATA_DIR": str(self.cache_root / "mise-data"),
@@ -91,10 +99,10 @@ class MiseRuntime:
         return env
 
     @staticmethod
-    def _bootstrap_mise(target: Path) -> Path:
+    def _bootstrap_mise(target: Path, base_env: dict[str, str] | None = None) -> Path:
         """Download and install mise into the maina cache."""
         target.parent.mkdir(parents=True, exist_ok=True)
-        env = os.environ.copy()
+        env = MiseRuntime._seed_env(base_env)
         env |= {"MISE_INSTALL_PATH": str(target), "MISE_VERSION": PINNED_MISE_VERSION}
         curl = shutil.which("curl")
         shell = shutil.which("sh")
@@ -153,7 +161,7 @@ class MiseRuntime:
 
         shell = shutil.which("sh") or "/bin/sh"
         exe = subprocess.run(
-            [str(mise), "exec", spec, "--", shell, "-c", f"command -v {runtime}"],
+            [str(mise), "exec", spec, "--", shell, "-c", f"command -v {shlex.quote(runtime)}"],
             check=False,
             env=env,
             capture_output=True,

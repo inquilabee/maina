@@ -95,7 +95,8 @@ class NpmBackend:
         node_version = manifest.requires.get("node") or "latest"
         if shutil.which("node", path=env.get("PATH")):
             return
-        bin_dir = ctx.language.ensure("node", node_version)
+        # Hand mise the trimmed install env so its subprocesses honour env_allow.
+        bin_dir = ctx.language.ensure("node", node_version, base_env=env)
         ctx.prepend_path(env, bin_dir)
 
     @staticmethod

@@ -132,8 +132,11 @@ class Installer:
         self._require_supported_platform(manifest)
         backend_name = manifest.install.backend
         version = self._cache_version(manifest)
-        # Copy at the resolve boundary so backends cannot mutate a shared caller dict.
-        env = dict(filter_env(self._compose_requires_env(manifest.requires), env_allow))
+        # Trim os.environ first, then compose: the language provider runs its
+        # provisioning subprocesses (mise / npm) with this trimmed env too, so a
+        # secret gated out by ``env_allow`` never reaches them.
+        base_env = dict(filter_env(dict(os.environ), env_allow))
+        env = self._compose_requires_env(manifest.requires, base_env)
         backend = self._backends.get(backend_name)
         if backend is None:
             raise InstallError(f"unknown install backend: {backend_name!r}")
@@ -146,20 +149,23 @@ class Installer:
         with self.install_dir_lock(lock_dir):
             return backend.resolve(manifest, version=version, env=env, ctx=ctx)
 
-    def _compose_requires_env(self, requires: RequiresSpec) -> dict[str, str]:
+    def _compose_requires_env(
+        self, requires: RequiresSpec, base_env: dict[str, str]
+    ) -> dict[str, str]:
         """Ensure every pinned runtime and compose PATH without clobbering.
 
         ``LanguageRuntimeProvider.env`` typically copies ``os.environ`` per call,
         so invoking it once per pin would drop earlier bins. Mirror
-        :meth:`MiseRuntime.env`: ``ensure`` each runtime, prepend each bin dir,
-        set ``MISE_DATA_DIR`` once when any pin is present.
+        :meth:`MiseRuntime.env`: ``ensure`` each runtime (handing it *base_env* so
+        its subprocesses honour ``env_allow``), prepend each bin dir, set
+        ``MISE_DATA_DIR`` once when any pin is present.
         """
-        env = os.environ.copy()
+        env = dict(base_env)
         pins = requires.runtimes
         if not pins:
             return env
         for runtime, version in pins.items():
-            bin_dir = self.language.ensure(runtime, version)
+            bin_dir = self.language.ensure(runtime, version, base_env=env)
             env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
         env["MISE_DATA_DIR"] = str(self.cache_root / "mise-data")
         return env
