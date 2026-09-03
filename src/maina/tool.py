@@ -6,6 +6,7 @@ import inspect
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from maina.core.argparser import ArgParser
 from maina.core.errors import AbstractToolError
 from maina.core.registry import Registry
 from maina.runner import ToolRunner
@@ -141,6 +142,29 @@ class Tool:
             timeout=timeout,
             env_allow=env_allow,
             stdin=stdin,
+        )
+
+    def argv(
+        self,
+        *,
+        extra: str | list[str] | None = None,
+        args: Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> list[str]:
+        """The argv this tool would run, with the bare ``cli`` name as argv[0].
+
+        A real :meth:`run` resolves argv[0] to the installed/cached executable;
+        every token after it is exactly what ``run`` would pass. Use it for a
+        dry run, a preview, or to drive the subprocess yourself.
+        """
+        manifest = self.manifest
+        if manifest.abstract:
+            raise AbstractToolError(f"{manifest.id!r} is abstract; call a concrete child surface")
+        return ArgParser(manifest.args).build(
+            manifest.cli,
+            manifest.subcommands,
+            {**kwargs, **(dict(args) if args else {})},
+            extra=extra,
         )
 
     def __call__(

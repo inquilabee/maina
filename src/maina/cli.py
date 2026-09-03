@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import sys
 from typing import TYPE_CHECKING, Annotated, Any
 
@@ -165,6 +166,7 @@ def run(
 
     Nested tool ids use hyphens (``kubectl-get``, ``git-remote-add``).
     ``maina run <tool_id>`` and ``... --help`` print that tool's registry help.
+    ``--dry-run`` prints the argv that would run and exits without running it.
     """
     resolved_id, tokens, wants_help = RunInvocation.resolve(tool_id, list(ctx.args))
     if resolved_id is None:
@@ -175,15 +177,39 @@ def run(
         raise typer.Exit(0)
     # Only the head (before `--`) is maina's; `--json` after `--` is the tool's.
     head, tail = split_at_dashdash(tokens)
-    as_json = "--json" in head
-    head = [t for t in head if t != "--json"]
+    maina_flags = {t for t in head if t in {"--json", "--dry-run"}}
+    head = [t for t in head if t not in maina_flags]
     tokens = head if tail is None else [*head, "--", *tail]
+    dispatch_run(
+        resolved_id,
+        tokens,
+        as_json="--json" in maina_flags,
+        dry_run="--dry-run" in maina_flags,
+    )
+
+
+def dispatch_run(resolved_id: str, tokens: list[str], *, as_json: bool, dry_run: bool) -> None:
+    """Print the argv (``--dry-run``) or run the tool and emit its result."""
+    if dry_run:
+        typer.echo(shlex.join(dry_run_argv(resolved_id, tokens)))
+        return
     result = run_tool_tokens(resolved_id, tokens)
     emit_result(result, as_json=as_json)
     if not result.ok:
         echo_stderr(result.stderr)
         # Docs contract: exit 1 = tool ran and failed; 2 = bad usage / unknown id.
         raise typer.Exit(1)
+
+
+def dry_run_argv(resolved_id: str, tokens: list[str]) -> list[str]:
+    """Build the argv a run would execute (argv[0] is the bare ``cli`` name)."""
+    try:
+        tool = Tool(resolved_id)
+        kwargs, extra = RunArgParser.parse(tokens, flag_names=flag_names_for(tool))
+        return tool.argv(extra=extra, **kwargs)
+    except (ManifestError, AbstractToolError, ArgError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from exc
 
 
 def flag_names_for(tool: Tool) -> frozenset[str]:

@@ -52,7 +52,12 @@ tool = maina.Tool("mytool", runtime=rt)
 tool.manifest            # the resolved Manifest
 tool.args                # read-only Mapping[str, ArgSpec]
 tool.describe()          # JSON-safe dict: id, cli, args, install, output, ...
+tool.argv(path=["src"])  # the argv a run would build (argv[0] = bare cli name)
 ```
+
+`tool.argv(**kwargs)` maps kwargs the same way `run` does but stops before
+executing — use it for a dry run, a preview, or to hand the argv to your own
+subprocess call.
 
 `Manifest`, `ArgSpec`, `InstallSpec`, `OutputSpec`, `Registry`, and `ToolRunner`
 are importable straight from `maina`.

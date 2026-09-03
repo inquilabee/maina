@@ -39,6 +39,8 @@
 - Non-success tool run exits 1 (2 stays "bad usage").
 - `maina run <id> --` runs a no-required-args tool; `key:=value` forces a
   literal string value.
+- `maina run <id> --dry-run key=value …` prints the argv that would run
+  (argv[0] is the bare `cli` name) and exits without executing.
 
 ### API
 
@@ -47,6 +49,9 @@
 - `ParseError` / `ToolExecError` added and exported.
 - `Tool.manifest` / `Tool.args` (read-only) / `Tool.describe()` (JSON-safe,
   stable) for building your own help / form / CLI.
+- `Tool.argv(**kwargs)` returns the argv a run would build (argv[0] is the
+  bare `cli` name) — for a dry run, a preview, or driving the subprocess
+  yourself.
 - `Manifest`, `ArgSpec`, `InstallSpec`, `OutputSpec`, `Registry`, `ToolRunner`
   are re-exported from `maina`.
 - `register(..., replace=True)` resets the catalog before adding roots;

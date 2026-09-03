@@ -40,6 +40,8 @@ Call `Tool(tool_id).run(**kwargs)`.
 - Tokens after `--` are passed through as `extra` argv.
 - `--json` prints `result.parsed` as JSON; without it the CLI prints the tool's
   stdout exactly as produced.
+- `--dry-run` prints the argv that would run (argv[0] is the bare `cli` name; a
+  real run resolves it to the cached executable) and exits without running it.
 
 ```bash
 maina run jq filter=".items[].name" path=data.json raw

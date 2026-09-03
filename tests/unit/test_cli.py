@@ -364,6 +364,18 @@ def test_run_argparser_raw_string_form() -> None:
     assert kwargs["flag"] is True
 
 
+def test_tool_argv_previews_argv_without_running() -> None:
+    argv = Tool("jq").argv(filter=".", compact=True)
+    assert argv == ["jq", "-c", "."]
+
+
+def test_cli_run_dry_run_prints_argv_and_skips_execution() -> None:
+    dry = runner.invoke(app, ["run", "jq", "--dry-run", "filter=.name", "raw"])
+    assert dry.exit_code == 0, dry.stdout + dry.stderr
+    # argv[0] is the bare cli name (a real run resolves it to the cached binary).
+    assert dry.stdout.strip() == "jq -r .name"
+
+
 def test_cli_run_no_arg_tool_with_dashdash(tmp_path: Any) -> None:
     root = tmp_path / "reg"
     write_yaml(root / "noargs.yaml", {"cli": "true", "install": {"backend": "path"}})
