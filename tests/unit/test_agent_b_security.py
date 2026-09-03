@@ -153,19 +153,61 @@ def demo_targz(binary_name: str = "bin/demo") -> bytes:
     return archive_bytes.getvalue()
 
 
-def mock_targz_fetcher(body: bytes) -> tuple[ArchiveFetcher, MagicMock]:
-    """ArchiveFetcher wired to a MagicMock session that returns *body*."""
-    fetcher = ArchiveFetcher()
+def body_response(body: bytes) -> MagicMock:
     response = MagicMock()
+    response.status_code = 200
     response.headers = {"Content-Length": str(len(body))}
     response.raise_for_status = MagicMock()
     response.iter_content = MagicMock(return_value=[body])
     response.__enter__ = MagicMock(return_value=response)
     response.__exit__ = MagicMock(return_value=False)
+    return response
+
+
+def redirect_response(location: str) -> MagicMock:
+    response = MagicMock()
+    response.status_code = 302
+    response.headers = {"Location": location}
+    response.__enter__ = MagicMock(return_value=response)
+    response.__exit__ = MagicMock(return_value=False)
+    return response
+
+
+def mock_targz_fetcher(body: bytes) -> tuple[ArchiveFetcher, MagicMock]:
+    """ArchiveFetcher wired to a MagicMock session that returns *body*."""
+    fetcher = ArchiveFetcher()
     session = MagicMock()
-    session.get = MagicMock(return_value=response)
+    session.get = MagicMock(return_value=body_response(body))
     fetcher._session = session
     return fetcher, session
+
+
+def test_fetch_https_follows_allowed_redirect(tmp_path: Path) -> None:
+    fetcher = ArchiveFetcher(allowed_redirect_hosts={"github.com", "githubusercontent.com"})
+    session = MagicMock()
+    session.get = MagicMock(
+        side_effect=[
+            redirect_response("https://objects.githubusercontent.com/x/demo.tar.gz"),
+            body_response(demo_targz()),
+        ]
+    )
+    fetcher._session = session
+    dest = tmp_path / "demo.tar.gz"
+    fetcher.fetch_https("https://github.com/acme/demo/releases/download/v1/demo.tar.gz", dest)
+    assert dest.read_bytes() == demo_targz()
+    assert session.get.call_count == 2
+
+
+def test_fetch_https_refuses_offsite_redirect(tmp_path: Path) -> None:
+    fetcher = ArchiveFetcher(allowed_redirect_hosts={"github.com", "githubusercontent.com"})
+    session = MagicMock()
+    session.get = MagicMock(return_value=redirect_response("https://evil.example.com/demo.tar.gz"))
+    fetcher._session = session
+    with pytest.raises(InstallError, match="refusing redirect off allowed hosts"):
+        fetcher.fetch_https(
+            "https://github.com/acme/demo/releases/download/v1/demo.tar.gz",
+            tmp_path / "demo.tar.gz",
+        )
 
 
 def test_download_and_extract_happy_path_mock_https(tmp_path: Path) -> None:

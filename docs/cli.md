@@ -1,14 +1,26 @@
 # CLI
 
-The `maina` command is a thin front over `Tool`. The registry stays the source
+The `maina` command is a thin front over `Tool`. The manifest stays the source
 of truth — there is no per-tool wrapper command.
+
+## Catalog
+
+maina ships no manifests, so the CLI needs a catalog to act on. Set
+`MAINA_REGISTRY` to one or more manifest directories (`os.pathsep`-separated):
+
+```bash
+export MAINA_REGISTRY=./my_tools:./vendor_tools
+maina list
+```
+
+Library callers use `register(rt, registry_dirs=[...])` instead.
 
 ## `maina list [PARENT]`
 
-List callable tool ids. With no argument, every concrete id is printed
-(including nested hyphen ids such as `kubectl-get`). With a parent id, only its
-children are listed. Abstract parents (`base`, `kubectl`, `git`) never appear in
-the catalog but may be passed as `PARENT`.
+List callable tool ids in the registered catalog. With no argument, every
+concrete id is printed (including nested hyphen ids such as `kubectl-get`). With
+a parent id, only its children are listed. Abstract parents never appear in the
+listing but may be passed as `PARENT`.
 
 ```bash
 maina list

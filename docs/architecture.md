@@ -34,9 +34,10 @@ Tool (public)
 
 The composition root is `Runtime` — it owns registry overlay roots, the parser
 map, the installer backend map, the language provider, and the cache root.
-Built-ins and client plugins register through the **same** `register(rt, ...)`
-call. `Runtime.preferred()` is an empty Runtime with the shipped defaults
-registered.
+Everything registers through the **same** `register(rt, ...)` call.
+`Runtime.preferred()` registers the builtin parsers, install backends, and mise
+— but **no tool catalog**. maina ships the engine and the manifest contract;
+catalogs belong to the consumer.
 
 Contracts are protocols: `InstallerBackend`, `LanguageRuntimeProvider`,
 `Parser`. A plugin implements the protocol structurally and is passed to

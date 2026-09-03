@@ -7,26 +7,26 @@ from typing import TYPE_CHECKING
 import pytest
 
 import maina
-from helpers import write_yaml
-from maina.runtime import SESSION, Runtime
+from helpers import fixture_runtime, write_yaml
+from maina.runtime import SESSION
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-__all__ = ["restore_session_runtime", "write_yaml"]
+__all__ = ["fixture_runtime", "restore_session_runtime", "write_yaml"]
 
 
 @pytest.fixture(autouse=True)
 def restore_session_runtime() -> Iterator[None]:
-    """Isolate each test on preferred Runtime; restore the prior session snapshot.
+    """Isolate each test on a fixture-catalog Runtime; restore the prior session.
 
-    Snapshots the previous SESSION Runtime so teardown does not rebuild
-    ``Runtime.preferred()`` a second time when a prior instance exists.
+    maina ships no catalog, so the session default here is a preferred Runtime
+    with the test fixture manifests registered.
     """
     previous = SESSION.current
-    maina.use(Runtime.preferred())
+    maina.use(fixture_runtime())
     yield
     if previous is not None:
         SESSION.set(previous)
     else:
-        maina.use(Runtime.preferred())
+        maina.use(fixture_runtime())

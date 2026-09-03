@@ -9,14 +9,13 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from helpers import write_yaml
+from helpers import fixture_runtime, write_yaml
 from maina.backends import PathBackend
 from maina.core.errors import ToolTimeoutError
 from maina.core.parsers import ParserResolver, builtin_generals
 from maina.core.registry import Registry
 from maina.installer import Installer
 from maina.runner import ToolRunner
-from maina.runtime import Runtime
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -178,8 +177,8 @@ def test_toolrunner_executor_records_cwd(tmp_path: Path) -> None:
     assert seen["argv"][0].endswith("echo") or seen["argv"][0] == "echo"
 
 
-def test_family_parser_apply_via_preferred() -> None:
-    rt = Runtime.preferred()
+def test_family_parser_apply_via_fixture() -> None:
+    rt = fixture_runtime()
     manifest = rt.registry.load("git-remote-add")
     assert manifest.parser == "add.py"
     assert manifest.parser_path is not None

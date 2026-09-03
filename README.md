@@ -1,13 +1,21 @@
 # maina
 
-Call non-Python CLIs from Python. The registry YAML is the source of truth;
-`Tool(name)` loads a manifest and runs it.
+Call non-Python CLIs from Python. You describe a tool once in a YAML manifest;
+`Tool(name)` loads it, installs/resolves the executable, maps keyword arguments
+to argv, runs the process, and returns a structured result.
+
+maina ships **the engine and the manifest contract, not a tool catalog** —
+you register your own manifests (or your app does).
 
 ```python
+from pathlib import Path
+import maina
 from maina import Tool
 
-jscpd = Tool("jscpd")
-result = jscpd(path=["src"], min_lines=5)
+rt = maina.Runtime.preferred()
+maina.register(rt, registry_dirs=[Path("my_tools")])   # your manifests
+
+result = Tool("jscpd", runtime=rt)(path=["src"], min_lines=5)
 print(result.raw, result.parsed)
 ```
 
@@ -20,9 +28,7 @@ Design notes: `adr/0001-registry-first-tool-runtime.md`,
 
 ## Extendibility
 
-Add local tools, parsers, and installer backends without forking maina.
-Built-ins use the same `register(...)` path. Open a PR only when a tool is worth
-sharing in the shipped catalog.
+Register tools, parsers, and installer backends on a `Runtime`.
 
 ```python
 from pathlib import Path
@@ -34,9 +40,9 @@ maina.Tool("mytool", runtime=rt).run(...)
 ```
 
 Or omit the Runtime and mutate the process session: `maina.register(registry_dirs=[...])`.
-Later registry dirs override shipped ids for the same tool id. You can also pass
-`parsers=`, `parsers_dirs=`, `installers=`, and `language=`. Parsers implement the
-`Parser` protocol (`parse(raw, result)` / any matching callable).
+A later registry dir overrides an earlier one for the same tool id. You can also
+pass `parsers=`, `parsers_dirs=`, `installers=`, and `language=`. Parsers
+implement the `Parser` protocol (`parse(raw, result)` / any matching callable).
 
 The process-wide session is not thread-safe. For concurrent or nested use pass an
 explicit `Tool(..., runtime=rt)`, or scope a swap to a block with
@@ -54,11 +60,12 @@ third-party binaries. A subprocess that overruns raises `ToolTimeoutError`; a
 `kubectl`. See `examples/local_tool/` (overlay registry) and
 `examples/parsers_dirs/` (custom parser via `parsers_dirs`).
 
-Shipped `base.yaml` auto-extends every tool but carries **no** runtime pins, so a
-static binary never drags `mise`. The `npm` backend provisions Node on its own.
-Pin runtimes where you actually need them:
+If a `base.yaml` exists in a registry root it auto-extends every tool in that
+root — put shared defaults (e.g. org-wide runtime pins) there. maina ships no
+`base.yaml`, so a static binary never drags `mise` unless you add pins. The
+`npm` backend provisions Node on its own. Pin runtimes where you need them:
 
-- in your own overlay `base.yaml` (org-wide), or
+- in your own `base.yaml` (per registry root), or
 - per tool: `requires: { node: "22" }`
 - `requires: null` on a child clears every inherited pin;
   `requires: { node: null }` drops just one
@@ -81,25 +88,22 @@ install:
 
 A download whose SHA-256 does not match is rejected before `chmod +x`.
 
-### Catalog notes
+### Authoring notes
 
-Some shipped manifests set flag defaults that differ from upstream CLIs so
-parsed/machine output is usable out of the box:
-
-- **eslint** — `format` defaults to `json` (upstream stylish); `no_error_on_unmatched_pattern` defaults to true.
-- **jscpd** — `reporters` defaults to `json`; `silent` defaults to true.
-
-Pass the kwargs explicitly to override. Intermediate `git-remote` is callable with
-empty args on purpose (`git remote` lists remotes). Prefer `output_format` (not
-`output`) when an arg would clash with the top-level `output:` block — see
-`kubectl-get`.
+- A manifest's `args` defaults can differ from the upstream CLI so machine
+  output is usable by default (e.g. force `--format json`); pass the kwarg to
+  override.
+- Name an arg `output_format` rather than `output` when it would clash with the
+  manifest's top-level `output:` block.
+- An intermediate family surface can be callable with empty args on purpose
+  (`git remote` lists remotes).
+- See `examples/local_tool/` (overlay registry) and `examples/parsers_dirs/`
+  (custom parser via `parsers_dirs`).
 
 ## Setup
 
 ```bash
 uv sync
-uv run shipgate install
-uv run maina prepare jq
 uv run python examples/demo.py
 uv run python examples/parsers_dirs/demo.py
 ```

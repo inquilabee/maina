@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from typing import TYPE_CHECKING
@@ -96,21 +97,45 @@ class NpmBackend:
     ) -> Path:
         """npm install a package into prefix and return its bin link."""
         prefix.mkdir(parents=True, exist_ok=True)
+        # Anchor the local project so npm does not walk up to a parent
+        # package.json (or a global root) and resolve the bin to an outside
+        # install.
+        anchor = prefix / "package.json"
+        if not anchor.exists():
+            anchor.write_text(
+                json.dumps({"name": f"maina-tool-{cli}", "private": True}) + "\n",
+                encoding="utf-8",
+            )
         pkg_spec = f"{package}@{version}" if version and version != "default" else package
         npm = shutil.which("npm", path=env.get("PATH"))
         if not npm:
             raise InstallError("npm not found; ensure node runtime via mise")
         NpmBackend._npm_install(npm, prefix, pkg_spec, env)
-        if link.exists():
-            return link
-        raise InstallError(f"npm install of {pkg_spec} did not produce {cli}")
+        if not (link.is_file() or link.is_symlink()):
+            raise InstallError(f"npm install of {pkg_spec} did not produce {cli}")
+        resolved = link.resolve()
+        if not resolved.is_relative_to(prefix.resolve()):
+            raise InstallError(
+                f"npm resolved {cli} to {resolved}, outside the tool cache "
+                f"({prefix}); refusing to link an out-of-cache install"
+            )
+        return link
 
     @staticmethod
     def _npm_install(npm: str, prefix: Path, pkg_spec: str, env: dict[str, str]) -> None:
-        """Run npm install --prefix for a package."""
+        """Run npm install --prefix for a package (local, no lockfile churn)."""
         try:
             subprocess.run(
-                [npm, "install", "--prefix", str(prefix), pkg_spec],
+                [
+                    npm,
+                    "install",
+                    "--prefix",
+                    str(prefix),
+                    "--no-fund",
+                    "--no-audit",
+                    "--no-package-lock",
+                    pkg_spec,
+                ],
                 check=True,
                 env=env,
                 capture_output=True,

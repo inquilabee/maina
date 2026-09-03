@@ -12,30 +12,45 @@ import tempfile
 import zipfile
 from contextlib import suppress
 from pathlib import Path
-from typing import Literal
-from urllib.parse import urlparse
+from typing import TYPE_CHECKING, Literal
+from urllib.parse import urljoin, urlparse
 
 import requests
 
 from maina.core.errors import InstallError
 
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
 # Soft cap for streamed release assets (GitHub binaries, etc.).
 DEFAULT_MAX_BYTES = 512 * 1024 * 1024
 CHUNK_SIZE = 64 * 1024
+REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+MAX_REDIRECT_HOPS = 5
 TarReadMode = Literal["r:gz", "r:xz"]
 
 
 class ArchiveFetcher:
-    """Download https assets and extract binaries into a destination directory."""
+    """Download https assets and extract binaries into a destination directory.
+
+    When ``allowed_redirect_hosts`` is given, redirects are resolved hop by hop
+    and every hop host must match one of those names (exact or ``.suffix``);
+    this keeps a github download from being bounced to an arbitrary host. With
+    ``None`` (default) redirects are followed normally.
+    """
 
     def __init__(
         self,
         *,
         session: requests.Session | None = None,
         max_bytes: int = DEFAULT_MAX_BYTES,
+        allowed_redirect_hosts: Iterable[str] | None = None,
     ) -> None:
         self._session = session or requests.Session()
         self.max_bytes = max_bytes
+        self._allowed_hosts = (
+            None if allowed_redirect_hosts is None else frozenset(allowed_redirect_hosts)
+        )
 
     def download_and_extract(
         self,
@@ -78,15 +93,47 @@ class ArchiveFetcher:
 
     def fetch_https(self, url: str, dest: Path) -> None:
         """Stream a URL that must use the https scheme, enforcing a size cap."""
-        parsed = urlparse(url)
-        if parsed.scheme != "https" or not parsed.netloc:
+        if urlparse(url).scheme != "https" or not urlparse(url).netloc:
             raise InstallError(f"refusing non-https download URL: {url}")
+        if self._allowed_hosts is None:
+            self._stream_get(url, dest, allow_redirects=True)
+            return
+        current = url
+        for _ in range(MAX_REDIRECT_HOPS):
+            self._require_allowed_host(current)
+            location = self._stream_get(current, dest, allow_redirects=False)
+            if location is None:
+                return
+            current = urljoin(current, location)
+        raise InstallError(f"too many redirects fetching {url}")
+
+    def _stream_get(self, url: str, dest: Path, *, allow_redirects: bool) -> str | None:
+        """GET *url*; write the body, or return a redirect Location to follow."""
         try:
-            with self._session.get(url, timeout=120, stream=True) as response:
+            with self._session.get(
+                url, timeout=120, stream=True, allow_redirects=allow_redirects
+            ) as response:
+                if not allow_redirects and response.status_code in REDIRECT_STATUSES:
+                    location = response.headers.get("Location")
+                    if not location:
+                        raise InstallError(f"redirect missing Location: {url}")
+                    return location
                 response.raise_for_status()
                 self._write_capped_stream(response, dest, url=url)
         except requests.RequestException as exc:
             raise InstallError(f"download failed for {url}: {exc}") from exc
+        return None
+
+    def _require_allowed_host(self, url: str) -> None:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        listed = self._host_in_allowlist(host)
+        if parsed.scheme != "https" or parsed.username is not None or not host or not listed:
+            raise InstallError(f"refusing redirect off allowed hosts: {url}")
+
+    def _host_in_allowlist(self, host: str) -> bool:
+        allowed = self._allowed_hosts or frozenset()
+        return any(host == name or host.endswith(f".{name}") for name in allowed)
 
     def _write_capped_stream(self, response: requests.Response, dest: Path, *, url: str) -> None:
         """Write response body to dest, rejecting Content-Length or body over max_bytes."""

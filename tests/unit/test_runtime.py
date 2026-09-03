@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 import maina
-from helpers import write_yaml
+from helpers import fixture_runtime, write_yaml
 from maina.core.errors import ManifestError, RegisterError
 from maina.core.parsers import ParserResolver
 from maina.runtime import Runtime, resolve_cache_root
@@ -16,19 +16,21 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def test_bootstrap_parity() -> None:
+def test_bootstrap_has_parsers_and_no_catalog() -> None:
     preferred = Runtime.preferred()
-    manifest = preferred.registry.load("jq")
-    assert manifest.cli == "jq"
+    # maina ships no tool catalog.
+    assert preferred.registry.iter_ids() == []
     assert preferred.parsers.is_general("json")
     assert preferred.parsers.is_general("raw")
+    # A caller-supplied catalog is what makes tools loadable.
+    assert fixture_runtime().registry.load("jq").cli == "jq"
 
 
 def test_runtime_use_isolates() -> None:
     maina.use(Runtime())
     with pytest.raises(ManifestError):
         maina.Tool("jq")
-    maina.use(Runtime.preferred())
+    maina.use(fixture_runtime())
     assert maina.Tool("jq").id == "jq"
 
 
@@ -42,7 +44,7 @@ def test_tool_explicit_runtime(tmp_path: Path) -> None:
         parsers={"text": ParserResolver.parse_text},
         installers=[],
     )
-    # Active preferred still has jq; explicit runtime only sees local.
+    # Active session has the fixture catalog; explicit runtime only sees local.
     assert maina.Tool("jq").id == "jq"
     with pytest.raises(ManifestError):
         maina.Tool("jq", runtime=rt)

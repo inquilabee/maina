@@ -6,18 +6,13 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from helpers import write_yaml
+from helpers import fixture_registry, write_yaml
 from maina.core.errors import AbstractToolError, ManifestError
 from maina.core.registry import Registry
-from maina.runtime import Runtime
 from maina.tool import Tool
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-
-def preferred_registry() -> Registry:
-    return Runtime.preferred().registry
 
 
 def test_join_tool_id() -> None:
@@ -27,34 +22,34 @@ def test_join_tool_id() -> None:
 
 
 def test_load_jq_flat() -> None:
-    manifest = preferred_registry().load("jq")
+    manifest = fixture_registry().load("jq")
     assert manifest.cli == "jq"
     assert not manifest.abstract
     assert manifest.subcommands == []
 
 
 def test_load_jscpd_family() -> None:
-    manifest = preferred_registry().load("jscpd")
+    manifest = fixture_registry().load("jscpd")
     assert manifest.cli == "jscpd"
     assert manifest.parser == "json"
     assert manifest.parser_path is None
 
 
 def test_kubectl_get_uses_general_json() -> None:
-    manifest = preferred_registry().load("kubectl-get")
+    manifest = fixture_registry().load("kubectl-get")
     assert manifest.parser == "json"
     assert manifest.parser_path is None
 
 
 def test_git_remote_add_keeps_family_parser() -> None:
-    manifest = preferred_registry().load("git-remote-add")
+    manifest = fixture_registry().load("git-remote-add")
     assert manifest.parser == "add.py"
     assert manifest.parser_path is not None
     assert manifest.parser_path.name == "add.py"
 
 
 def test_kubectl_get_inheritance() -> None:
-    manifest = preferred_registry().load("kubectl-get")
+    manifest = fixture_registry().load("kubectl-get")
     assert manifest.cli == "kubectl"
     assert manifest.subcommands == ["get"]
     assert "namespace" in manifest.args
@@ -62,7 +57,7 @@ def test_kubectl_get_inheritance() -> None:
 
 
 def test_git_remote_add_subcommand_chain() -> None:
-    registry = preferred_registry()
+    registry = fixture_registry()
     by_id = registry.load("git-remote-add")
     by_kw = registry.load(Registry.join_tool_id("git", "remote-add"))
     assert by_id.subcommands == ["remote", "add"]
@@ -77,7 +72,7 @@ def test_abstract_refuses_run() -> None:
 
 
 def test_list_commands() -> None:
-    registry = preferred_registry()
+    registry = fixture_registry()
     tops = registry.list_commands(None)
     assert "jq" in tops
     assert "base" not in tops
@@ -240,7 +235,7 @@ def test_requires_rejects_mixed_legacy_and_pins(tmp_path: Path) -> None:
 
 def test_shipped_tools_carry_no_surprise_runtime_pins() -> None:
     # Shipped base.yaml has no runtime pins: a static binary must not drag mise.
-    registry = preferred_registry()
+    registry = fixture_registry()
     assert registry.load("jq").requires.runtimes == {}
     assert registry.load("shellcheck").requires.runtimes == {}
     # npm tools may still declare node explicitly where they need it.
@@ -300,7 +295,7 @@ def test_requires_null_pin_drops_one(tmp_path: Path) -> None:
 
 
 def test_canonical_family_extends() -> None:
-    registry = preferred_registry()
+    registry = fixture_registry()
     kubectl_get = registry.load("kubectl-get")
     assert kubectl_get.cli == "kubectl"
     assert kubectl_get.subcommands == ["get"]

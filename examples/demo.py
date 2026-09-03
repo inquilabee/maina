@@ -1,4 +1,8 @@
-"""Smoke demo for the Tool API."""
+"""Smoke demo for the Tool API.
+
+maina ships no tool catalog: you register one. This demo overlays the two
+example registries in this folder and runs a path-backed tool offline.
+"""
 
 from __future__ import annotations
 
@@ -9,20 +13,21 @@ from maina import Tool
 
 
 def main() -> None:
-    # Optional overlay (same register path as shipped builtins):
-    local = Path(__file__).resolve().parent / "local_tool"
-    if local.is_dir():
-        maina.register(maina.runtime(), registry_dirs=[local])
+    here = Path(__file__).resolve().parent
+    rt = maina.Runtime.preferred()
+    maina.register(
+        rt,
+        registry_dirs=[here / "local_tool", here / "parsers_dirs" / "tools"],
+        parsers_dirs=[here / "parsers_dirs" / "parsers"],
+    )
 
-    print(Tool().help())
+    print(Tool(runtime=rt).help())
     print("---")
-    print(Tool("jscpd").help())
+    print("registered:", rt.registry.list_commands(None))
     print("---")
-    print("commands(kubectl):", Tool("kubectl").commands())
-    print("git remote add id:", Tool("git", subcommand="remote-add").id)
 
-    result = Tool("jq").run(filter=".", null_input=True)
-    print("jq ok:", result.ok, "raw:", repr(result.raw.strip()), "parsed:", result.parsed)
+    result = Tool("echo_shout", runtime=rt).run(message="hello from maina")
+    print("ok:", result.ok, "raw:", repr(result.raw.strip()), "parsed:", result.parsed)
 
 
 if __name__ == "__main__":

@@ -127,12 +127,16 @@ class Runtime:
 
     @classmethod
     def _bootstrap_preferred(cls) -> Runtime:
-        """Build preferred Runtime by registering shipped plugins (same path as clients)."""
+        """Build the preferred Runtime: builtin parsers, backends, and mise.
+
+        maina ships no tool catalog. ``preferred()`` has an empty registry
+        unless ``MAINA_REGISTRY`` names one or more existing directories
+        (``os.pathsep``-separated); the caller can also add one later with
+        ``register(rt, registry_dirs=[...])``.
+        """
         rt = cls()
-        shipped = Path(__file__).resolve().parent / "registry"
-        return register(
+        register(
             rt,
-            registry_dirs=[shipped],
             parsers=builtin_generals(),
             installers=[
                 PathBackend(),
@@ -141,6 +145,13 @@ class Runtime:
             ],
             language=MiseRuntime(cache_root=rt.cache_root),
         )
+        if env_dirs := [
+            Path(part)
+            for part in os.environ.get("MAINA_REGISTRY", "").split(os.pathsep)
+            if part and Path(part).is_dir()
+        ]:
+            register(rt, registry_dirs=env_dirs)
+        return rt
 
     @staticmethod
     def resolve_cache_root(path: Path | None = None) -> Path:

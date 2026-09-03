@@ -10,12 +10,28 @@ maina needs Python 3.11 or newer. `curl` and `sh` are required only if a tool
 pulls a language runtime through [mise](https://mise.jdx.dev/) and mise is not
 already on `PATH`.
 
+## Register a catalog
+
+maina ships no tool manifests. Point a `Runtime` at a directory of manifest
+YAML ([layout](manifests.md#file-layout-and-ids)):
+
+```python
+from pathlib import Path
+import maina
+
+rt = maina.Runtime.preferred()
+maina.register(rt, registry_dirs=[Path("my_tools")])
+```
+
+Or mutate the process session (`maina.register(registry_dirs=[...])`) and drop
+the `runtime=` argument below.
+
 ## Call a tool
 
 ```python
 from maina import Tool
 
-result = Tool("shellcheck").run(path=["scripts/deploy.sh"], format="json")
+result = Tool("shellcheck", runtime=rt).run(path=["scripts/deploy.sh"], format="json")
 result.raise_for_status()          # raises ToolExitError on a non-success code
 print(result.parsed)               # json parser -> Python list/dict
 ```
@@ -23,7 +39,7 @@ print(result.parsed)               # json parser -> Python list/dict
 The call form is equivalent to `.run(...)`:
 
 ```python
-Tool("jq")(filter=".", path="data.json")
+Tool("jq", runtime=rt)(filter=".", path="data.json")
 ```
 
 ## Read the result
@@ -58,12 +74,15 @@ With `env_allow` set, only essential variables (`PATH`, locale, temp,
 ## The CLI
 
 ```bash
-maina list                     # concrete tool ids
+maina list                     # tool ids in the active/registered catalog
 maina run jq filter=. null_input
-maina run shellcheck --help    # registry help for that tool
-maina prepare                  # install every tool + runtime up front
+maina run shellcheck --help    # manifest help for that tool
+maina prepare                  # install every registered tool + runtime
 maina prepare jq shellcheck    # just these
 maina prepare --check          # report state; install nothing
 ```
+
+(The CLI operates on the process session's catalog — see
+[CLI](cli.md#catalog).)
 
 See [CLI](cli.md) for the full surface.

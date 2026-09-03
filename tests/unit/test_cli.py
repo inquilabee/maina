@@ -46,7 +46,7 @@ def test_str_shellcheck_includes_arg_descriptions() -> None:
 def test_str_unbound_is_library_help() -> None:
     text = str(Tool())
     assert "Registered tools:" in text
-    assert "from maina import Tool" in text
+    assert "import maina" in text
     assert "maina run" not in text
     assert "shellcheck" in text
     bullets = [

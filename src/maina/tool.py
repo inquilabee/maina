@@ -19,11 +19,13 @@ if TYPE_CHECKING:
 
 
 class Tool:
-    """Call non-Python CLIs via registry manifests.
+    """Call a CLI described by a registry manifest.
 
     Usage:
-      from maina import Tool
-      result = Tool("jscpd").run(path=["src"])
+      import maina
+      rt = maina.Runtime.preferred()
+      maina.register(rt, registry_dirs=["my_tools"])
+      result = maina.Tool("mytool", runtime=rt).run(path=["src"])
       print(result.raw, result.parsed)
 
     For the ``maina`` CLI, run ``maina --help``.

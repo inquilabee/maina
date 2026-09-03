@@ -243,10 +243,10 @@ def test_prepare_ids_rejects_explicit_abstract(tmp_path: Path) -> None:
     assert installer.prepare_ids(["child"]) == ["child"]
 
 
-def test_prepare_ids_rejects_shipped_abstract() -> None:
-    from maina.runtime import Runtime
+def test_prepare_ids_rejects_catalog_abstract() -> None:
+    from helpers import fixture_runtime
 
-    rt = Runtime.preferred()
+    rt = fixture_runtime()
     with pytest.raises(InstallError, match="cannot prepare abstract"):
         rt.installer.prepare_ids(["base"])
     with pytest.raises(InstallError, match="cannot prepare abstract"):
@@ -283,6 +283,51 @@ def test_check_ids_unknown_backend_is_missing(tmp_path: Path) -> None:
         backends=[PathBackend()],
     )
     assert installer.is_satisfied(registry.load("x")) is False
+
+
+def test_npm_install_rejects_out_of_cache_bin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from maina.backends.npm import NpmBackend
+    from maina.core.errors import InstallError as MainaInstallError
+
+    outside = tmp_path / "global" / "bin" / "tool"
+    outside.parent.mkdir(parents=True)
+    outside.write_text("#!/bin/sh\n", encoding="utf-8")
+    prefix = tmp_path / "cache" / "tools" / "tool" / "1" / "npm"
+    link = prefix / "node_modules" / ".bin" / "tool"
+
+    def fake_npm_install(npm: str, target: Path, pkg_spec: str, env: dict[str, str]) -> None:
+        del npm, pkg_spec, env
+        link_root = target / "node_modules" / ".bin"
+        link_root.mkdir(parents=True)
+        (link_root / "tool").symlink_to(outside)
+
+    monkeypatch.setattr(NpmBackend, "_npm_install", staticmethod(fake_npm_install))
+    monkeypatch.setattr("maina.backends.npm.shutil.which", lambda *_a, **_k: "/usr/bin/npm")
+    with pytest.raises(MainaInstallError, match="outside the tool cache"):
+        NpmBackend._install_package("tool", "tool", "1", prefix, link, {"PATH": "/usr/bin"})
+
+
+def test_npm_install_accepts_in_cache_bin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from maina.backends.npm import NpmBackend
+
+    prefix = tmp_path / "cache" / "tools" / "tool" / "1" / "npm"
+    link = prefix / "node_modules" / ".bin" / "tool"
+
+    def fake_npm_install(npm: str, target: Path, pkg_spec: str, env: dict[str, str]) -> None:
+        del npm, pkg_spec, env
+        real = target / "node_modules" / "tool" / "bin" / "tool.js"
+        real.parent.mkdir(parents=True)
+        real.write_text("#!/usr/bin/env node\n", encoding="utf-8")
+        link.parent.mkdir(parents=True)
+        link.symlink_to(real)
+
+    monkeypatch.setattr(NpmBackend, "_npm_install", staticmethod(fake_npm_install))
+    monkeypatch.setattr("maina.backends.npm.shutil.which", lambda *_a, **_k: "/usr/bin/npm")
+    result = NpmBackend._install_package("tool", "tool", "1", prefix, link, {"PATH": "/usr/bin"})
+    assert result == link
+    assert (prefix / "package.json").is_file()
 
 
 def test_resolve_rejects_unsupported_platform(

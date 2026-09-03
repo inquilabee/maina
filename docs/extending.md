@@ -7,7 +7,8 @@ the same `register(...)` path.
 
 `Runtime` is the composition root. It owns the registry overlay roots, the
 general-parser map, the installer backend map, and the language provider.
-`Runtime.preferred()` builds one with the shipped defaults registered.
+`Runtime.preferred()` builds one with the builtin parsers, install backends, and
+mise registered — but **no tool catalog** (add one below).
 
 ```python
 from pathlib import Path
@@ -16,7 +17,7 @@ import maina
 rt = maina.Runtime.preferred()
 maina.register(
     rt,
-    registry_dirs=[Path("tools")],   # later roots override shipped ids
+    registry_dirs=[Path("tools")],   # a later root overrides an earlier id
     parsers={"csv": parse_csv},
     parsers_dirs=[Path("parsers")],
     installers=[MyBackend()],
@@ -47,9 +48,9 @@ with maina.isolated(rt):
 
 ## Overlay registries
 
-A `registry_dirs` root is just a directory of manifest YAML laid out
-[like the shipped one](manifests.md#file-layout-and-ids). A later root
-overriding an existing id replaces that tool; new ids are added. Use it to pin
+A `registry_dirs` root is just a directory of manifest YAML in the
+[standard layout](manifests.md#file-layout-and-ids). A later root overriding an
+existing id replaces that tool; new ids are added. Use it to pin
 different versions, add private tools, or tweak `args` defaults.
 
 ## Custom install backends

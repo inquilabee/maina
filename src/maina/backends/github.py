@@ -14,11 +14,16 @@ if TYPE_CHECKING:
     from maina.core.registry import Manifest
 
 
+GITHUB_DOWNLOAD_HOSTS = frozenset(
+    {"github.com", "api.github.com", "githubusercontent.com", "codeload.github.com"}
+)
+
+
 class GithubBackend:
     """Download a GitHub release asset into the tool cache (``backend: github``)."""
 
     def __init__(self, fetcher: ArchiveFetcher | None = None) -> None:
-        self._fetcher = fetcher or ArchiveFetcher()
+        self._fetcher = fetcher or ArchiveFetcher(allowed_redirect_hosts=GITHUB_DOWNLOAD_HOSTS)
 
     @property
     def name(self) -> str:

@@ -1,15 +1,22 @@
 # maina
 
-Call non-Python CLIs from Python with native-like APIs. A YAML **registry** is
-the source of truth: `Tool("jq")` loads a manifest, installs or resolves the
-executable, maps keyword arguments to argv, runs the process, and returns a
-structured result.
+Call non-Python CLIs from Python with native-like APIs. You describe a tool in a
+YAML **manifest**; `Tool(name)` loads it, installs or resolves the executable,
+maps keyword arguments to argv, runs the process, and returns a structured
+result.
+
+maina ships **the engine and the manifest contract, not a tool catalog.** You
+register your own manifests.
 
 ```python
+from pathlib import Path
+import maina
 from maina import Tool
 
-jq = Tool("jq")
-result = jq(filter=".name", path="package.json", raw=True)
+rt = maina.Runtime.preferred()
+maina.register(rt, registry_dirs=[Path("my_tools")])   # your manifests
+
+result = Tool("jq", runtime=rt)(filter=".name", path="package.json", raw=True)
 print(result.raw)      # stdout as the CLI produced it
 print(result.parsed)   # structured value from the manifest's parser, or None
 print(result.ok, result.exit_code)
@@ -20,8 +27,8 @@ print(result.ok, result.exit_code)
 Python code routinely shells out to tools from other ecosystems — Node
 (`jscpd`, `prettier`), Go and Rust binaries (`shellcheck`, `hadolint`, `rg`),
 system tools (`jq`). Every project re-invents install logic, argv mapping, and
-output handling. maina keeps that in one declarative catalog and one runtime, so
-no hand-written wrapper per CLI is needed.
+output handling. maina moves that into one declarative manifest per tool and one
+runtime, so no hand-written wrapper is needed.
 
 ## What maina is not
 

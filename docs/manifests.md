@@ -118,8 +118,9 @@ requires:
 - Inheritance: child pins merge onto the parent's. `requires: null` on a child
   clears every inherited pin; `requires: { node: null }` drops just that one.
 
-The shipped `base.yaml` has no pins, so a `path` or `github` tool never touches
-mise. The `npm` backend provisions Node on its own.
+maina ships no `base.yaml`. If a registry root has one it auto-extends every
+tool in that root — a place for shared runtime pins. Without it, a `path` or
+`github` tool never touches mise; the `npm` backend provisions Node on its own.
 
 ## output
 
