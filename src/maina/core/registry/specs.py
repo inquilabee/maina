@@ -46,6 +46,7 @@ ARG_KEYS = frozenset(
         "type",
         "flag",
         "joiner",
+        "separator",
         "positional",
         "required",
         "repeat",
@@ -55,7 +56,9 @@ ARG_KEYS = frozenset(
         "help",
     }
 )
-ARG_TYPES = frozenset({"string", "flag", "path"})
+ARG_TYPES = frozenset({"string", "flag", "path", "pairs"})
+JOIN_VALUES = frozenset({"csv"})
+VALID_PLATFORMS = frozenset({"linux", "macos", "windows"})
 INSTALL_KEYS = frozenset(
     {"backend", "repo", "assets", "binary", "tag", "package", "sha256", "allow_scripts"}
 )
@@ -90,7 +93,7 @@ def safe_segment(value: Any, *, field_name: str, tool_id: str, allow_none: bool 
 # Legacy singular form only — freeform pins use runtime names as keys.
 LEGACY_REQUIRES_KEYS = frozenset({"runtime", "version"})
 REQUIRES_KEYS = LEGACY_REQUIRES_KEYS  # back-compat alias for importers
-OUTPUT_KEYS = frozenset({"format", "success_codes"})
+OUTPUT_KEYS = frozenset({"format", "success_codes", "from_file"})
 
 
 def optional_str(value: Any) -> str | None:
@@ -119,6 +122,7 @@ class ArgSpec:
     type: str = "string"
     flag: str | None = None
     joiner: str | None = None
+    separator: str | None = None
     positional: bool = False
     required: bool = False
     repeat: bool | None = None
@@ -138,15 +142,19 @@ class ArgSpec:
         arg_type = str(raw.get("type", "string"))
         positional = raw.get("positional", False) is True
         flag = None if raw.get("flag") is None else str(raw["flag"])
-        cls._check_shape(name, arg_type, positional=positional, flag=flag, tool_id=tool_id)
+        join = None if raw.get("join") is None else str(raw["join"])
+        cls._check_shape(
+            name, arg_type, positional=positional, flag=flag, join=join, tool_id=tool_id
+        )
         return cls(
             type=arg_type,
             flag=flag,
             joiner=None if raw.get("joiner") is None else str(raw["joiner"]),
+            separator=None if raw.get("separator") is None else str(raw["separator"]),
             positional=positional,
             required=raw.get("required", False) is True,
             repeat=raw.get("repeat"),
-            join=None if raw.get("join") is None else str(raw["join"]),
+            join=join,
             default=raw.get("default"),
             has_default="default" in raw,
             description=optional_str(raw.get("description")),
@@ -155,13 +163,23 @@ class ArgSpec:
 
     @staticmethod
     def _check_shape(
-        name: str, arg_type: str, *, positional: bool, flag: str | None, tool_id: str
+        name: str,
+        arg_type: str,
+        *,
+        positional: bool,
+        flag: str | None,
+        join: str | None,
+        tool_id: str,
     ) -> None:
         if arg_type not in ARG_TYPES:
             allowed = ", ".join(sorted(ARG_TYPES))
             raise manifest_error(tool_id, f"args.{name} type {arg_type!r} not in {{{allowed}}}")
         if not positional and flag is None:
             raise manifest_error(tool_id, f"args.{name} needs a flag or positional: true")
+        if join is not None and join not in JOIN_VALUES:
+            raise manifest_error(tool_id, f"args.{name} join {join!r} not in {{csv}}")
+        if arg_type == "pairs" and flag is None:
+            raise manifest_error(tool_id, f"args.{name} type: pairs needs a flag")
 
 
 @dataclass(slots=True, frozen=True)
@@ -411,6 +429,10 @@ class OutputSpec:
 
     format: str | None = None
     success_codes: tuple[int, ...] = (0,)
+    from_file: str | None = None
+    """When set, the parse input is this file's contents, not stdout. The
+    template interpolates ``{cwd}`` and string kwargs (``"{output}/report.json"``).
+    """
 
     @classmethod
     def from_mapping(cls, raw: Any, *, tool_id: str) -> OutputSpec:
@@ -420,20 +442,20 @@ class OutputSpec:
         if not isinstance(raw, dict):
             raise manifest_error(tool_id, "output must be a map")
         if bad := unknown_keys(raw, OUTPUT_KEYS):
-            keys = ", ".join(bad)
-            raise manifest_error(tool_id, f"output unknown keys: {keys}")
-        codes = raw.get("success_codes", [0])
-        if not isinstance(codes, list) or not codes:
-            raise manifest_error(tool_id, "output.success_codes must be a non-empty list")
-        parsed: list[int] = []
-        for item in codes:
-            if isinstance(item, bool) or not isinstance(item, int):
-                raise manifest_error(tool_id, "output.success_codes must be integers")
-            parsed.append(item)
+            raise manifest_error(tool_id, f"output unknown keys: {', '.join(bad)}")
         return cls(
             format=optional_str(raw.get("format")),
-            success_codes=tuple(parsed),
+            success_codes=cls._parse_success_codes(raw.get("success_codes", [0]), tool_id=tool_id),
+            from_file=optional_str(raw.get("from_file")),
         )
+
+    @staticmethod
+    def _parse_success_codes(codes: Any, *, tool_id: str) -> tuple[int, ...]:
+        if not isinstance(codes, list) or not codes:
+            raise manifest_error(tool_id, "output.success_codes must be a non-empty list")
+        if any(isinstance(c, bool) or not isinstance(c, int) for c in codes):
+            raise manifest_error(tool_id, "output.success_codes must be integers")
+        return tuple(codes)
 
 
 @dataclass(slots=True)

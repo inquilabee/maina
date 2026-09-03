@@ -431,3 +431,89 @@ def test_npm_install_uses_ignore_scripts_by_default(
         "/usr/bin/npm", tmp_path / "x", "jscpd@1", {"PATH": "/usr/bin"}, allow_scripts=True
     )
     assert "--ignore-scripts" not in calls[0]
+
+
+# --- review C: expressiveness + output.from_file + validation (U5, B7, B11-B13) ---
+
+
+def test_pairs_type_emits_flag_key_value() -> None:
+    schema = {"arg": {"flag": "--arg", "type": "pairs"}}
+    argv = ArgParser(schema).build("jq", [], {"arg": {"x": "1", "y": "2"}})
+    assert argv == ["jq", "--arg", "x", "1", "--arg", "y", "2"]
+    argv2 = ArgParser(schema).build("jq", [], {"arg": [["a", "b"]]})
+    assert argv2 == ["jq", "--arg", "a", "b"]
+
+
+def test_separator_injects_literal_token() -> None:
+    schema = {
+        "n": {"flag": "--max-count", "joiner": "=", "type": "string"},
+        "paths": {"positional": True, "repeat": True, "type": "path", "separator": "--"},
+    }
+    argv = ArgParser(schema).build("git", ["log"], {"n": "3", "paths": ["src"]})
+    assert argv == ["git", "log", "--max-count=3", "--", "src"]
+
+
+def test_join_typo_rejected_at_load(tmp_path: Path) -> None:
+    reg = make_reg(
+        tmp_path,
+        {
+            "t.yaml": {
+                "cli": "t",
+                "install": {"backend": "path"},
+                "args": {"a": {"flag": "--a", "type": "string", "join": "comma"}},
+            }
+        },
+    )
+    with pytest.raises(ManifestError, match="join 'comma' not in"):
+        reg.load("t")
+
+
+def test_top_level_timeout_validated_at_load(tmp_path: Path) -> None:
+    reg = make_reg(
+        tmp_path, {"t.yaml": {"cli": "t", "timeout": "soon", "install": {"backend": "path"}}}
+    )
+    with pytest.raises(ManifestError, match="timeout 'soon' must be a number"):
+        reg.load("t")
+
+
+def test_platforms_values_validated_at_load(tmp_path: Path) -> None:
+    reg = make_reg(
+        tmp_path,
+        {"t.yaml": {"cli": "t", "platforms": ["Linux"], "install": {"backend": "path"}}},
+    )
+    with pytest.raises(ManifestError, match=r"platforms .* not in"):
+        reg.load("t")
+
+
+def test_output_from_file_used_as_parse_input(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    (work / "report").mkdir(parents=True)
+    (work / "report" / "r.json").write_text('{"clones": 3}', encoding="utf-8")
+    reg = make_reg(
+        tmp_path,
+        {
+            "j.yaml": {
+                "cli": "true",
+                "install": {"backend": "path"},
+                "parser": "json",
+                "args": {"out": {"flag": "--out", "type": "string"}},
+                "output": {"success_codes": [0], "from_file": "{out}/r.json"},
+            }
+        },
+    )
+    runner = ToolRunner(
+        reg.load("j"),
+        installer=path_installer(tmp_path, reg),
+        parsers=ParserResolver(generals=builtin_generals()),
+    )
+    result = runner.run({"out": "report"}, cwd=str(work))
+    assert result.parsed == {"clones": 3}
+    assert result.meta["parsed_from"].endswith("report/r.json")
+
+
+def test_cli_json_split_keeps_dashdash_tail() -> None:
+    from maina.cli import split_at_dashdash
+
+    head, tail = split_at_dashdash(["a=1", "--json", "--", "--json"])
+    assert head == ["a=1", "--json"]
+    assert tail == ["--json"]

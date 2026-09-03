@@ -20,6 +20,11 @@ if TYPE_CHECKING:
 class ArgParser:
     """Instance-scoped kwargs→argv builder for one args schema."""
 
+    @staticmethod
+    def _arg_error(name: str, detail: str) -> ArgError:
+        """An ``ArgError`` for one named argument, with a consistent prefix."""
+        return ArgError(f"argument {name!r} {detail}")
+
     def __init__(self, schema: Mapping[str, ArgSpec | Mapping[str, Any]]) -> None:
         self.schema = {
             name: (
@@ -51,7 +56,11 @@ class ArgParser:
             if value is None:
                 continue
             tokens = self._emit_arg(name, spec, value)
+            if not tokens:
+                continue
             bucket = positionals if spec.positional else options
+            if spec.separator is not None:
+                bucket.append(spec.separator)
             bucket.extend(tokens)
 
         argv.extend(options)
@@ -75,6 +84,8 @@ class ArgParser:
         """Emit argv tokens for one resolved argument."""
         if spec.type == "flag":
             return ArgParser._emit_flag(name, spec.flag, value)
+        if spec.type == "pairs":
+            return ArgParser._emit_pairs(name, spec.flag, value)
         if isinstance(value, list):
             return ArgParser._emit_list(
                 name,
@@ -89,10 +100,25 @@ class ArgParser:
         if spec.positional:
             return [token]
         if not spec.flag:
-            raise ArgError(f"argument {name!r} needs a flag or positional: true")
+            raise ArgParser._arg_error(name, "needs a flag or positional: true")
         return (
             [f"{spec.flag}{spec.joiner}{token}"] if spec.joiner is not None else [spec.flag, token]
         )
+
+    @staticmethod
+    def _emit_pairs(name: str, flag: str | None, value: Any) -> list[str]:
+        """Emit ``--flag k v`` for each (key, value) pair (dict or list of pairs)."""
+        if not flag:
+            raise ArgParser._arg_error(name, "type: pairs needs a flag")
+        items = value.items() if isinstance(value, dict) else value
+        out: list[str] = []
+        for pair in items:
+            try:
+                key, val = pair
+            except (TypeError, ValueError) as exc:
+                raise ArgParser._arg_error(name, "pairs expects (key, value) items") from exc
+            out.extend([flag, str(key), str(val)])
+        return out
 
     @staticmethod
     def _emit_flag(name: str, flag: str | None, value: Any) -> list[str]:
@@ -156,7 +182,7 @@ class ArgParser:
         if positional:
             return [joined]
         if not flag:
-            raise ArgError(f"argument {name!r} needs a flag for csv join")
+            raise ArgParser._arg_error(name, "needs a flag for csv join")
         return [f"{flag}{joiner}{joined}"] if joiner is not None else [flag, joined]
 
     @staticmethod

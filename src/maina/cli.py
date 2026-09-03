@@ -173,8 +173,12 @@ def run(
     if wants_help or RunInvocation.is_empty(tokens):
         emit_tool_help(resolved_id)
         raise typer.Exit(0)
-    as_json = "--json" in tokens
-    result = run_tool_tokens(resolved_id, [t for t in tokens if t != "--json"])
+    # Only the head (before `--`) is maina's; `--json` after `--` is the tool's.
+    head, tail = split_at_dashdash(tokens)
+    as_json = "--json" in head
+    head = [t for t in head if t != "--json"]
+    tokens = head if tail is None else [*head, "--", *tail]
+    result = run_tool_tokens(resolved_id, tokens)
     emit_result(result, as_json=as_json)
     if not result.ok:
         echo_stderr(result.stderr)

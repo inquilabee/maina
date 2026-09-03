@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 import time
 from collections.abc import Callable, Iterable
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from maina.core.argparser import ArgParser
@@ -108,12 +109,30 @@ class ToolRunner:
             version=self.manifest.version,
             duration_ms=duration_ms,
         )
+        self._apply_from_file(result, kwargs, cwd)
         resolver = self.parsers.bind(
             parser_ref=self.manifest.parser,
             parser_path=self.manifest.parser_path,
             override=parser,
         )
         return resolver.apply(result)
+
+    def _apply_from_file(self, result: ToolResult, kwargs: dict[str, Any], cwd: str | None) -> None:
+        """When ``output.from_file`` is set, use that file's contents as the
+        parse input instead of stdout (for tools that write a report file)."""
+        template = self.manifest.output.from_file
+        if not template:
+            return
+        base = Path(cwd) if cwd else Path.cwd()
+        subs = {k: v for k, v in kwargs.items() if isinstance(v, (str, int, float))}
+        try:
+            rel = template.format(cwd=str(base), **subs)
+        except (KeyError, IndexError):
+            return
+        path = base / rel
+        if path.is_file():
+            result.raw = path.read_text(encoding="utf-8", errors="replace")
+            result.meta["parsed_from"] = str(path)
 
     def _resolve_timeout(self, timeout: float | None) -> float | None:
         """Prefer explicit kwarg, then top-level manifest ``timeout``."""

@@ -31,6 +31,19 @@
 - `ToolTimeoutError` subclasses `MainaError` directly (not `InstallError`).
 - `ParseError` / `ToolExecError` added and exported.
 
+### Manifest expressiveness
+
+- `args.<name>.type: pairs` emits `--flag key value` per pair (`jq --arg`,
+  `docker -e K=V`).
+- `args.<name>.separator` emits a literal token before an arg (e.g. `--` before
+  positional paths).
+- `output.from_file: "<template>"` — the parse input becomes that file's
+  contents (for tools that write a report file); `result.meta["parsed_from"]`
+  records it.
+- Load-time validation extended: `join` must be `csv`, `timeout` must be a
+  number, `platforms` values must be `linux` / `macos` / `windows`.
+- CLI: `--json` after `--` reaches the tool (was stripped from the whole line).
+
 ### Results and parsers
 
 - `parser: json` is now **strict** — malformed JSON raises `ParseError`

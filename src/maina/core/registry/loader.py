@@ -17,6 +17,7 @@ from .specs import (
     IGNORED_MANIFEST_KEYS,
     MANIFEST_PREFIX,
     TOP_LEVEL_KEYS,
+    VALID_PLATFORMS,
     InstallSpec,
     Manifest,
     OutputSpec,
@@ -96,9 +97,9 @@ class Registry:
             requires=RequiresSpec.from_mapping(merged.get("requires"), tool_id=tid),
         )
 
-    @staticmethod
-    def _validate_top_level(tid: str, merged: dict[str, Any]) -> None:
-        """Fail closed on unknown top-level keys and an unsupported schema."""
+    @classmethod
+    def _validate_top_level(cls, tid: str, merged: dict[str, Any]) -> None:
+        """Fail closed on unknown keys and bad schema / timeout / platforms values."""
         if bad := unknown_keys(merged, TOP_LEVEL_KEYS):
             raise manifest_error(tid, f"unknown top-level keys: {', '.join(bad)}")
         schema = merged.get("schema")
@@ -106,6 +107,21 @@ class Registry:
             raise manifest_error(
                 tid, f"schema {schema!r} unsupported (maina understands schema {CURRENT_SCHEMA})"
             )
+        cls._validate_timeout(tid, merged.get("timeout"))
+        cls._validate_platforms(tid, merged.get("platforms"))
+
+    @staticmethod
+    def _validate_timeout(tid: str, timeout: Any) -> None:
+        if timeout is not None and not isinstance(timeout, (int, float)):
+            raise manifest_error(tid, f"timeout {timeout!r} must be a number of seconds")
+
+    @staticmethod
+    def _validate_platforms(tid: str, platforms: Any) -> None:
+        if not isinstance(platforms, list):
+            return
+        if unknown := sorted(str(p) for p in platforms if p not in VALID_PLATFORMS):
+            allowed = ", ".join(sorted(VALID_PLATFORMS))
+            raise manifest_error(tid, f"platforms {unknown} not in {{{allowed}}}")
 
     def list_commands(self, tool_id: str | None = None) -> list[str]:
         """List callable registry ids, or concrete children of a parent.

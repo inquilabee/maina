@@ -61,9 +61,10 @@ args:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `type` | string | `string`, `flag`, or `path` (rejected otherwise). `path` is emit-only metadata (no coercion). |
+| `type` | string | `string`, `flag`, `path`, or `pairs` (rejected otherwise). `path` is emit-only metadata (no coercion). |
 | `flag` | string | The option flag, e.g. `--config`. Required unless `positional: true`. |
 | `joiner` | string | Emit `flag` and value as one token: `joiner: "="` → `--config=value`. |
+| `separator` | string | Emit this literal token immediately before this arg's tokens (e.g. `separator: "--"` before positional paths). |
 | `positional` | bool | Emit the value with no flag, after all options. |
 | `required` | bool | Missing value with no `default` raises `ArgError`. |
 | `default` | any | Value used when the caller omits the argument. |
@@ -84,6 +85,29 @@ Calling rules:
   pass it via `run(args={"timeout": "30"})`.
 - Child `args` merge onto the parent per field: overriding `default:` keeps the
   inherited `flag` / `type` / `required`.
+- `type: pairs` takes a dict or a list of `[key, value]` items and emits
+  `--flag key value` per pair (`jq --arg`, `docker -e K=V`, `kubectl --from-literal`).
+
+```yaml
+args:
+  arg: { flag: --arg, type: pairs }        # run(arg={"x": "1"}) -> --arg x 1
+  paths: { positional: true, separator: "--" }   # ... -- src/
+```
+
+## output
+
+```yaml
+output:
+  format: json
+  success_codes: [0, 1]
+  from_file: "{report_dir}/results.json"
+```
+
+| Key | Meaning |
+| --- | --- |
+| `format` | Free-form hint (`json` / `text` / ...); not enforced. |
+| `success_codes` | Exit codes counted as `ok`. Default `[0]`. |
+| `from_file` | When set, the **parse input is this file's contents**, not stdout — for tools that write a report file. The template interpolates `{cwd}` and string/number kwargs; resolved relative to `cwd`. The file used is recorded in `result.meta["parsed_from"]`. |
 
 ## install
 
@@ -138,19 +162,6 @@ requires:
 maina ships no `base.yaml`. If a registry root has one it auto-extends every
 tool in that root — a place for shared runtime pins. Without it, a `path` or
 `github` tool never touches mise; the `npm` backend provisions Node on its own.
-
-## output
-
-```yaml
-output:
-  format: text
-  success_codes: [0, 1]
-```
-
-| Field | Meaning |
-| --- | --- |
-| `format` | Free-text hint (`text`, `json`, ...). Informational. |
-| `success_codes` | Exit codes counted as success. Default `[0]`. Sets `ToolResult.ok`. |
 
 ## inheritance
 
