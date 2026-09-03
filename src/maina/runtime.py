@@ -190,12 +190,17 @@ class Runtime:
 
     @staticmethod
     def resolve_cache_root(path: Path | None = None) -> Path:
-        """Resolve the maina cache root (``MAINA_CACHE`` / ``~/.cache/maina``)."""
+        """Resolve the maina cache root (``MAINA_CACHE`` / ``~/.cache/maina``).
+
+        Always absolute (``expanduser().resolve()``): a relative cache root
+        would make ``argv[0]`` relative and break a run with an explicit ``cwd``.
+        """
         if path is not None:
             root = Path(path)
         else:
             override = os.environ.get("MAINA_CACHE")
             root = Path(override) if override else Path.home() / ".cache" / "maina"
+        root = root.expanduser().resolve()
         root.mkdir(parents=True, exist_ok=True)
         return root
 

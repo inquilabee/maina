@@ -31,6 +31,17 @@
 - `ToolTimeoutError` subclasses `MainaError` directly (not `InstallError`).
 - `ParseError` / `ToolExecError` added and exported.
 
+### Robustness
+
+- An asset with an extension maina can't unpack (`.tar.bz2`, `.zst`, `.7z`, ...)
+  raises `InstallError` instead of being `chmod +x`'d as-is.
+- A relative `MAINA_CACHE` / `cache_root` is resolved to an absolute path (a
+  relative `argv[0]` broke a run with an explicit `cwd`).
+- A failed `subprocess` start (bad `cwd`, missing exe) raises `ToolExecError`,
+  not a bare `OSError`.
+- `Tool.run` defaults stdin to `DEVNULL`; a stdin-reading tool no longer blocks
+  on the caller's terminal. Pass `stdin=` to feed it.
+
 ### Manifest expressiveness
 
 - `args.<name>.type: pairs` emits `--flag key value` per pair (`jq --arg`,

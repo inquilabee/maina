@@ -262,9 +262,26 @@ class ArchiveFetcher:
             for info in zf.infolist():
                 zf.extract(info, dest)
 
+    # Compressed / archive formats maina cannot unpack — never install one of
+    # these verbatim as an executable.
+    UNSUPPORTED_ASSET_SUFFIXES = (
+        ".tar.bz2",
+        ".tbz2",
+        ".tar.zst",
+        ".tar",
+        ".bz2",
+        ".zst",
+        ".7z",
+        ".rar",
+        ".lz4",
+        ".lzma",
+    )
+
     @classmethod
     def copy_raw_asset(cls, archive: Path, out: Path, *, name: str) -> None:
-        """Copy a non-archive (possibly compressed) asset to out, atomically."""
+        """Copy a single-file asset (bare binary, or ``.gz`` / ``.xz``) to out."""
+        if name.endswith(cls.UNSUPPORTED_ASSET_SUFFIXES):
+            raise InstallError(f"unsupported asset format: {name}")
         tmp = out.with_name(f".{out.name}.part")
         if name.endswith(".gz"):
             with gzip.open(archive, "rb") as src, tmp.open("wb") as dst:

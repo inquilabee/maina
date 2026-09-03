@@ -517,3 +517,58 @@ def test_cli_json_split_keeps_dashdash_tail() -> None:
     head, tail = split_at_dashdash(["a=1", "--json", "--", "--json"])
     assert head == ["a=1", "--json"]
     assert tail == ["--json"]
+
+
+# --- review C: robustness P2s (B4, B8, B9, B10) -------------------------------
+
+
+def test_copy_raw_asset_rejects_unsupported_format(tmp_path: Path) -> None:
+    from maina.backends.archive import ArchiveFetcher
+
+    src = tmp_path / "tool.tar.bz2"
+    src.write_bytes(b"BZh9fake")
+    with pytest.raises(InstallError, match="unsupported asset format"):
+        ArchiveFetcher.copy_raw_asset(src, tmp_path / "out", name="tool.tar.bz2")
+
+
+def test_resolve_cache_root_is_absolute() -> None:
+    import pathlib
+
+    root = Runtime.resolve_cache_root(pathlib.Path("rel-cache-xyz"))
+    assert root.is_absolute()
+    root.rmdir()
+
+
+def test_run_bad_cwd_raises_tool_exec_error(tmp_path: Path) -> None:
+    from maina.core.errors import ToolExecError
+
+    reg = make_reg(
+        tmp_path,
+        {
+            "e.yaml": {
+                "cli": "echo",
+                "install": {"backend": "path"},
+                "output": {"success_codes": [0]},
+            }
+        },
+    )
+    runner = ToolRunner(reg.load("e"), installer=path_installer(tmp_path, reg))
+    with pytest.raises(ToolExecError, match="could not run"):
+        runner.run({}, cwd=str(tmp_path / "nope-does-not-exist"))
+
+
+def test_run_without_stdin_does_not_block(tmp_path: Path) -> None:
+    reg = make_reg(
+        tmp_path,
+        {
+            "c.yaml": {
+                "cli": "cat",
+                "install": {"backend": "path"},
+                "output": {"success_codes": [0]},
+            }
+        },
+    )
+    runner = ToolRunner(reg.load("c"), installer=path_installer(tmp_path, reg))
+    result = runner.run({}, timeout=5)
+    assert result.ok
+    assert result.raw == ""

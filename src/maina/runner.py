@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from maina.core.argparser import ArgParser
 from maina.core.envfilter import ESSENTIAL_ENV, filter_env
-from maina.core.errors import ToolTimeoutError
+from maina.core.errors import ToolExecError, ToolTimeoutError
 from maina.core.parsers import ParserResolver
 from maina.core.result import ToolResult
 
@@ -74,24 +74,35 @@ class ToolRunner:
         resolved_timeout = self._resolve_timeout(timeout)
         started = time.perf_counter()
         run = self._executor or subprocess.run
+        run_kwargs: dict[str, Any] = {
+            "check": False,
+            "capture_output": True,
+            "text": True,
+            "encoding": "utf-8",
+            "errors": "replace",
+            "env": env,
+            "cwd": cwd,
+            "timeout": resolved_timeout,
+        }
+        # Default to no stdin so a tool that reads stdin does not block on the
+        # caller's terminal; opt in with stdin=.
+        if stdin is None:
+            run_kwargs["stdin"] = subprocess.DEVNULL
+        else:
+            run_kwargs["input"] = stdin
         try:
-            proc = run(
-                argv,
-                check=False,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                env=env,
-                cwd=cwd,
-                timeout=resolved_timeout,
-                input=stdin,
-            )
+            proc = run(argv, **run_kwargs)
         except subprocess.TimeoutExpired as exc:
             raise ToolTimeoutError(
                 f"{self.manifest.id} timed out after {resolved_timeout}s",
                 tool=self.manifest.id,
                 timeout=float(resolved_timeout or 0.0),
+                command=argv,
+            ) from exc
+        except OSError as exc:
+            raise ToolExecError(
+                f"{self.manifest.id}: could not run {exe}: {exc}",
+                tool=self.manifest.id,
                 command=argv,
             ) from exc
         duration_ms = (time.perf_counter() - started) * 1000
