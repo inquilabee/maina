@@ -30,6 +30,13 @@
 - `ArgError` and `AbstractToolError` are exported from `maina`.
 - `ToolTimeoutError` subclasses `MainaError` directly (not `InstallError`).
 - `ParseError` / `ToolExecError` added and exported.
+- `Tool.manifest` / `Tool.args` (read-only) / `Tool.describe()` (JSON-safe,
+  stable) for building your own help / form / CLI.
+- `Manifest`, `ArgSpec`, `InstallSpec`, `OutputSpec`, `Registry`, `ToolRunner`
+  are re-exported from `maina`.
+- `register(..., replace=True)` resets the catalog before adding roots;
+  duplicate registry roots are de-duplicated. The lazily-built session Runtime
+  closes its HTTP session at process exit.
 
 ### Robustness
 

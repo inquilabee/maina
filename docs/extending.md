@@ -39,6 +39,24 @@ maina.register(
 maina.Tool("mytool", runtime=rt).run(...)
 ```
 
+`register(rt, registry_dirs=[...], replace=True)` clears the catalog first;
+duplicate roots are ignored.
+
+## Introspection
+
+Build your own help, form UI, or CLI from a tool's schema without parsing
+`help()` text:
+
+```python
+tool = maina.Tool("mytool", runtime=rt)
+tool.manifest            # the resolved Manifest
+tool.args                # read-only Mapping[str, ArgSpec]
+tool.describe()          # JSON-safe dict: id, cli, args, install, output, ...
+```
+
+`Manifest`, `ArgSpec`, `InstallSpec`, `OutputSpec`, `Registry`, and `ToolRunner`
+are importable straight from `maina`.
+
 `register(...)` with no Runtime mutates the process-wide session instead:
 
 ```python

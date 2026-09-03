@@ -187,8 +187,7 @@ def run(
 
 
 def flag_names_for(tool: Tool) -> frozenset[str]:
-    args = tool._manifest.args if tool._manifest else {}
-    return frozenset(name for name, spec in args.items() if spec.type == "flag")
+    return frozenset(name for name, spec in tool.args.items() if spec.type == "flag")
 
 
 def run_tool_tokens(resolved_id: str, tokens: list[str]) -> ToolResult:

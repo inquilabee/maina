@@ -572,3 +572,57 @@ def test_run_without_stdin_does_not_block(tmp_path: Path) -> None:
     result = runner.run({}, timeout=5)
     assert result.ok
     assert result.raw == ""
+
+
+# --- review C: introspection & adaptability (A1, A7, A8) --------------------
+
+
+def test_tool_describe_is_json_safe(tmp_path: Path) -> None:
+    import json
+
+    import maina
+
+    reg_dir = tmp_path / "reg"
+    write_yaml(
+        reg_dir / "demo.yaml",
+        {
+            "cli": "echo",
+            "version": "1.0",
+            "install": {"backend": "path"},
+            "args": {
+                "msg": {"positional": True, "type": "string", "required": True},
+                "loud": {"flag": "--loud", "type": "flag", "default": False},
+            },
+            "output": {"success_codes": [0]},
+        },
+    )
+    rt = maina.Runtime.preferred(registry_dirs=[reg_dir], use_env=False)
+    tool = maina.Tool("demo", runtime=rt)
+    desc = tool.describe()
+    json.dumps(desc)  # must not raise
+    assert desc["id"] == "demo"
+    assert desc["args"]["msg"]["required"] is True
+    assert set(tool.args) == {"msg", "loud"}
+    assert tool.manifest.cli == "echo"
+
+
+def test_append_roots_dedupes(tmp_path: Path) -> None:
+    reg_dir = tmp_path / "reg"
+    write_yaml(reg_dir / "x.yaml", {"cli": "echo", "install": {"backend": "path"}})
+    r = Registry([])
+    r.append_roots([reg_dir, reg_dir, reg_dir])
+    assert r.roots == [reg_dir]
+
+
+def test_register_replace_resets_catalog(tmp_path: Path) -> None:
+    import maina
+
+    a = tmp_path / "a"
+    b = tmp_path / "b"
+    write_yaml(a / "one.yaml", {"cli": "echo", "install": {"backend": "path"}})
+    write_yaml(b / "two.yaml", {"cli": "echo", "install": {"backend": "path"}})
+    rt = maina.Runtime.preferred(use_env=False)
+    maina.register(rt, registry_dirs=[a])
+    assert "one" in rt.registry.iter_ids()
+    maina.register(rt, registry_dirs=[b], replace=True)
+    assert rt.registry.iter_ids() == ["two"]

@@ -26,7 +26,9 @@ from maina.core.protocols import (
     LanguageRuntimeProvider,
     Parser,
 )
+from maina.core.registry import ArgSpec, InstallSpec, Manifest, OutputSpec, Registry
 from maina.core.result import ToolResult
+from maina.runner import ToolRunner
 from maina.runtime import Runtime, isolated, register, runtime, use
 from maina.tool import Tool
 
@@ -38,22 +40,28 @@ except _PackageNotFoundError:  # pragma: no cover - source checkout without inst
 __all__ = [
     "AbstractToolError",
     "ArgError",
+    "ArgSpec",
     "FunctionParser",
     "InstallContext",
     "InstallError",
+    "InstallSpec",
     "InstallerBackend",
     "LanguageRuntimeProvider",
     "MainaError",
+    "Manifest",
     "ManifestError",
+    "OutputSpec",
     "ParseError",
     "Parser",
     "RegisterError",
+    "Registry",
     "Runtime",
     "RuntimeProvisionError",
     "Tool",
     "ToolExecError",
     "ToolExitError",
     "ToolResult",
+    "ToolRunner",
     "ToolTimeoutError",
     "UnsupportedPlatformError",
     "__version__",

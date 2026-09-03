@@ -55,8 +55,16 @@ class Registry:
         return self.roots[0]
 
     def append_roots(self, roots: Sequence[Path]) -> None:
-        """Append overlay roots (later entries override earlier ids)."""
-        self.roots.extend(Path(p) for p in roots)
+        """Append overlay roots (later entries override earlier ids).
+
+        A root already present (by resolved path) is not added again.
+        """
+        seen = {p.resolve() for p in self.roots}
+        for raw in roots:
+            path = Path(raw)
+            if path.resolve() not in seen:
+                self.roots.append(path)
+                seen.add(path.resolve())
 
     def load(self, tool_id: str) -> Manifest:
         """Load and merge a tool manifest by registry id."""

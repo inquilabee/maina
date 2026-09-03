@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import atexit
 import os
 from contextlib import contextmanager
 from pathlib import Path
@@ -35,6 +36,7 @@ class RuntimeSession:
         """Return the active Runtime, lazy-building preferred defaults."""
         if self.current is None:
             self.current = Runtime.preferred()
+            atexit.register(self.current.close)
         return self.current
 
     def set(self, rt: Runtime) -> Runtime:
@@ -103,9 +105,16 @@ class Runtime:
         parsers_dirs: Path | str | Sequence[Path | str] | None = None,
         installers: Sequence[InstallerBackend] | None = None,
         language: LanguageRuntimeProvider | None = None,
+        replace: bool = False,
     ) -> Runtime:
-        """Append/override plugins on this instance. Returns self."""
+        """Append/override plugins on this instance. Returns self.
+
+        ``replace=True`` clears the existing registry roots before adding
+        ``registry_dirs`` (a reset for tests / apps that reconfigure at runtime).
+        """
         if registry_dirs is not None:
+            if replace:
+                self._registry.roots.clear()
             dirs = self.require_dirs(self.as_paths(registry_dirs), kind="registry")
             self._registry.append_roots(dirs)
         if parsers is not None:
@@ -262,6 +271,7 @@ def register(
     parsers_dirs: Path | str | Sequence[Path | str] | None = None,
     installers: Sequence[InstallerBackend] | None = None,
     language: LanguageRuntimeProvider | None = None,
+    replace: bool = False,
     runtime: Runtime | None = None,
 ) -> Runtime:
     """Mutate a Runtime (positional or ``runtime=``) or the active session; return it.
@@ -278,4 +288,5 @@ def register(
         parsers_dirs=parsers_dirs,
         installers=installers,
         language=language,
+        replace=replace,
     )

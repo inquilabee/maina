@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from maina.core.errors import AbstractToolError
@@ -48,6 +49,59 @@ class Tool:
     @property
     def id(self) -> str | None:
         return self._id
+
+    @property
+    def manifest(self) -> Manifest:
+        """The resolved manifest for this bound tool."""
+        if self._manifest is None:
+            raise AbstractToolError("unbound Tool() has no manifest")
+        return self._manifest
+
+    @property
+    def args(self) -> Mapping[str, ArgSpec]:
+        """Read-only view of this tool's argument schema."""
+        return MappingProxyType(self.manifest.args)
+
+    def describe(self) -> dict[str, Any]:
+        """A JSON-safe, stable description — build your own help / form / CLI."""
+        m = self.manifest
+        return {
+            "id": m.id,
+            "cli": m.data.get("cli"),
+            "subcommands": list(m.subcommands),
+            "version": m.version,
+            "abstract": m.abstract,
+            "parser": m.parser,
+            "platforms": list(m.platforms),
+            "args": {name: self._describe_arg(spec) for name, spec in m.args.items()},
+            "install": {
+                "backend": m.install.backend,
+                "repo": m.install.repo,
+                "package": m.install.package,
+                "tag": m.install.tag,
+            },
+            "output": {
+                "format": m.output.format,
+                "success_codes": list(m.output.success_codes),
+                "from_file": m.output.from_file,
+            },
+        }
+
+    @staticmethod
+    def _describe_arg(spec: ArgSpec) -> dict[str, Any]:
+        return {
+            "type": spec.type,
+            "flag": spec.flag,
+            "joiner": spec.joiner,
+            "separator": spec.separator,
+            "positional": spec.positional,
+            "required": spec.required,
+            "repeat": spec.repeat,
+            "join": spec.join,
+            "default": spec.default if spec.has_default else None,
+            "has_default": spec.has_default,
+            "description": spec.description or spec.help,
+        }
 
     def run(
         self,
