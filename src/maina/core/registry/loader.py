@@ -13,13 +13,17 @@ from maina.core.errors import ManifestError
 from . import ids as registry_ids
 from .specs import (
     BASE_TOOL_ID,
+    CURRENT_SCHEMA,
     IGNORED_MANIFEST_KEYS,
     MANIFEST_PREFIX,
+    TOP_LEVEL_KEYS,
     InstallSpec,
     Manifest,
     OutputSpec,
     RequiresSpec,
+    manifest_error,
     parse_args_map,
+    unknown_keys,
 )
 
 if TYPE_CHECKING:
@@ -60,10 +64,11 @@ class Registry:
         merged: dict[str, Any] = {}
         subcommands: list[str] = []
         leaf_path, leaf_root = chain[-1][1], chain[-1][2]
-        for cid, _path, _root, data in chain:
+        for index, (cid, _path, _root, data) in enumerate(chain):
             layer = deepcopy(data)
-            # ``base`` is an abstract defaults bag; do not force abstract onto leaves.
-            if cid == BASE_TOOL_ID and tid != BASE_TOOL_ID:
+            # ``abstract`` is never inherited: a surface is abstract only when its
+            # own leaf manifest declares it (like ``extends`` / ``subcommand``).
+            if index != len(chain) - 1:
                 layer.pop("abstract", None)
             # Normalize legacy→freeform before merge; preserve null clear / pin drops.
             if "requires" in layer:
@@ -76,6 +81,7 @@ class Registry:
 
         for key in IGNORED_MANIFEST_KEYS:
             merged.pop(key, None)
+        self._validate_top_level(tid, merged)
 
         parser_path = self._resolve_parser_path(leaf_path, leaf_root, merged.get("parser"))
         return Manifest(
@@ -89,6 +95,17 @@ class Registry:
             output=OutputSpec.from_mapping(merged.get("output"), tool_id=tid),
             requires=RequiresSpec.from_mapping(merged.get("requires"), tool_id=tid),
         )
+
+    @staticmethod
+    def _validate_top_level(tid: str, merged: dict[str, Any]) -> None:
+        """Fail closed on unknown top-level keys and an unsupported schema."""
+        if bad := unknown_keys(merged, TOP_LEVEL_KEYS):
+            raise manifest_error(tid, f"unknown top-level keys: {', '.join(bad)}")
+        schema = merged.get("schema")
+        if schema is not None and schema != CURRENT_SCHEMA:
+            raise manifest_error(
+                tid, f"schema {schema!r} unsupported (maina understands schema {CURRENT_SCHEMA})"
+            )
 
     def list_commands(self, tool_id: str | None = None) -> list[str]:
         """List callable registry ids, or concrete children of a parent.
@@ -223,11 +240,23 @@ class Registry:
                 out[key] = Registry._merge_requires(out.get(key), value)
                 continue
             if key in MAP_KEYS and isinstance(value, dict) and isinstance(out.get(key), dict):
-                merged = deepcopy(out[key])
-                merged |= deepcopy(value)
-                out[key] = merged
+                out[key] = Registry._merge_map_key(key, out[key], value)
                 continue
             out[key] = deepcopy(value)
+        return out
+
+    @staticmethod
+    def _merge_map_key(key: str, parent: dict[str, Any], child: dict[str, Any]) -> dict[str, Any]:
+        """Merge a MAP_KEYS block. ``args`` merges per-arg-name then per-field so
+        a child overriding one field (e.g. ``default:``) keeps the parent's
+        ``flag`` / ``type`` / ``required``; other blocks shallow-merge."""
+        out = deepcopy(parent)
+        if key != "args":
+            out |= deepcopy(child)
+            return out
+        for arg_name, child_spec in child.items():
+            mergeable = isinstance(child_spec, dict) and isinstance(out.get(arg_name), dict)
+            out[arg_name] = {**out[arg_name], **child_spec} if mergeable else deepcopy(child_spec)
         return out
 
     @staticmethod

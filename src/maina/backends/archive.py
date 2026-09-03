@@ -24,6 +24,9 @@ if TYPE_CHECKING:
 
 # Soft cap for streamed release assets (GitHub binaries, etc.).
 DEFAULT_MAX_BYTES = 512 * 1024 * 1024
+# Cap on the *decompressed* size of an archive (guards against zip/tar bombs;
+# the download cap above only covers the compressed stream).
+EXTRACT_MAX_BYTES = 2 * 1024 * 1024 * 1024
 CHUNK_SIZE = 64 * 1024
 REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 MAX_REDIRECT_HOPS = 5
@@ -51,6 +54,10 @@ class ArchiveFetcher:
         self._allowed_hosts = (
             None if allowed_redirect_hosts is None else frozenset(allowed_redirect_hosts)
         )
+
+    def close(self) -> None:
+        """Close the underlying :class:`requests.Session`."""
+        self._session.close()
 
     def download_and_extract(
         self,
@@ -220,6 +227,11 @@ class ArchiveFetcher:
     def _extract_tar_members(cls, tar: tarfile.TarFile, dest: Path) -> None:
         """Validate then extract every member of an open tar archive."""
         members = tar.getmembers()
+        total = sum(member.size for member in members if member.isreg())
+        if total > EXTRACT_MAX_BYTES:
+            raise InstallError(
+                f"archive expands to {total} bytes, over the {EXTRACT_MAX_BYTES} cap"
+            )
         for member in members:
             cls.assert_safe_member(dest, member.name)
             cls.assert_safe_link(dest, member)
@@ -239,6 +251,11 @@ class ArchiveFetcher:
         """Extract a zip archive after rejecting path-escape members."""
         dest = dest.resolve()
         with zipfile.ZipFile(archive) as zf:
+            total = sum(info.file_size for info in zf.infolist())
+            if total > EXTRACT_MAX_BYTES:
+                raise InstallError(
+                    f"archive expands to {total} bytes, over the {EXTRACT_MAX_BYTES} cap"
+                )
             for info in zf.infolist():
                 cls.assert_safe_member(dest, info.filename)
             for info in zf.infolist():

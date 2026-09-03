@@ -11,7 +11,7 @@ from maina.runner import ToolRunner
 from maina.runtime import runtime as active_runtime
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping
 
     from maina.core.registry import ArgSpec, Manifest
     from maina.core.result import ToolResult
@@ -57,13 +57,17 @@ class Tool:
         cwd: str | None = None,
         timeout: float | None = None,
         env_allow: Iterable[str] | None = None,
+        stdin: str | None = None,
+        args: Mapping[str, Any] | None = None,
         **kwargs: Any,
     ) -> ToolResult:
         """Run this tool surface with native kwargs.
 
         ``timeout`` caps the subprocess (seconds); ``env_allow`` trims the
         environment forwarded to the tool to essentials plus the named keys
-        (see :meth:`maina.runner.ToolRunner.run`).
+        (see :meth:`maina.runner.ToolRunner.run`); ``stdin`` is written to the
+        tool's stdin. Pass a manifest arg whose name collides with one of these
+        parameters (``parser``, ``timeout``, ``cwd`` …) via ``args={...}``.
         """
         if self._manifest is None:
             raise AbstractToolError("Tool() with no name cannot run; use help() or pass a name")
@@ -76,12 +80,13 @@ class Tool:
             installer=self._runtime.installer,
             parsers=self._runtime.parsers,
         ).run(
-            kwargs,
+            {**kwargs, **(dict(args) if args else {})},
             extra=extra,
             parser=parser,
             cwd=cwd,
             timeout=timeout,
             env_allow=env_allow,
+            stdin=stdin,
         )
 
     def __call__(
@@ -92,6 +97,8 @@ class Tool:
         cwd: str | None = None,
         timeout: float | None = None,
         env_allow: Iterable[str] | None = None,
+        stdin: str | None = None,
+        args: Mapping[str, Any] | None = None,
         **kwargs: Any,
     ) -> ToolResult:
         return self.run(
@@ -100,6 +107,8 @@ class Tool:
             cwd=cwd,
             timeout=timeout,
             env_allow=env_allow,
+            stdin=stdin,
+            args=args,
             **kwargs,
         )
 
@@ -151,7 +160,8 @@ class Tool:
         for name, spec in args.items():
             flag = spec.flag or ("positional" if spec.positional else "")
             req = "required" if spec.required else "optional"
-            base = f"  {name}: {spec.type} {flag} ({req})"
+            default = f", default: {spec.default!r}" if spec.has_default else ""
+            base = f"  {name}: {spec.type} {flag} ({req}{default})"
             desc = spec.description or spec.help
             lines.append(f"{base} — {desc}" if desc else base)
         return lines

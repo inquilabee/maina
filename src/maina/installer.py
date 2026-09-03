@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
-import fcntl
+import importlib
 import os
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
+
+# POSIX only; the advisory lock degrades to a no-op elsewhere (Windows).
+try:
+    _fcntl: Any = importlib.import_module("fcntl")
+except ImportError:  # pragma: no cover - Windows
+    _fcntl = None
 
 from maina.core.errors import InstallError, UnsupportedPlatformError
 from maina.core.platform import current_platform
@@ -38,6 +44,11 @@ class Installer:
             self.register_backends(backends)
 
     @property
+    def backends(self) -> list[InstallerBackend]:
+        """Registered backends (dispatch order irrelevant; keyed by name)."""
+        return list(self._backends.values())
+
+    @property
     def language(self) -> LanguageRuntimeProvider:
         if self._language is None:
             self._language = MiseRuntime(cache_root=self.cache_root)
@@ -50,15 +61,22 @@ class Installer:
     @staticmethod
     @contextmanager
     def install_dir_lock(dest: Path) -> Iterator[None]:
-        """Exclusive lock for a cache install directory (parallel prepare safety)."""
+        """Exclusive lock for a cache install directory (parallel prepare safety).
+
+        Uses ``_fcntl.flock`` on POSIX; where ``fcntl`` is unavailable (Windows)
+        the body runs without the advisory lock.
+        """
         dest.mkdir(parents=True, exist_ok=True)
+        if _fcntl is None:
+            yield
+            return
         lock_path = dest / ".maina-install.lock"
         with lock_path.open("a+b") as lock_file:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            _fcntl.flock(lock_file.fileno(), _fcntl.LOCK_EX)
             try:
                 yield
             finally:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                _fcntl.flock(lock_file.fileno(), _fcntl.LOCK_UN)
 
     def register_backends(
         self,
@@ -94,6 +112,10 @@ class Installer:
             raise InstallError(f"unknown install backend: {backend_name!r}")
         ctx = InstallContext(cache_root=self.cache_root, language=self.language)
         lock_dir = self.cache_root / "tools" / manifest.cli / version
+        # Defence in depth: cli/version are validated as safe segments at load,
+        # but never lock or write outside the cache root.
+        if not lock_dir.resolve().is_relative_to(self.cache_root.resolve()):
+            raise InstallError(f"{manifest.id}: install path escapes the cache root")
         with self.install_dir_lock(lock_dir):
             return backend.resolve(manifest, version=version, env=env, ctx=ctx)
 

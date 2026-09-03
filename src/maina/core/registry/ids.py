@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from maina.core.errors import ManifestError
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
 UNSAFE_ID_SEGMENTS = frozenset({"", ".", ".."})
@@ -53,26 +54,44 @@ def yaml_path_to_id(path: Path, root: Path) -> str:
     return "-".join(parts[:-1]) if family else "-".join(parts)
 
 
+def id_candidate_paths(root: Path, tool_id: str, parts: list[str]) -> Iterator[Path]:
+    """Fast split-on-``-`` path guesses for a hyphen id under *root*."""
+    for suffix in ID_SUFFIXES:
+        yield root / f"{tool_id}{suffix}"
+        yield root.joinpath(*parts).with_suffix(suffix)
+        yield root.joinpath(*parts, parts[-1]).with_suffix(suffix)
+
+
+def scan_for_id(root: Path, tool_id: str) -> Path | None:
+    """Walk *root* for the manifest whose derived id equals *tool_id*."""
+    if not root.is_dir():
+        return None
+    for path in sorted(root.rglob("*")):
+        rel = path.relative_to(root)
+        if (
+            path.suffix in ID_SUFFIXES
+            and "parsers" not in rel.parts
+            and yaml_path_to_id(path, root) == tool_id
+        ):
+            return path
+    return None
+
+
 def manifest_path_in(root: Path, tool_id: str) -> Path | None:
     """Resolve a hyphen registry id under one root, or None if missing.
 
-    Path segments must not contain ``-``. Tries, in order:
-    ``root/{tid}.yaml``, ``root/a/b/c.yaml`` for ``a-b-c``, and family
-    ``root/a/b/c/c.yaml`` (including ``root/kubectl/kubectl.yaml``).
+    Tries the fast split-on-``-`` candidates first, then falls back to scanning
+    the tree so a hyphenated filename in a subdirectory (``family/my-tool.yaml``
+    → id ``family-my-tool``) still resolves.
     """
     parts = tool_id.split("-")
     if not parts or any(part in UNSAFE_ID_SEGMENTS for part in parts):
         return None
-    candidates = (
-        root / f"{tool_id}.yaml",
-        root.joinpath(*parts).with_suffix(".yaml"),
-        root.joinpath(*parts, parts[-1]).with_suffix(".yaml"),
-    )
     root_resolved = root.resolve()
-    for candidate in candidates:
+    for candidate in id_candidate_paths(root, tool_id, parts):
         if candidate.is_file() and candidate.resolve().is_relative_to(root_resolved):
             return candidate
-    return None
+    return scan_for_id(root, tool_id)
 
 
 def family_parsers_dir(leaf_path: Path, leaf_root: Path) -> Path:
@@ -90,8 +109,10 @@ def family_parsers_dir(leaf_path: Path, leaf_root: Path) -> Path:
 
 def dir_has_manifests(path: Path) -> bool:
     """True when a directory contains YAML manifests."""
-    nested = path / f"{path.name}.yaml"
-    return nested.is_file() or any(path.glob("*.yaml"))
+    return any(
+        (path / f"{path.name}{suffix}").is_file() or any(path.glob(f"*{suffix}"))
+        for suffix in ID_SUFFIXES
+    )
 
 
 def child_entry_id(base: Path, prefix: str, path: Path) -> str | None:
@@ -101,7 +122,7 @@ def child_entry_id(base: Path, prefix: str, path: Path) -> str | None:
         if path.name in {"parsers"} or path.name.startswith(".")
         else (
             (None if path.stem == base.name else f"{prefix}-{path.stem}")
-            if path.is_file() and path.suffix == ".yaml"
+            if path.is_file() and path.suffix in ID_SUFFIXES
             else (f"{prefix}-{path.name}" if path.is_dir() and dir_has_manifests(path) else None)
         )
     )
@@ -121,8 +142,8 @@ def iter_yaml_ids(root: Path) -> list[str]:
     return (
         [
             yaml_path_to_id(path, root)
-            for path in sorted(root.rglob("*.yaml"))
-            if "parsers" not in path.relative_to(root).parts
+            for path in sorted(root.rglob("*"))
+            if path.suffix in ID_SUFFIXES and "parsers" not in path.relative_to(root).parts
         ]
         if root.is_dir()
         else []

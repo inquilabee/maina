@@ -29,6 +29,10 @@ class GithubBackend:
     def name(self) -> str:
         return "github"
 
+    def close(self) -> None:
+        """Close the shared HTTP session."""
+        self._fetcher.close()
+
     def resolve(
         self,
         manifest: Manifest,

@@ -61,6 +61,7 @@ class ToolRunner:
         cwd: str | None = None,
         timeout: float | None = None,
         env_allow: Iterable[str] | None = None,
+        stdin: str | None = None,
     ) -> ToolResult:
         """Install/resolve, build argv, execute, and parse.
 
@@ -69,7 +70,7 @@ class ToolRunner:
         is forwarded; when set, only :data:`ESSENTIAL_ENV` plus the named keys are
         passed, so secrets in ``os.environ`` stay out of third-party binaries.
         The manifest's own ``env`` block is layered on afterwards and always
-        forwarded.
+        forwarded. ``stdin`` is written to the tool's stdin.
         """
         exe, env = self.installer.resolve(self.manifest)
         # Filter the inherited environment, then always overlay the manifest's
@@ -90,9 +91,12 @@ class ToolRunner:
                 check=False,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 env=env,
                 cwd=cwd,
                 timeout=resolved_timeout,
+                input=stdin,
             )
         except subprocess.TimeoutExpired as exc:
             raise ToolTimeoutError(

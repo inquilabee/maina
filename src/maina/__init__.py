@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from importlib.metadata import PackageNotFoundError, version
+from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
+from importlib.metadata import version as _version
 
 from maina.core.errors import (
     AbstractToolError,
@@ -28,8 +29,8 @@ from maina.runtime import Runtime, isolated, register, runtime, use
 from maina.tool import Tool
 
 try:
-    __version__ = version("maina")
-except PackageNotFoundError:  # pragma: no cover - source checkout without install
+    __version__ = _version("maina")
+except _PackageNotFoundError:  # pragma: no cover - source checkout without install
     __version__ = "0.0.0+unknown"
 
 __all__ = [

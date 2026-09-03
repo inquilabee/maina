@@ -17,13 +17,17 @@ trailing duplicate segment collapses: `kubectl-kubectl` resolves to `kubectl`.
 
 ## Top-level keys
 
+Unknown top-level keys are rejected at load (a typo like `outputs:` fails
+closed, it is not silently ignored).
+
 | Key | Type | Notes |
 | --- | --- | --- |
-| `cli` | string | Required for a concrete tool. The executable name (argv[0]). |
-| `version` | string | Drives the cache directory and the default `github` tag. |
+| `schema` | int | Manifest schema version. Optional; must be `1`. |
+| `cli` | string | Required for a concrete tool. The executable name (a single safe path segment). |
+| `version` | string | Drives the cache directory and the default `github` tag (a single safe path segment). |
 | `subcommand` | string | A fixed segment inserted after `cli`. Collected down an `extends` chain. |
 | `extends` | string | Parent registry id. See [inheritance](#inheritance). |
-| `abstract` | bool | `true` marks an inheritance-only surface: it cannot run or be prepared. |
+| `abstract` | bool | `true` marks an inheritance-only surface. **Not inherited** — a child is abstract only if it says so itself. |
 | `platforms` | list | `linux` / `macos` / `windows`. Enforced at resolve time. |
 | `timeout` | number | Default subprocess timeout in seconds. Overridden by `run(timeout=...)`. |
 | `parser` | string | A general parser name or a `*.py` file. See [Parsers](parsers.md). |
@@ -57,8 +61,9 @@ args:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `type` | string | `string`, `flag`, or `path`. `path` is emit-only metadata (no coercion). |
-| `flag` | string | The option flag, e.g. `--config`. Omitted for positionals. |
+| `type` | string | `string`, `flag`, or `path` (rejected otherwise). `path` is emit-only metadata (no coercion). |
+| `flag` | string | The option flag, e.g. `--config`. Required unless `positional: true`. |
+| `joiner` | string | Emit `flag` and value as one token: `joiner: "="` → `--config=value`. |
 | `positional` | bool | Emit the value with no flag, after all options. |
 | `required` | bool | Missing value with no `default` raises `ArgError`. |
 | `default` | any | Value used when the caller omits the argument. |
@@ -71,8 +76,14 @@ Calling rules:
 - `flag` type expects a bool. `True` emits the flag; `False` / `None` emit
   nothing.
 - A list value with `join: csv` becomes `--flag a,b`. Otherwise it repeats
-  (`--flag a --flag b`) unless `repeat: false`.
+  (`--flag a --flag b`) unless `repeat: false`. `joiner` applies to each token
+  (`--flag=a --flag=b`).
 - Passing an argument name not in the schema raises `ArgError`.
+- An `args` entry whose name collides with a `run()` parameter (`parser`,
+  `timeout`, `cwd`, `stdin`, `env_allow`, `extra`, `args`) is still valid —
+  pass it via `run(args={"timeout": "30"})`.
+- Child `args` merge onto the parent per field: overriding `default:` keeps the
+  inherited `flag` / `type` / `required`.
 
 ## install
 

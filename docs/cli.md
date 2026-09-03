@@ -34,14 +34,18 @@ Call `Tool(tool_id).run(**kwargs)`.
 - Each `key=value` token becomes a keyword argument. Repeat a key for a list
   value.
 - A bare `key` sets that flag to `true`.
-- `true` / `yes` / `1` and `false` / `no` / `0` in a `key=value` are coerced to
-  booleans. Use `key:=value` to force the literal string (`count:=1`).
+- `true` / `yes` / `1` / `0` in a `key=value` are coerced to booleans **only for
+  args the manifest declares as `type: flag`**; every other value stays a
+  string. `key:=value` always forces the literal string.
 - Tokens after `--` are passed through as `extra` argv.
+- `--json` prints `result.parsed` as JSON; without it the CLI prints the tool's
+  stdout exactly as produced.
 
 ```bash
 maina run jq filter=".items[].name" path=data.json raw
 maina run rg pattern=TODO path=src path=tests glob='*.py'
 maina run jscpd path=src -- --silent
+maina run kubectl-get resource=pods --json
 ```
 
 `maina run <tool_id>` with no tokens, or `maina run <tool_id> --help`, prints

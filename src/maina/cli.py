@@ -92,9 +92,16 @@ def list_cmd(
     Nested ids use hyphens (``kubectl-get``, ``git-remote-add``). Abstract
     parents stay hidden from the default catalog but may be passed as TOOL_ID.
     """
-    ids = runtime().registry.list_commands(tool_id)
+    registry = runtime().registry
+    ids = registry.list_commands(tool_id)
     if not ids:
-        typer.echo("(none registered)")
+        if tool_id is None and not registry.roots:
+            typer.echo(
+                "no manifests registered — set MAINA_REGISTRY=<dir> "
+                "or call maina.register(rt, registry_dirs=[...])"
+            )
+        else:
+            typer.echo("(none)")
         return
     for tid in ids:
         typer.echo(tid)
@@ -166,10 +173,26 @@ def run(
     if wants_help or RunInvocation.is_empty(tokens):
         emit_tool_help(resolved_id)
         raise typer.Exit(0)
+    as_json = "--json" in tokens
+    result = run_tool_tokens(resolved_id, [t for t in tokens if t != "--json"])
+    emit_result(result, as_json=as_json)
+    if not result.ok:
+        echo_stderr(result.stderr)
+        # Docs contract: exit 1 = tool ran and failed; 2 = bad usage / unknown id.
+        raise typer.Exit(1)
 
-    kwargs, extra = RunArgParser.parse(tokens)
+
+def flag_names_for(tool: Tool) -> frozenset[str]:
+    args = tool._manifest.args if tool._manifest else {}
+    return frozenset(name for name, spec in args.items() if spec.type == "flag")
+
+
+def run_tool_tokens(resolved_id: str, tokens: list[str]) -> ToolResult:
+    """Build argv from CLI tokens and run the tool, mapping errors to exit codes."""
     try:
-        result = Tool(resolved_id).run(extra=extra, **kwargs)
+        tool = Tool(resolved_id)
+        kwargs, extra = RunArgParser.parse(tokens, flag_names=flag_names_for(tool))
+        return tool.run(extra=extra, **kwargs)
     except (ManifestError, AbstractToolError, ArgError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(2) from exc
@@ -177,14 +200,10 @@ def run(
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
 
-    emit_result(result)
-    if not result.ok:
-        if result.stderr:
-            sys.stderr.write(
-                result.stderr if result.stderr.endswith("\n") else f"{result.stderr}\n"
-            )
-        # Docs contract: exit 1 = tool ran and failed; 2 = bad usage / unknown id.
-        raise typer.Exit(1)
+
+def echo_stderr(text: str) -> None:
+    if text:
+        sys.stderr.write(text if text.endswith("\n") else f"{text}\n")
 
 
 def emit_tool_help(tool_id: str) -> None:
@@ -277,27 +296,39 @@ class RunArgParser:
     """Parse CLI tokens into Tool.run kwargs and optional extra argv."""
 
     @classmethod
-    def parse(cls, tokens: list[str]) -> tuple[dict[str, Any], list[str] | None]:
-        """Split tokens into kwargs and optional extra passthrough after ``--``."""
+    def parse(
+        cls,
+        tokens: list[str],
+        *,
+        flag_names: frozenset[str] = frozenset(),
+    ) -> tuple[dict[str, Any], list[str] | None]:
+        """Split tokens into kwargs and optional extra passthrough after ``--``.
+
+        ``true``/``yes``/``1``/``0``/… are coerced to booleans only for args the
+        manifest declares as ``type: flag``; every other value stays a string.
+        ``key:=value`` forces the literal string regardless.
+        """
         kw_tokens, extra = split_at_dashdash(tokens)
         kwargs: dict[str, Any] = {}
         for token in kw_tokens:
             if not token:
                 continue
             if ":=" in token:
-                # Raw form: value is always the literal string (no bool coercion).
                 key, _, value = token.partition(":=")
-                if not key:
-                    raise typer.BadParameter(f"invalid run token: {token!r}")
+                cls._require_key(token, key)
                 cls._assign(kwargs, key, value=value)
             elif "=" in token:
                 key, _, value = token.partition("=")
-                if not key:
-                    raise typer.BadParameter(f"invalid run token: {token!r}")
-                cls._assign(kwargs, key, value=cls._coerce(value))
+                cls._require_key(token, key)
+                cls._assign(kwargs, key, value=cls._coerce(value) if key in flag_names else value)
             else:
                 cls._assign(kwargs, token, value=True)
         return kwargs, extra
+
+    @staticmethod
+    def _require_key(token: str, key: str) -> None:
+        if not key:
+            raise typer.BadParameter(f"invalid run token: {token!r}")
 
     @staticmethod
     def _assign(kwargs: dict[str, Any], key: str, *, value: Any) -> None:
@@ -322,15 +353,13 @@ class RunArgParser:
         )
 
 
-def emit_result(result: ToolResult) -> None:
-    """Print parsed output when present, otherwise raw stdout."""
-    payload = result.parsed if result.parsed is not None else result.raw
-    if payload is None or payload == "":
+def emit_result(result: ToolResult, *, as_json: bool = False) -> None:
+    """Print the tool's stdout as it produced it, or ``--json`` parsed output."""
+    if as_json:
+        sys.stdout.write(json.dumps(result.parsed, indent=2, default=str) + "\n")
         return
-    if isinstance(payload, str):
-        sys.stdout.write(payload if payload.endswith("\n") else f"{payload}\n")
-        return
-    sys.stdout.write(json.dumps(payload, indent=2, default=str) + "\n")
+    if raw := result.raw:
+        sys.stdout.write(raw if raw.endswith("\n") else f"{raw}\n")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -347,9 +376,31 @@ def main(argv: list[str] | None = None) -> int:
         # not a stack trace.
         typer.echo(str(exc), err=True)
         return 2
+    except Exception as exc:
+        # typer vendors its own click fork, so the raised class is not
+        # ``click.UsageError``; match by shape/name and re-raise anything else.
+        if not is_usage_error(exc):
+            raise
+        typer.echo(usage_message(exc), err=True)
+        return 2
     finally:
         RAW_ARGV.clear()
     return 0 if result is None else int(result)
+
+
+def is_usage_error(exc: BaseException) -> bool:
+    """True for a Click/typer usage error (bad option, missing/extra arg).
+
+    Matched by class name because typer vendors its own click fork, so the
+    raised class is not ``click.UsageError`` from the ``click`` package.
+    """
+    names = {cls.__name__ for cls in type(exc).__mro__}
+    return not names.isdisjoint({"UsageError", "BadParameter", "NoSuchOption", "ClickException"})
+
+
+def usage_message(exc: BaseException) -> str:
+    fmt = getattr(exc, "format_message", None)
+    return fmt() if callable(fmt) else str(exc)
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from maina.core.errors import ManifestError
 from maina.core.protocols import Parser
@@ -137,16 +137,27 @@ class ParserResolver:
             raise ManifestError(f"parser {name!r} must be a Parser callable")
         return parser(fn)
 
-    @staticmethod
-    def load_parser_module(path: Path) -> Parser:
-        """Load ``parse`` from a registry ``parsers/*.py`` file."""
+    _MODULE_CACHE: ClassVar[dict[tuple[str, int, int], Parser]] = {}
+
+    @classmethod
+    def load_parser_module(cls, path: Path) -> Parser:
+        """Load ``parse`` from a registry ``parsers/*.py`` file (cached by mtime/size)."""
+        try:
+            stat = path.stat()
+        except OSError as exc:
+            raise ManifestError(f"cannot load parser module {path}: {exc}") from exc
+        key = (str(path), stat.st_mtime_ns, stat.st_size)
+        if (cached := cls._MODULE_CACHE.get(key)) is not None:
+            return cached
         spec = importlib.util.spec_from_file_location(f"maina_parser_{path.stem}", path)
         if spec is None or spec.loader is None:
             raise ManifestError(f"cannot load parser module {path}")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         parse = getattr(module, "parse", None)
-        return ParserResolver._require_parser(str(path), parse)
+        resolved = ParserResolver._require_parser(str(path), parse)
+        cls._MODULE_CACHE[key] = resolved
+        return resolved
 
     # Back-compat aliases for call sites that still reference classmethods.
     parse_json = staticmethod(parse_json)
@@ -171,24 +182,27 @@ class BoundParser:
         self.override = override
 
     def resolve(self) -> Parser | None:
-        """Resolve the effective parser callable for a run."""
-        return (
-            (
+        """Resolve the effective parser callable for a run.
+
+        A ``parser:`` ref that is neither a registered general parser nor a
+        resolved ``*.py`` path raises rather than silently yielding ``None``.
+        """
+        if self.override is not None:
+            return (
                 self._registry.generic_parser(self.override)
                 if isinstance(self.override, str)
                 else parser(self.override)
             )
-            if self.override is not None
-            else (
-                ParserResolver.load_parser_module(self.parser_path)
-                if self.parser_path is not None
-                else (
-                    self._registry.generic_parser(self.parser_ref)
-                    if self.parser_ref is not None and self._registry.is_general(self.parser_ref)
-                    else None
-                )
+        if self.parser_path is not None:
+            return ParserResolver.load_parser_module(self.parser_path)
+        if self.parser_ref is None:
+            return None
+        if not self._registry.is_general(self.parser_ref):
+            raise ManifestError(
+                f"unknown parser {self.parser_ref!r}: not a registered general parser "
+                "or a *.py module"
             )
-        )
+        return self._registry.generic_parser(self.parser_ref)
 
     def apply(self, result: ToolResult) -> ToolResult:
         """Attach parsed output onto result when a parser is configured."""

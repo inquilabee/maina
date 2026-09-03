@@ -15,11 +15,36 @@ if TYPE_CHECKING:
 IGNORED_MANIFEST_KEYS = frozenset({"name"})
 MANIFEST_PREFIX = "manifest "
 BASE_TOOL_ID = "base"
+CURRENT_SCHEMA = 1
+
+# Every key a merged manifest may carry. Validated at load so a typo
+# (``outputs:``, ``platform:``, ``timeoutt:``) fails closed like the nested
+# blocks, instead of loading silently and being ignored.
+TOP_LEVEL_KEYS = frozenset(
+    {
+        "schema",
+        "cli",
+        "version",
+        "subcommand",
+        "extends",
+        "abstract",
+        "platforms",
+        "timeout",
+        "parser",
+        "env",
+        "args",
+        "install",
+        "requires",
+        "output",
+        "name",
+    }
+)
 
 ARG_KEYS = frozenset(
     {
         "type",
         "flag",
+        "joiner",
         "positional",
         "required",
         "repeat",
@@ -29,7 +54,36 @@ ARG_KEYS = frozenset(
         "help",
     }
 )
+ARG_TYPES = frozenset({"string", "flag", "path"})
 INSTALL_KEYS = frozenset({"backend", "repo", "assets", "binary", "tag", "package", "sha256"})
+
+
+def is_unsafe_segment(text: str) -> bool:
+    return (
+        not text
+        or text != text.strip()
+        or text.startswith(".")  # covers "." and ".."
+        or any(char in text for char in "/\\\x00")
+    )
+
+
+def safe_segment(value: Any, *, field_name: str, tool_id: str, allow_none: bool = False) -> Any:
+    """Reject a manifest value that is not a single safe path segment.
+
+    ``cli`` / ``version`` / ``install.binary`` are interpolated into cache
+    paths; ``..``, separators, a leading ``.`` or a NUL would let a manifest
+    write outside the cache root.
+    """
+    if value is None:
+        if allow_none:
+            return None
+        raise manifest_error(tool_id, f"missing {field_name}")
+    text = str(value)
+    if is_unsafe_segment(text):
+        raise manifest_error(tool_id, f"{field_name} {text!r} is not a safe path segment")
+    return text
+
+
 # Legacy singular form only — freeform pins use runtime names as keys.
 LEGACY_REQUIRES_KEYS = frozenset({"runtime", "version"})
 REQUIRES_KEYS = LEGACY_REQUIRES_KEYS  # back-compat alias for importers
@@ -61,6 +115,7 @@ class ArgSpec:
 
     type: str = "string"
     flag: str | None = None
+    joiner: str | None = None
     positional: bool = False
     required: bool = False
     repeat: bool | None = None
@@ -72,17 +127,21 @@ class ArgSpec:
 
     @classmethod
     def from_mapping(cls, name: str, raw: Any, *, tool_id: str) -> ArgSpec:
-        """Parse one arg map; fail closed on non-maps and unknown keys."""
+        """Parse one arg map; fail closed on non-maps, unknown keys, and bad shapes."""
         if not isinstance(raw, dict):
             raise manifest_error(tool_id, f"args.{name} must be a map")
         if bad := unknown_keys(raw, ARG_KEYS):
-            keys = ", ".join(bad)
-            raise manifest_error(tool_id, f"args.{name} unknown keys: {keys}")
+            raise manifest_error(tool_id, f"args.{name} unknown keys: {', '.join(bad)}")
+        arg_type = str(raw.get("type", "string"))
+        positional = raw.get("positional", False) is True
+        flag = None if raw.get("flag") is None else str(raw["flag"])
+        cls._check_shape(name, arg_type, positional=positional, flag=flag, tool_id=tool_id)
         return cls(
-            type=str(raw.get("type", "string")),
-            flag=None if raw.get("flag") is None else str(raw["flag"]),
-            positional=raw.get("positional", False),
-            required=raw.get("required", False),
+            type=arg_type,
+            flag=flag,
+            joiner=None if raw.get("joiner") is None else str(raw["joiner"]),
+            positional=positional,
+            required=raw.get("required", False) is True,
             repeat=raw.get("repeat"),
             join=None if raw.get("join") is None else str(raw["join"]),
             default=raw.get("default"),
@@ -90,6 +149,16 @@ class ArgSpec:
             description=optional_str(raw.get("description")),
             help=optional_str(raw.get("help")),
         )
+
+    @staticmethod
+    def _check_shape(
+        name: str, arg_type: str, *, positional: bool, flag: str | None, tool_id: str
+    ) -> None:
+        if arg_type not in ARG_TYPES:
+            allowed = ", ".join(sorted(ARG_TYPES))
+            raise manifest_error(tool_id, f"args.{name} type {arg_type!r} not in {{{allowed}}}")
+        if not positional and flag is None:
+            raise manifest_error(tool_id, f"args.{name} needs a flag or positional: true")
 
 
 @dataclass(slots=True, frozen=True)
@@ -122,7 +191,9 @@ class InstallSpec:
             backend="path" if backend is None else str(backend),
             repo=optional_str(raw.get("repo")),
             assets=dict(assets),
-            binary=optional_str(raw.get("binary")),
+            binary=safe_segment(
+                raw.get("binary"), field_name="install.binary", tool_id=tool_id, allow_none=True
+            ),
             tag=optional_str(raw.get("tag")),
             package=optional_str(raw.get("package")),
             sha256=cls._parse_sha256(raw.get("sha256"), tool_id=tool_id),
@@ -346,15 +417,13 @@ class Manifest:
 
     @property
     def cli(self) -> str:
-        cli = self.data.get("cli")
-        if not cli:
-            raise manifest_error(self.id, "missing cli")
-        return str(cli)
+        return safe_segment(self.data.get("cli"), field_name="cli", tool_id=self.id)
 
     @property
     def version(self) -> str | None:
-        value = self.data.get("version")
-        return None if value is None else str(value)
+        return safe_segment(
+            self.data.get("version"), field_name="version", tool_id=self.id, allow_none=True
+        )
 
     @property
     def parser(self) -> str | None:

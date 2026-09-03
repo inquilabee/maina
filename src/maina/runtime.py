@@ -121,37 +121,72 @@ class Runtime:
         return self
 
     @classmethod
-    def preferred(cls) -> Runtime:
-        """Empty Runtime + bootstrap register of shipped defaults."""
-        return cls._bootstrap_preferred()
+    def preferred(
+        cls,
+        *,
+        cache_root: Path | None = None,
+        language: LanguageRuntimeProvider | None = None,
+        registry_dirs: Path | str | Sequence[Path | str] | None = None,
+        use_env: bool = True,
+    ) -> Runtime:
+        """Build a Runtime with builtin parsers, install backends, and mise.
 
-    @classmethod
-    def _bootstrap_preferred(cls) -> Runtime:
-        """Build the preferred Runtime: builtin parsers, backends, and mise.
-
-        maina ships no tool catalog. ``preferred()`` has an empty registry
-        unless ``MAINA_REGISTRY`` names one or more existing directories
-        (``os.pathsep``-separated); the caller can also add one later with
-        ``register(rt, registry_dirs=[...])``.
+        maina ships no tool catalog. With ``use_env`` (default) the cache root
+        falls back to ``MAINA_CACHE`` and ``MAINA_REGISTRY`` (``os.pathsep``
+        directories) is registered; pass ``use_env=False`` for a hermetic
+        Runtime that ignores both. ``cache_root`` / ``language`` /
+        ``registry_dirs`` set those explicitly.
         """
-        rt = cls()
+        rt = cls(
+            cache_root=cls._preferred_cache_root(cache_root, use_env=use_env), language=language
+        )
         register(
             rt,
             parsers=builtin_generals(),
-            installers=[
-                PathBackend(),
-                GithubBackend(),
-                NpmBackend(),
-            ],
-            language=MiseRuntime(cache_root=rt.cache_root),
+            installers=[PathBackend(), GithubBackend(), NpmBackend()],
+            language=language or MiseRuntime(cache_root=rt.cache_root),
         )
-        if env_dirs := [
-            Path(part)
-            for part in os.environ.get("MAINA_REGISTRY", "").split(os.pathsep)
-            if part and Path(part).is_dir()
-        ]:
-            register(rt, registry_dirs=env_dirs)
+        if dirs := cls._preferred_registry_dirs(registry_dirs, use_env=use_env):
+            register(rt, registry_dirs=dirs)
         return rt
+
+    @classmethod
+    def _preferred_cache_root(cls, cache_root: Path | None, *, use_env: bool) -> Path:
+        if cache_root is not None:
+            return Path(cache_root)
+        env_default = cls.resolve_cache_root(None) if use_env else None
+        return env_default or Path.home() / ".cache" / "maina"
+
+    @classmethod
+    def _preferred_registry_dirs(
+        cls,
+        registry_dirs: Path | str | Sequence[Path | str] | None,
+        *,
+        use_env: bool,
+    ) -> list[Path]:
+        dirs: list[Path] = []
+        if use_env:
+            dirs += [
+                Path(part)
+                for part in os.environ.get("MAINA_REGISTRY", "").split(os.pathsep)
+                if part and Path(part).is_dir()
+            ]
+        if registry_dirs is not None:
+            dirs += cls.as_paths(registry_dirs)
+        return dirs
+
+    def close(self) -> None:
+        """Release pooled resources (e.g. HTTP sessions) held by backends."""
+        for backend in self._installer.backends:
+            closer = getattr(backend, "close", None)
+            if callable(closer):
+                closer()
+
+    def __enter__(self) -> Runtime:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
 
     @staticmethod
     def resolve_cache_root(path: Path | None = None) -> Path:

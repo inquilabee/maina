@@ -83,13 +83,16 @@ class ArgParser:
                 repeat=spec.repeat,
                 join=spec.join,
                 positional=spec.positional,
+                joiner=spec.joiner,
             )
         token = str(value)
         if spec.positional:
             return [token]
         if not spec.flag:
             raise ArgError(f"argument {name!r} needs a flag or positional: true")
-        return [spec.flag, token]
+        return (
+            [f"{spec.flag}{spec.joiner}{token}"] if spec.joiner is not None else [spec.flag, token]
+        )
 
     @staticmethod
     def _emit_flag(name: str, flag: str | None, value: Any) -> list[str]:
@@ -111,17 +114,18 @@ class ArgParser:
         repeat: Any,
         join: str | None,
         positional: Any,
+        joiner: str | None = None,
     ) -> list[str]:
         """Emit list values as CSV, positionals, or repeated flags."""
         tokens = [str(v) for v in values]
         return (
             (
-                ArgParser._emit_csv(name, flag, tokens, positional=positional)
+                ArgParser._emit_csv(name, flag, tokens, positional=positional, joiner=joiner)
                 if join == "csv"
                 else (
                     tokens
                     if positional or not flag
-                    else ArgParser._emit_flag_list(flag, tokens, repeat=repeat)
+                    else ArgParser._emit_flag_list(flag, tokens, repeat=repeat, joiner=joiner)
                 )
             )
             if tokens
@@ -129,14 +133,14 @@ class ArgParser:
         )
 
     @staticmethod
-    def _emit_flag_list(flag: str, tokens: list[str], *, repeat: Any) -> list[str]:
+    def _emit_flag_list(
+        flag: str, tokens: list[str], *, repeat: Any, joiner: str | None = None
+    ) -> list[str]:
         """Emit list values after a flag (repeated or single)."""
-        if repeat is False:
-            return [flag, *tokens]
-        out: list[str] = []
-        for token in tokens:
-            out.extend([flag, token])
-        return out
+        if joiner is not None:
+            return [f"{flag}{joiner}{token}" for token in tokens]
+        repeated = [item for token in tokens for item in (flag, token)]
+        return [flag, *tokens] if repeat is False else repeated
 
     @staticmethod
     def _emit_csv(
@@ -145,6 +149,7 @@ class ArgParser:
         tokens: list[str],
         *,
         positional: Any,
+        joiner: str | None = None,
     ) -> list[str]:
         """Join list values with commas for a single CLI token."""
         joined = ",".join(tokens)
@@ -152,7 +157,7 @@ class ArgParser:
             return [joined]
         if not flag:
             raise ArgError(f"argument {name!r} needs a flag for csv join")
-        return [flag, joined]
+        return [f"{flag}{joiner}{joined}"] if joiner is not None else [flag, joined]
 
     @staticmethod
     def normalize_extra(extra: str | list[str] | None) -> list[str]:

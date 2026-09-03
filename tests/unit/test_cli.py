@@ -81,9 +81,14 @@ def test_run_arg_parser_kwargs_and_extra() -> None:
 
 
 def test_run_arg_parser_bool_coercion() -> None:
-    kwargs, extra = RunArgParser.parse(["silent=true", "raw=false"])
+    # Coercion only applies to args the manifest declares as type: flag.
+    flags = frozenset({"silent", "raw"})
+    kwargs, extra = RunArgParser.parse(["silent=true", "raw=false"], flag_names=flags)
     assert kwargs == {"silent": True, "raw": False}
     assert extra is None
+    # A non-flag numeric value stays a string.
+    plain, _ = RunArgParser.parse(["count=1"])
+    assert plain == {"count": "1"}
 
 
 def test_run_invocation_strips_help_before_extra() -> None:
@@ -354,7 +359,7 @@ def test_cli_bad_manifest_is_one_line_not_traceback(tmp_path: Any, monkeypatch: 
 
 
 def test_run_argparser_raw_string_form() -> None:
-    kwargs, _extra = RunArgParser.parse(["count:=1", "flag=1"])
+    kwargs, _extra = RunArgParser.parse(["count:=1", "flag=1"], flag_names=frozenset({"flag"}))
     assert kwargs["count"] == "1"
     assert kwargs["flag"] is True
 

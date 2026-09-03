@@ -40,6 +40,32 @@ First tagged release.
   `Runtime.preferred()` has an empty registry; register your own manifests with
   `register(rt, registry_dirs=[...])` or point `MAINA_REGISTRY` at them.
 
+### Manifest
+
+- The whole manifest is validated at load: unknown top-level keys, unknown arg
+  `type`, a non-positional arg with no `flag`, and an unknown `parser:` name all
+  fail closed (they were silently ignored / deferred before).
+- `abstract` is no longer inherited — a child of a family root is concrete
+  unless it declares `abstract: true` itself.
+- `args.<name>.joiner` emits `--flag=value` as one token.
+- `args` inheritance merges per field (override `default:`, keep `flag`).
+- `cli` / `version` / `install.binary` must be single safe path segments;
+  a manifest can no longer write outside the cache root.
+- Optional `schema: 1` top-level key.
+- A hyphenated manifest filename in a subdirectory (`family/my-tool.yaml`) and
+  `.yml` files now resolve.
+
+### Runtime / CLI
+
+- `Runtime.preferred(cache_root=, language=, registry_dirs=, use_env=)` and
+  `Runtime.close()` / context-manager support.
+- `Tool.run(stdin=..., args={...})`; undecodable tool output no longer crashes
+  (decoded with `errors="replace"`).
+- `maina run` prints the tool's stdout by default; `--json` for `result.parsed`.
+  `key=1` stays a string unless the arg is `type: flag`.
+- Bad CLI usage exits 2 with one line (no traceback); `import maina` works on
+  Windows (the `fcntl` lock degrades to a no-op).
+
 ### Runtime
 
 - `Tool(name)` loads a manifest and runs it: install/resolve the executable,

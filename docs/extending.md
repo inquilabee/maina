@@ -10,6 +10,19 @@ general-parser map, the installer backend map, and the language provider.
 `Runtime.preferred()` builds one with the builtin parsers, install backends, and
 mise registered — but **no tool catalog** (add one below).
 
+For an embedding app, pass everything explicitly and ignore the ambient
+environment:
+
+```python
+rt = maina.Runtime.preferred(
+    cache_root=Path("/var/cache/myapp/tools"),
+    registry_dirs=[importlib.resources.files("myapp") / "tools"],
+    use_env=False,   # ignore MAINA_REGISTRY / MAINA_CACHE
+)
+...
+rt.close()           # or: with maina.Runtime.preferred(...) as rt: ...
+```
+
 ```python
 from pathlib import Path
 import maina
