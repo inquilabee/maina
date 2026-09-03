@@ -21,6 +21,7 @@ from maina.mise import MiseRuntime
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
+    from importlib.metadata import EntryPoint
 
     from maina.core.parsers import ParserInput
     from maina.core.protocols import InstallerBackend, LanguageRuntimeProvider
@@ -137,14 +138,15 @@ class Runtime:
         language: LanguageRuntimeProvider | None = None,
         registry_dirs: Path | str | Sequence[Path | str] | None = None,
         use_env: bool = True,
+        discover: bool = False,
     ) -> Runtime:
         """Build a Runtime with builtin parsers, install backends, and mise.
 
         maina ships no tool catalog. With ``use_env`` (default) the cache root
         falls back to ``MAINA_CACHE`` and ``MAINA_REGISTRY`` (``os.pathsep``
         directories) is registered; pass ``use_env=False`` for a hermetic
-        Runtime that ignores both. ``cache_root`` / ``language`` /
-        ``registry_dirs`` set those explicitly.
+        Runtime that ignores both. ``discover=True`` also registers every
+        catalog published to the ``maina.registries`` entry-point group.
         """
         rt = cls(
             cache_root=cls._preferred_cache_root(cache_root, use_env=use_env), language=language
@@ -155,9 +157,27 @@ class Runtime:
             installers=[PathBackend(), GithubBackend(), NpmBackend()],
             language=language or MiseRuntime(cache_root=rt.cache_root),
         )
-        if dirs := cls._preferred_registry_dirs(registry_dirs, use_env=use_env):
+        if dirs := cls._preferred_registry_dirs(registry_dirs, use_env=use_env, discover=discover):
             register(rt, registry_dirs=dirs)
         return rt
+
+    @classmethod
+    def _discovered_registry_dirs(cls) -> list[Path]:
+        """Directories published to the ``maina.registries`` entry-point group."""
+        from importlib.metadata import entry_points
+
+        eps = entry_points(group="maina.registries")
+        resolved = (cls._load_registry_entry_point(ep) for ep in eps)
+        return [path for path in resolved if path is not None and path.is_dir()]
+
+    @staticmethod
+    def _load_registry_entry_point(ep: EntryPoint) -> Path | None:
+        """Resolve one entry point to a directory Path; None if it is broken."""
+        try:
+            value = ep.load()
+            return Path(str(value() if callable(value) else value))
+        except (ImportError, AttributeError, TypeError, OSError):
+            return None
 
     @classmethod
     def _preferred_cache_root(cls, cache_root: Path | None, *, use_env: bool) -> Path:
@@ -172,6 +192,7 @@ class Runtime:
         registry_dirs: Path | str | Sequence[Path | str] | None,
         *,
         use_env: bool,
+        discover: bool = False,
     ) -> list[Path]:
         dirs: list[Path] = []
         if use_env:
@@ -180,6 +201,8 @@ class Runtime:
                 for part in os.environ.get("MAINA_REGISTRY", "").split(os.pathsep)
                 if part and Path(part).is_dir()
             ]
+        if discover:
+            dirs += cls._discovered_registry_dirs()
         if registry_dirs is not None:
             dirs += cls.as_paths(registry_dirs)
         return dirs

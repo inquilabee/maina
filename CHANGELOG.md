@@ -37,6 +37,15 @@
 - `register(..., replace=True)` resets the catalog before adding roots;
   duplicate registry roots are de-duplicated. The lazily-built session Runtime
   closes its HTTP session at process exit.
+- `Runtime.preferred(discover=True)` registers every catalog published to the
+  `maina.registries` entry-point group — share a catalog as a wheel.
+
+### Tests
+
+- Real `-m integration` tests: a live GitHub download + run, an `npm install`
+  - run, and a `mise` `ensure` — each `pytest.skip`-guarded on its
+    prerequisite. (Fixed an npm regression they caught: the identity cache key
+    was leaking into the npm dist-tag.)
 
 ### Robustness
 

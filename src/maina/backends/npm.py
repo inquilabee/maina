@@ -56,7 +56,11 @@ class NpmBackend:
         env: dict[str, str],
         ctx: InstallContext,
     ) -> Path:
-        """Install an npm package into the tool cache and return its bin path."""
+        """Install an npm package into the tool cache and return its bin path.
+
+        *version* is the identity-keyed cache-dir segment; the npm dist-tag /
+        version comes from ``manifest.version``.
+        """
         package = manifest.install.package or manifest.cli
         self._ensure_node_on_path(manifest, env, ctx)
         prefix = ctx.cache_root / "tools" / manifest.cli / version / "npm"
@@ -67,7 +71,7 @@ class NpmBackend:
             else self._install_package(
                 manifest.cli,
                 package,
-                version,
+                manifest.version,
                 prefix,
                 link,
                 env,
@@ -98,7 +102,7 @@ class NpmBackend:
     def _install_package(
         cli: str,
         package: str,
-        version: str,
+        version: str | None,
         prefix: Path,
         link: Path,
         env: dict[str, str],

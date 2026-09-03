@@ -57,6 +57,19 @@ tool.describe()          # JSON-safe dict: id, cli, args, install, output, ...
 `Manifest`, `ArgSpec`, `InstallSpec`, `OutputSpec`, `Registry`, and `ToolRunner`
 are importable straight from `maina`.
 
+## Sharing a catalog as a package
+
+Publish a catalog directory through an entry point:
+
+```toml
+[project.entry-points."maina.registries"]
+acme = "acme_tools:registry_dir"   # a str/Path, or a callable returning one
+```
+
+Consumers pick it up with `Runtime.preferred(discover=True)` — it registers
+every installed `maina.registries` catalog (env `MAINA_REGISTRY` first, then
+discovered, then explicit `registry_dirs`; later wins).
+
 `register(...)` with no Runtime mutates the process-wide session instead:
 
 ```python
