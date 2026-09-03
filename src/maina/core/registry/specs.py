@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -212,8 +213,10 @@ class InstallSpec:
             binary=safe_segment(
                 raw.get("binary"), field_name="install.binary", tool_id=tool_id, allow_none=True
             ),
-            tag=optional_str(raw.get("tag")),
-            package=optional_str(raw.get("package")),
+            tag=safe_segment(
+                raw.get("tag"), field_name="install.tag", tool_id=tool_id, allow_none=True
+            ),
+            package=cls._parse_package(raw.get("package"), tool_id=tool_id),
             sha256=cls._parse_sha256(raw.get("sha256"), tool_id=tool_id),
             allow_scripts=raw.get("allow_scripts", False) is True,
         )
@@ -232,9 +235,24 @@ class InstallSpec:
                 sorted(self.assets.items()),
                 sorted(self.sha256.items()),
                 self.package,
+                self.binary,
+                self.allow_scripts,
             )
         )
         return hashlib.blake2s(payload.encode("utf-8"), digest_size=5).hexdigest()
+
+    # npm package: optional @scope/, then a name of url-safe lowercase chars.
+    _NPM_NAME_RE = re.compile(r"^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*$")
+
+    @classmethod
+    def _parse_package(cls, raw: Any, *, tool_id: str) -> str | None:
+        """Validate ``install.package`` as an npm package name (scoped ok)."""
+        text = optional_str(raw)
+        if text is None:
+            return None
+        if not cls._NPM_NAME_RE.match(text):
+            raise manifest_error(tool_id, f"install.package {text!r} is not a valid npm name")
+        return text
 
     @staticmethod
     def _parse_repo(raw: Any, *, tool_id: str) -> str | None:
@@ -376,10 +394,14 @@ class RequiresSpec:
             )
         return pins
 
-    @staticmethod
-    def _require_runtime_key(name: Any, *, tool_id: str) -> None:
-        if not isinstance(name, str) or not name.strip():
-            raise manifest_error(tool_id, "requires keys must be non-empty strings")
+    # A runtime name reaches ``mise`` argv and a ``command -v`` fallback; keep it
+    # to characters that cannot carry a shell or path surprise.
+    _RUNTIME_KEY_RE = re.compile(r"^[A-Za-z0-9_.+-]+$")
+
+    @classmethod
+    def _require_runtime_key(cls, name: Any, *, tool_id: str) -> None:
+        if not isinstance(name, str) or not cls._RUNTIME_KEY_RE.match(name):
+            raise manifest_error(tool_id, "requires keys must match [A-Za-z0-9_.+-]+")
 
     @staticmethod
     def _pin_message(tool_id: str, key: str, detail: str) -> str:

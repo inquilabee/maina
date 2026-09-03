@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import atexit
 import os
+import warnings
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -186,6 +187,24 @@ class Runtime:
         env_default = cls.resolve_cache_root(None) if use_env else None
         return env_default or Path.home() / ".cache" / "maina"
 
+    @staticmethod
+    def _env_registry_dirs() -> list[Path]:
+        """``MAINA_REGISTRY`` dirs; a set-but-missing entry warns instead of vanishing."""
+        out: list[Path] = []
+        for part in os.environ.get("MAINA_REGISTRY", "").split(os.pathsep):
+            if not part:
+                continue
+            path = Path(part)
+            if path.is_dir():
+                out.append(path)
+            else:
+                warnings.warn(
+                    f"MAINA_REGISTRY entry is not a directory, ignoring: {part!r}",
+                    RuntimeWarning,
+                    stacklevel=3,
+                )
+        return out
+
     @classmethod
     def _preferred_registry_dirs(
         cls,
@@ -196,11 +215,7 @@ class Runtime:
     ) -> list[Path]:
         dirs: list[Path] = []
         if use_env:
-            dirs += [
-                Path(part)
-                for part in os.environ.get("MAINA_REGISTRY", "").split(os.pathsep)
-                if part and Path(part).is_dir()
-            ]
+            dirs += cls._env_registry_dirs()
         if discover:
             dirs += cls._discovered_registry_dirs()
         if registry_dirs is not None:

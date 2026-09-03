@@ -18,6 +18,14 @@
   (previously they re-read the full `os.environ`).
 - `mise`'s runtime-resolution fallback shell-quotes the runtime name
   (`command -v <runtime>`), closing a shell-metacharacter path.
+- More of the manifest is validated at load: `requires:` keys must match
+  `[A-Za-z0-9_.+-]+`, `install.package` must be a valid npm name (scoped ok),
+  and `install.tag` must be a single safe path segment.
+- `InstallSpec.identity_key()` (the github / npm cache-dir hash) now also
+  covers `install.binary` and `install.allow_scripts`, so flipping either
+  cannot reuse the other variant's cached install.
+- A `MAINA_REGISTRY` entry that is set but not a directory now emits a
+  `RuntimeWarning` instead of vanishing silently.
 - tar extraction requires the data filter (Python 3.11.4+), validates
   symlink/hardlink targets, and wraps `TarError` as `InstallError`; the
   single-file archive fallback only accepts an executable file. Binary copies
