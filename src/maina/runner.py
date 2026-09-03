@@ -121,6 +121,10 @@ class ToolRunner:
             duration_ms=duration_ms,
         )
         self._apply_from_file(result, kwargs, cwd)
+        if result.parse_error is not None:
+            # ``from_file`` already failed; don't run the parser over stdout and
+            # clobber the diagnostic.
+            return result
         resolver = self.parsers.bind(
             parser_ref=self.manifest.parser,
             parser_path=self.manifest.parser_path,
@@ -129,21 +133,36 @@ class ToolRunner:
         return resolver.apply(result)
 
     def _apply_from_file(self, result: ToolResult, kwargs: dict[str, Any], cwd: str | None) -> None:
-        """When ``output.from_file`` is set, use that file's contents as the
-        parse input instead of stdout (for tools that write a report file)."""
+        """Point the parser at ``output.from_file`` instead of stdout.
+
+        ``result.raw`` is left as the tool's stdout; the file contents go on
+        ``result.report``. Every failure (unresolved template, escape, missing
+        file) is surfaced on ``result.parse_error`` — never a silent fallback.
+        """
         template = self.manifest.output.from_file
         if not template:
             return
-        base = Path(cwd) if cwd else Path.cwd()
-        subs = {k: v for k, v in kwargs.items() if isinstance(v, (str, int, float))}
+        base = (Path(cwd) if cwd else Path.cwd()).resolve()
+        subs = {
+            key: value
+            for key, value in ArgParser(self.manifest.args).resolved_values(kwargs).items()
+            if isinstance(value, (str, int, float)) and not isinstance(value, bool)
+        }
         try:
             rel = template.format(cwd=str(base), **subs)
-        except (KeyError, IndexError):
+        except (KeyError, IndexError, ValueError) as exc:
+            result.parse_error = f"output.from_file template {template!r} unresolved: {exc}"
             return
-        path = base / rel
-        if path.is_file():
-            result.raw = path.read_text(encoding="utf-8", errors="replace")
-            result.meta["parsed_from"] = str(path)
+        path = (base / rel).resolve()
+        if not path.is_relative_to(base):
+            result.parse_error = f"output.from_file escapes the run directory: {path}"
+            return
+        if not path.is_file():
+            result.parse_error = f"output.from_file not found: {path}"
+            result.meta["parsed_from_missing"] = str(path)
+            return
+        result.report = path.read_text(encoding="utf-8", errors="replace")
+        result.meta["parsed_from"] = str(path)
 
     def _resolve_timeout(self, timeout: float | None) -> float | None:
         """Prefer explicit kwarg, then top-level manifest ``timeout``."""

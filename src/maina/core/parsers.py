@@ -229,7 +229,7 @@ class BoundParser:
             result.parsed = None
             return result
         try:
-            result.parsed = resolved(result.raw, result)
+            result.parsed = resolved(result.parse_input, result)
         except ParseError as exc:
             result.parsed = None
             result.parse_error = str(exc)

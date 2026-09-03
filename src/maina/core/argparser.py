@@ -68,6 +68,19 @@ class ArgParser:
         argv.extend(self.normalize_extra(extra))
         return argv
 
+    def resolved_values(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+        """Every arg's effective value (caller value or manifest ``default:``).
+
+        Args with no value and no default are omitted. Used to interpolate
+        ``output.from_file`` so a defaulted arg still resolves in the template.
+        """
+        out: dict[str, Any] = {}
+        for name, spec in self.schema.items():
+            value = self._resolve_value(name, spec, kwargs)
+            if value is not None:
+                out[name] = value
+        return out
+
     @staticmethod
     def _resolve_value(name: str, spec: ArgSpec, kwargs: dict[str, Any]) -> Any:
         """Resolve one kwarg, applying defaults and required checks."""

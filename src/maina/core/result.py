@@ -21,11 +21,17 @@ class ToolResult:
     command: list[str]
     parsed: Any = None
     parse_error: str | None = None
+    report: str | None = None
     cwd: str | None = None
     exe: str | None = None
     version: str | None = None
     duration_ms: float | None = None
     meta: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def parse_input(self) -> str:
+        """What the parser sees: the ``output.from_file`` report, else stdout."""
+        return self.report if self.report is not None else self.raw
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-safe view with a stable key set.
@@ -49,6 +55,7 @@ class ToolResult:
             "command": list(self.command),
             "parsed": parsed,
             "parse_error": parse_error,
+            "report": self.report,
             "cwd": self.cwd,
             "exe": self.exe,
             "version": self.version,

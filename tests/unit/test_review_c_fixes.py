@@ -207,30 +207,85 @@ def test_platforms_values_validated_at_load(tmp_path: Path) -> None:
         reg.load("t")
 
 
-def test_output_from_file_used_as_parse_input(tmp_path: Path) -> None:
-    work = tmp_path / "work"
-    (work / "report").mkdir(parents=True)
-    (work / "report" / "r.json").write_text('{"clones": 3}', encoding="utf-8")
+def from_file_runner(tmp_path: Path) -> ToolRunner:
     reg = make_reg(
         tmp_path,
         {
             "j.yaml": {
-                "cli": "true",
+                "cli": "echo",
                 "install": {"backend": "path"},
                 "parser": "json",
-                "args": {"out": {"flag": "--out", "type": "string"}},
+                "args": {"out": {"flag": "--out", "type": "string", "default": "report"}},
                 "output": {"success_codes": [0], "from_file": "{out}/r.json"},
             }
         },
     )
-    runner = ToolRunner(
+    return ToolRunner(
         reg.load("j"),
         installer=path_installer(tmp_path, reg),
         parsers=ParserResolver(generals=builtin_generals()),
     )
-    result = runner.run({"out": "report"}, cwd=str(work))
+
+
+def test_from_file_explicit_kwarg(tmp_path: Path) -> None:
+    work = tmp_path / "w"
+    (work / "report").mkdir(parents=True)
+    (work / "report" / "r.json").write_text('{"clones": 3}', encoding="utf-8")
+    result = from_file_runner(tmp_path).run({"out": "report"}, cwd=str(work))
     assert result.parsed == {"clones": 3}
     assert result.meta["parsed_from"].endswith("report/r.json")
+    assert result.report is not None
+    assert result.raw != result.report  # stdout preserved
+
+
+def test_from_file_uses_manifest_default(tmp_path: Path) -> None:
+    work = tmp_path / "w"
+    (work / "report").mkdir(parents=True)
+    (work / "report" / "r.json").write_text('{"clones": 9}', encoding="utf-8")
+    result = from_file_runner(tmp_path).run({}, cwd=str(work))  # 'out' not passed
+    assert result.parsed == {"clones": 9}
+    assert result.parse_error is None
+
+
+def test_from_file_missing_is_surfaced(tmp_path: Path) -> None:
+    result = from_file_runner(tmp_path).run({}, cwd=str(tmp_path))
+    assert result.parsed is None
+    assert result.parse_error is not None
+    assert "not found" in result.parse_error
+    assert "parsed_from_missing" in result.meta
+
+
+def test_from_file_bad_template_is_surfaced(tmp_path: Path) -> None:
+    reg = make_reg(
+        tmp_path,
+        {
+            "j.yaml": {
+                "cli": "echo",
+                "install": {"backend": "path"},
+                "output": {"success_codes": [0], "from_file": "report-{.json"},
+            }
+        },
+    )
+    result = ToolRunner(reg.load("j"), installer=path_installer(tmp_path, reg)).run(
+        {}, cwd=str(tmp_path)
+    )
+    assert result.parse_error is not None
+    assert "unresolved" in result.parse_error
+
+
+def test_from_file_absolute_rejected_at_load(tmp_path: Path) -> None:
+    reg = make_reg(
+        tmp_path,
+        {
+            "j.yaml": {
+                "cli": "echo",
+                "install": {"backend": "path"},
+                "output": {"success_codes": [0], "from_file": "/etc/passwd"},
+            }
+        },
+    )
+    with pytest.raises(ManifestError, match="relative path without"):
+        reg.load("j")
 
 
 def test_cli_json_split_keeps_dashdash_tail() -> None:

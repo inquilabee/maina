@@ -64,9 +64,15 @@
   `docker -e K=V`).
 - `args.<name>.separator` emits a literal token before an arg (e.g. `--` before
   positional paths).
-- `output.from_file: "<template>"` — the parse input becomes that file's
-  contents (for tools that write a report file); `result.meta["parsed_from"]`
-  records it.
+- `output.from_file: "<template>"` — the parser reads that file instead of
+  stdout (for tools that write a report file). `result.raw` stays the tool's
+  stdout; the file contents land on the new `result.report`, and
+  `result.meta["parsed_from"]` records the path. The template interpolates
+  `{cwd}` and any arg by name, including one that only has a manifest
+  `default:`. Every failure is surfaced on `result.parse_error` — an
+  unresolved placeholder, a path that escapes the run directory, or a missing
+  file — never a silent fall back to stdout. Absolute paths and `..` are
+  rejected at manifest load.
 - Load-time validation extended: `join` must be `csv`, `timeout` must be a
   number, `platforms` values must be `linux` / `macos` / `windows`.
 - CLI: `--json` after `--` reaches the tool (was stripped from the whole line).
@@ -78,8 +84,9 @@
   crash). New `json-lenient` keeps the old swallow-and-return-text behaviour.
 - A configured parser is invoked even when stdout is empty (stderr-only tools
   are parseable).
-- `ToolResult` gains `parse_error`, `cwd`, `exe`, and `to_dict()` (JSON-safe,
-  stable key set).
+- `ToolResult` gains `parse_error`, `cwd`, `exe`, `report` (the
+  `output.from_file` contents), `parse_input` (report when set, else `raw`),
+  and `to_dict()` (JSON-safe, stable key set).
 
 ## 0.1.0
 

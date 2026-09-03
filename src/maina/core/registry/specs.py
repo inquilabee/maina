@@ -446,8 +446,21 @@ class OutputSpec:
         return cls(
             format=optional_str(raw.get("format")),
             success_codes=cls._parse_success_codes(raw.get("success_codes", [0]), tool_id=tool_id),
-            from_file=optional_str(raw.get("from_file")),
+            from_file=cls._parse_from_file(raw.get("from_file"), tool_id=tool_id),
         )
+
+    @staticmethod
+    def _parse_from_file(raw: Any, *, tool_id: str) -> str | None:
+        """A relative-path template; absolute paths and ``..`` are rejected."""
+        text = optional_str(raw)
+        if text is None:
+            return None
+        parts = text.replace("\\", "/").split("/")
+        if text.startswith("/") or ".." in parts:
+            raise manifest_error(
+                tool_id, f"output.from_file {text!r} must be a relative path without '..'"
+            )
+        return text
 
     @staticmethod
     def _parse_success_codes(codes: Any, *, tool_id: str) -> tuple[int, ...]:
