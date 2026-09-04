@@ -105,8 +105,15 @@ def manifest_error(subject: str, detail: str) -> ManifestError:
 
 
 def unknown_keys(raw: dict[str, Any], allowed: frozenset[str]) -> list[str]:
-    """Return sorted unknown mapping keys relative to an allowlist."""
-    return sorted(key for key in raw if key not in allowed)
+    """Return sorted unknown mapping keys relative to an allowlist.
+
+    Keys are stringified first: YAML 1.1 turns ``on:`` / ``yes:`` / ``no:`` /
+    ``off:`` into booleans and ``1:`` into an int, so a raw ``sorted()`` over
+    mixed key types would raise ``TypeError`` — which is not a ``ManifestError``
+    and would escape every load guard. Stringifying keeps such a manifest a
+    clean, skippable load error.
+    """
+    return sorted(str(key) for key in raw if key not in allowed)
 
 
 @dataclass(slots=True, frozen=True)

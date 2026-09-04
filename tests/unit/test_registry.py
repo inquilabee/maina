@@ -145,6 +145,36 @@ def test_parser_ref_outside_parsers_dir_rejected(tmp_path: Path, evil: str) -> N
         Registry(root).load("t")
 
 
+@pytest.mark.parametrize("line", ["on: push", "yes: 1", "42: x"])
+def test_non_string_yaml_key_is_a_clean_manifest_error(tmp_path: Path, line: str) -> None:
+    # YAML 1.1 turns `on:` / `yes:` into booleans; the loader must not TypeError.
+    root = tmp_path / "reg"
+    root.mkdir()
+    (root / "t.yaml").write_text(f"cli: echo\n{line}\n", encoding="utf-8")
+    with pytest.raises(ManifestError, match="unknown top-level keys"):
+        Registry(root).load("t")
+
+
+def test_yaml_boolean_key_does_not_hide_the_whole_catalog(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "good.yaml", {"cli": "good", "install": {"backend": "path"}})
+    (root / "bad.yaml").write_text("cli: bad\non: push\n", encoding="utf-8")
+    with pytest.warns(RuntimeWarning):
+        assert Registry(root).list_commands() == ["good"]
+
+
+def test_registry_scan_ignores_dot_directories(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "ok.yaml", {"cli": "echo", "install": {"backend": "path"}})
+    wf = root / ".github" / "workflows"
+    wf.mkdir(parents=True)
+    (wf / "ci.yaml").write_text("name: ci\non: push\n", encoding="utf-8")
+    reg = Registry(root)
+    assert reg.list_commands() == ["ok"]
+    with pytest.raises(ManifestError, match="no registry entry"):
+        reg.load("github-workflows-ci")
+
+
 def test_yaml_anchor_flood_rejected(tmp_path: Path) -> None:
     root = tmp_path / "reg"
     root.mkdir()

@@ -14,6 +14,21 @@ UNSAFE_ID_SEGMENTS = frozenset({"", ".", ".."})
 ID_SUFFIXES = (".yaml", ".yml")
 
 
+def is_manifest_path(rel: Path) -> bool:
+    """True when *rel* (a path relative to a registry root) is a tool manifest.
+
+    Excludes ``parsers/`` modules and anything under a dot-directory
+    (``.github/``, ``.git/``, …) so a registry root that is also a repo
+    checkout does not surface CI workflows as tool ids.
+    """
+    parts = rel.parts
+    return (
+        rel.suffix in ID_SUFFIXES
+        and "parsers" not in parts
+        and all(not part.startswith(".") for part in parts)
+    )
+
+
 def strip_yaml_suffix(text: str) -> str:
     for suffix in ID_SUFFIXES:
         if text.endswith(suffix):
@@ -68,11 +83,7 @@ def scan_for_id(root: Path, tool_id: str) -> Path | None:
         return None
     for path in sorted(root.rglob("*")):
         rel = path.relative_to(root)
-        if (
-            path.suffix in ID_SUFFIXES
-            and "parsers" not in rel.parts
-            and yaml_path_to_id(path, root) == tool_id
-        ):
+        if is_manifest_path(rel) and yaml_path_to_id(path, root) == tool_id:
             return path
     return None
 
@@ -138,12 +149,12 @@ def list_child_ids(base: Path, prefix: str) -> list[str]:
 
 
 def iter_yaml_ids(root: Path) -> list[str]:
-    """Collect registry ids from YAML files under one root (skip parsers/)."""
+    """Collect registry ids from YAML files under one root (skip parsers/, dot-dirs)."""
     return (
         [
             yaml_path_to_id(path, root)
             for path in sorted(root.rglob("*"))
-            if path.suffix in ID_SUFFIXES and "parsers" not in path.relative_to(root).parts
+            if is_manifest_path(path.relative_to(root))
         ]
         if root.is_dir()
         else []
