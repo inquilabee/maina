@@ -243,6 +243,26 @@ def test_prepare_ids_rejects_explicit_abstract(tmp_path: Path) -> None:
     assert installer.prepare_ids(["child"]) == ["child"]
 
 
+def test_prepare_ids_skips_broken_manifest_but_explicit_raises(tmp_path: Path) -> None:
+    from maina.core.errors import ManifestError
+
+    root = tmp_path / "reg"
+    write_yaml(root / "good.yaml", {"cli": "true", "install": {"backend": "path"}})
+    (root / "broken.yaml").write_text("cli: broken\noutputs: {}\n", encoding="utf-8")
+    installer = Installer(
+        cache_root=tmp_path / "cache",
+        language=FakeLanguage(tmp_path / "cache"),
+        registry=Registry(root),
+        backends=[PathBackend()],
+    )
+    with pytest.warns(RuntimeWarning, match="failed to load"):
+        satisfied, missing = installer.check_ids()
+    assert "good" in satisfied + missing
+    assert "broken" not in satisfied + missing
+    with pytest.raises(ManifestError):
+        installer.check_ids(["broken"])
+
+
 def test_prepare_ids_rejects_catalog_abstract() -> None:
     from helpers import fixture_runtime
 

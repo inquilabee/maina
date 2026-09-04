@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import warnings
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, cast
@@ -15,7 +16,7 @@ except ImportError:  # pragma: no cover - Windows
     _fcntl = None
 
 from maina.core.envfilter import filter_env
-from maina.core.errors import InstallError, UnsupportedPlatformError
+from maina.core.errors import InstallError, ManifestError, UnsupportedPlatformError
 from maina.core.platform import current_platform
 from maina.core.protocols import InstallContext, InstallerBackend, LanguageRuntimeProvider
 from maina.mise import MiseRuntime
@@ -201,20 +202,38 @@ class Installer:
         """Yield ``(id, manifest)`` for concrete, host-supported tools.
 
         Explicit abstract ids raise :class:`InstallError`; when *tool_ids* is
-        omitted, abstract surfaces and tools unsupported on this host are
-        skipped.
+        omitted, abstract surfaces, hosts the manifest does not target, and
+        manifests that fail to load are skipped (the last with a warning).
         """
         explicit = tool_ids is not None
         ids = tool_ids if explicit else self.registry.iter_ids()
         for tid in ids:
+            manifest = self._resolve_selection(tid, explicit=explicit)
+            if manifest is not None:
+                yield tid, manifest
+
+    def _resolve_selection(self, tid: str, *, explicit: bool) -> Manifest | None:
+        """Load and filter one id for listing / prepare; ``None`` means skip.
+
+        A broken manifest re-raises when the caller named it, else warns.
+        """
+        try:
             manifest = self.registry.load(tid)
-            if manifest.abstract:
-                if explicit:
-                    raise self._abstract_error(tid)
-                continue
-            if not explicit and manifest.platforms and current_platform() not in manifest.platforms:
-                continue
-            yield tid, manifest
+        except ManifestError:
+            if explicit:
+                raise
+            warnings.warn(
+                f"skipping {tid!r}: manifest failed to load", RuntimeWarning, stacklevel=2
+            )
+            return None
+        if manifest.abstract:
+            if explicit:
+                raise self._abstract_error(tid)
+            return None
+        wrong_host = (
+            not explicit and manifest.platforms and current_platform() not in manifest.platforms
+        )
+        return None if wrong_host else manifest
 
     def check_ids(self, tool_ids: list[str] | None = None) -> tuple[list[str], list[str]]:
         """Return ``(satisfied, missing)`` ids without installing anything.

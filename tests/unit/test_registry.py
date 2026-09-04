@@ -145,6 +145,15 @@ def test_parser_ref_outside_parsers_dir_rejected(tmp_path: Path, evil: str) -> N
         Registry(root).load("t")
 
 
+def test_list_commands_skips_broken_manifest_with_warning(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "good.yaml", {"cli": "good", "install": {"backend": "path"}})
+    (root / "broken.yaml").write_text("cli: broken\noutputs: {}\n", encoding="utf-8")
+    with pytest.warns(RuntimeWarning, match="broken"):
+        ids = Registry(root).list_commands()
+    assert ids == ["good"]
+
+
 def test_parser_ref_plain_filename_resolves(tmp_path: Path) -> None:
     root = tmp_path / "reg"
     write_yaml(root / "t.yaml", {"cli": "t", "install": {"backend": "path"}, "parser": "ok.py"})

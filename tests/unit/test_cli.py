@@ -354,8 +354,11 @@ def test_cli_bad_manifest_is_one_line_not_traceback(tmp_path: Any, monkeypatch: 
     (reg / "broke.yaml").write_text("cli: [oops\n", encoding="utf-8")
     monkeypatch.setenv("MAINA_REGISTRY", str(reg))
     maina.use(Runtime.preferred())
-    code = main(["list"])
-    assert code == 2
+    # `list` skips the broken manifest (with a warning) rather than aborting.
+    with pytest.warns(RuntimeWarning):
+        assert main(["list"]) == 0
+    # Naming the broken id explicitly is still a one-line error, exit 2.
+    assert main(["run", "broke"]) == 2
 
 
 def test_run_argparser_raw_string_form() -> None:

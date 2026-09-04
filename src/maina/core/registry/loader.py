@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from copy import deepcopy
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -159,8 +160,19 @@ class Registry:
         return sorted(self._exclude_abstract(list(by_id)))
 
     def _exclude_abstract(self, ids: list[str]) -> list[str]:
-        """Drop inheritance-only surfaces from a catalog listing."""
-        return [tid for tid in ids if not self.load(tid).abstract]
+        """Drop inheritance-only surfaces from a catalog listing.
+
+        A manifest that fails to load is skipped with a warning rather than
+        aborting the whole listing — one bad file must not hide every good one.
+        """
+        out: list[str] = []
+        for tid in ids:
+            try:
+                if not self.load(tid).abstract:
+                    out.append(tid)
+            except ManifestError as exc:
+                warnings.warn(f"skipping {tid!r}: {exc}", RuntimeWarning, stacklevel=2)
+        return out
 
     def iter_ids(self) -> list[str]:
         """Collect all registry ids across roots (later root wins duplicates)."""
