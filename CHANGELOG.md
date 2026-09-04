@@ -26,6 +26,30 @@
   cannot reuse the other variant's cached install.
 - A `MAINA_REGISTRY` entry that is set but not a directory now emits a
   `RuntimeWarning` instead of vanishing silently.
+- The loader survives a repo-shaped registry root: a YAML-boolean key
+  (`on:` / `yes:`) is a clean `ManifestError` (was an uncatchable `TypeError`),
+  and registry scanning skips dot-directories (`.github/` no longer surfaces
+  workflow files as tool ids). One bad file no longer blanks `maina list`.
+- `separator:` moved to a top-level key — emitted once before the positional
+  block whenever a positional is present (was a per-arg field that vanished
+  with its optional arg, letting a `-`-prefixed caller value become an option).
+- Fail-early: a scalar `platforms:` and a non-64-hex `install.sha256` are
+  rejected at load; an unknown `install.backend` raises before a `requires:`
+  runtime is provisioned; `run(timeout=<non-numeric>)` raises `ArgError`.
+- `maina prepare --check` consults `requires:` (via the language provider's
+  optional `is_present`) — no more "satisfied" for a tool whose runtime is
+  missing.
+- A `parsers/*.py` that fails to import surfaces on `result.parse_error`
+  instead of crashing `run()`; an inherited `parser: *.py` resolves against the
+  family of the manifest that declared it.
+- `output.from_file`: an arg named `cwd` is rejected at load, `TypeError` is
+  caught, and a report older than the run start is flagged stale.
+- `args: { <name>: null }` in an overlay drops an inherited arg (mirrors
+  `requires: { node: null }`).
+- `cli` / `install.binary` also reject a leading `-` and shell-glob
+  metacharacters.
+- New [Security model](docs/security.md) page: a registry root is trusted
+  code; `use_env=False` opts a library out of `$MAINA_REGISTRY`.
 - tar extraction requires the data filter (Python 3.11.4+), validates
   symlink/hardlink targets, and wraps `TarError` as `InstallError`; the
   single-file archive fallback only accepts an executable file. Binary copies
