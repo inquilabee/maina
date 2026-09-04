@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -161,11 +162,19 @@ class ParserResolver:
         key = (str(path), stat.st_mtime_ns, stat.st_size)
         if (cached := cls._MODULE_CACHE.get(key)) is not None:
             return cached
-        spec = importlib.util.spec_from_file_location(f"maina_parser_{path.stem}", path)
+        mod_name = f"maina_parser_{path.stem}"
+        spec = importlib.util.spec_from_file_location(mod_name, path)
         if spec is None or spec.loader is None:
             raise ManifestError(f"cannot load parser module {path}")
         module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        # Register before exec so a parser module can import itself / be pickled,
+        # then drop it on any import-time failure so a retry re-runs cleanly.
+        sys.modules[mod_name] = module
+        try:
+            spec.loader.exec_module(module)
+        except Exception as exc:
+            sys.modules.pop(mod_name, None)
+            raise ParseError(f"parser module {path} failed to import: {exc}") from exc
         parse = getattr(module, "parse", None)
         resolved = ParserResolver._require_parser(str(path), parse)
         cls._MODULE_CACHE[key] = resolved
@@ -220,11 +229,17 @@ class BoundParser:
         """Run the configured parser and attach ``parsed`` / ``parse_error``.
 
         The parser is invoked even when stdout is empty (a linter that reports
-        only on stderr is still parseable). A parser that raises never crashes
-        ``run()``: the message lands in ``result.parse_error`` and ``parsed``
-        stays ``None``.
+        only on stderr is still parseable). Neither resolving the parser (a
+        missing/broken ``parsers/*.py``) nor calling it ever crashes ``run()``:
+        the message lands in ``result.parse_error`` and ``parsed`` stays ``None``.
         """
-        resolved = self.resolve()
+        try:
+            resolved = self.resolve()
+        except ParseError as exc:
+            # A parsers/*.py that failed to import — not a reason to crash run().
+            result.parsed = None
+            result.parse_error = str(exc)
+            return result
         if resolved is None:
             result.parsed = None
             return result

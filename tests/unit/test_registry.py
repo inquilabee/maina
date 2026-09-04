@@ -239,6 +239,23 @@ def test_list_commands_skips_broken_manifest_with_warning(tmp_path: Path) -> Non
     assert ids == ["good"]
 
 
+def test_inherited_parser_resolves_against_declaring_family(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "famA" / "famA.yaml", {"abstract": True, "parser": "p.py"})
+    (root / "famA" / "parsers").mkdir(parents=True)
+    (root / "famA" / "parsers" / "p.py").write_text(
+        "def parse(raw, result):\n    return raw.upper()\n", encoding="utf-8"
+    )
+    write_yaml(
+        root / "famB" / "child.yaml",
+        {"cli": "echo", "extends": "famA", "install": {"backend": "path"}},
+    )
+    manifest = Registry(root).load("famB-child")
+    assert manifest.parser == "p.py"
+    assert manifest.parser_path is not None
+    assert manifest.parser_path.parent == root / "famA" / "parsers"
+
+
 def test_parser_ref_plain_filename_resolves(tmp_path: Path) -> None:
     root = tmp_path / "reg"
     write_yaml(root / "t.yaml", {"cli": "t", "install": {"backend": "path"}, "parser": "ok.py"})

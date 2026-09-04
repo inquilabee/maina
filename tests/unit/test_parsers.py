@@ -48,6 +48,15 @@ def test_apply_records_parse_error_not_raise() -> None:
     assert "not valid JSON" in out.parse_error
 
 
+def test_broken_parser_module_records_parse_error_not_raise(tmp_path: Path) -> None:
+    mod = tmp_path / "boom.py"
+    mod.write_text("raise RuntimeError('import blew up')\n", encoding="utf-8")
+    out = builtins_resolver().bind(parser_path=mod).apply(make_result("x"))
+    assert out.parsed is None
+    assert out.parse_error is not None
+    assert "failed to import" in out.parse_error
+
+
 def test_apply_runs_parser_on_empty_stdout() -> None:
     seen: list[str] = []
 

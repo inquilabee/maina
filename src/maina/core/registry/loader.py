@@ -77,7 +77,7 @@ class Registry:
         chain = self._load_chain(tid, [])
         merged: dict[str, Any] = {}
         subcommands: list[str] = []
-        leaf_path, leaf_root = chain[-1][1], chain[-1][2]
+        leaf_path = chain[-1][1]
         for index, (cid, _path, _root, data) in enumerate(chain):
             layer = deepcopy(data)
             # ``abstract`` is never inherited: a surface is abstract only when its
@@ -97,7 +97,8 @@ class Registry:
             merged.pop(key, None)
         self._validate_top_level(tid, merged)
 
-        parser_path = self._resolve_parser_path(leaf_path, leaf_root, merged.get("parser"))
+        decl_path, decl_root = self._parser_declaring_layer(chain, merged.get("parser"))
+        parser_path = self._resolve_parser_path(decl_path, decl_root, merged.get("parser"))
         return Manifest(
             id=tid,
             data=merged,
@@ -109,6 +110,21 @@ class Registry:
             output=OutputSpec.from_mapping(merged.get("output"), tool_id=tid),
             requires=RequiresSpec.from_mapping(merged.get("requires"), tool_id=tid),
         )
+
+    @staticmethod
+    def _parser_declaring_layer(
+        chain: list[tuple[str, Path, Path, dict[str, Any]]], parser: Any
+    ) -> tuple[Path, Path]:
+        """``(manifest path, owning root)`` of the layer that set ``parser:``.
+
+        A ``parsers/*.py`` ref resolves against the family of the manifest that
+        *declared* it, not the leaf — otherwise a parent's parser is unreachable
+        from a child in another family.
+        """
+        for _cid, path, root, data in reversed(chain):
+            if data.get("parser") == parser:
+                return path, root
+        return chain[-1][1], chain[-1][2]
 
     @classmethod
     def _validate_top_level(cls, tid: str, merged: dict[str, Any]) -> None:
