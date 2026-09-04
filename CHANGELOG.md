@@ -89,6 +89,8 @@
 - `maina run` reaches more of `Tool.run`: `--timeout=<s>` / `--cwd=<dir>`
   options, and `arg.subkey=value` tokens that build a `type: pairs` dict
   (`env.K=V env.A=B`).
+- `maina clean [TOOLS...]` deletes cached installs; `maina prepare --force`
+  wipes a tool's cache before re-preparing it. `Installer.clean_ids()`.
 
 ### API
 

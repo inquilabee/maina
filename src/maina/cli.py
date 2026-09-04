@@ -150,6 +150,10 @@ def prepare(
         bool,
         typer.Option("--check", help="Report install state; do not download or run mise"),
     ] = False,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Delete cached installs for these tools first, then prepare"),
+    ] = False,
 ) -> None:
     """Ensure mise runtimes and tool installs.
 
@@ -157,24 +161,47 @@ def prepare(
     ``kubectl``) fail with a non-zero exit instead of a silent skip. With
     ``--check`` nothing is installed: each id prints ``satisfied`` or
     ``missing`` and the command exits non-zero if anything is missing.
+    ``--force`` wipes the cached install for each named tool before preparing.
     """
     installer = runtime().installer
     try:
         if check:
-            satisfied, missing = installer.check_ids(tools)
-            for tid in satisfied:
-                typer.echo(f"satisfied: {tid}")
-            for tid in missing:
-                typer.echo(f"missing: {tid}")
-            if missing:
-                raise typer.Exit(1)
+            emit_check(installer, tools)
             return
+        for cli in installer.clean_ids(tools) if force else []:
+            typer.echo(f"cleaned: {cli}")
         prepared = installer.prepare_ids(tools)
     except (ManifestError, InstallError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(2) from exc
     for tid in prepared:
         typer.echo(f"prepared: {tid}")
+
+
+def emit_check(installer: Any, tools: list[str] | None) -> None:
+    """``prepare --check``: print each id's state and exit non-zero if any missing."""
+    satisfied, missing = installer.check_ids(tools)
+    for tid in satisfied:
+        typer.echo(f"satisfied: {tid}")
+    for tid in missing:
+        typer.echo(f"missing: {tid}")
+    if missing:
+        raise typer.Exit(1)
+
+
+@app.command()
+def clean(
+    tools: Annotated[
+        list[str] | None,
+        typer.Argument(help="Tool ids to clear from the cache (default: the whole tool cache)"),
+    ] = None,
+) -> None:
+    """Delete cached tool installs so the next run re-downloads them."""
+    removed = runtime().installer.clean_ids(tools)
+    for cli in removed:
+        typer.echo(f"cleaned: {cli}")
+    if not removed:
+        typer.echo("nothing to clean")
 
 
 @app.command(

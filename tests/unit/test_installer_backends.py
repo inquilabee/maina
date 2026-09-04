@@ -302,6 +302,26 @@ def test_prepare_ids_rejects_catalog_abstract() -> None:
         rt.installer.prepare_ids(["kubectl"])
 
 
+def test_clean_ids_removes_cached_installs(tmp_path: Path) -> None:
+    cache = tmp_path / "cache"
+    root = tmp_path / "reg"
+    write_yaml(root / "a.yaml", {"cli": "aaa", "install": {"backend": "path"}})
+    write_yaml(root / "b.yaml", {"cli": "bbb", "install": {"backend": "path"}})
+    (cache / "tools" / "aaa" / "1").mkdir(parents=True)
+    (cache / "tools" / "bbb" / "1").mkdir(parents=True)
+    installer = Installer(
+        cache_root=cache,
+        language=FakeLanguage(cache),
+        registry=Registry(root),
+        backends=[PathBackend()],
+    )
+    assert installer.clean_ids(["a"]) == ["aaa"]
+    assert not (cache / "tools" / "aaa").exists()
+    assert (cache / "tools" / "bbb").exists()
+    assert installer.clean_ids() == ["bbb"]  # the rest
+    assert installer.clean_ids() == []
+
+
 def test_check_ids_reports_satisfied_and_missing(tmp_path: Path) -> None:
     root = tmp_path / "reg"
     write_yaml(root / "here.yaml", {"cli": "true", "install": {"backend": "path"}})

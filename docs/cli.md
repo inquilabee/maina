@@ -79,6 +79,18 @@ Ensure mise runtimes and tool installs.
 maina prepare
 maina prepare shellcheck hadolint
 maina prepare --check          # CI: "is the toolchain ready?"
+maina prepare --force shellcheck   # wipe its cache, then re-download
+```
+
+## `maina clean [TOOLS...]`
+
+Delete cached tool installs so the next run re-downloads them — for the named
+ids, or the whole `<cache>/tools/` tree with no arguments. A `path`-backed tool
+caches nothing, so it is a no-op.
+
+```bash
+maina clean                    # everything
+maina clean shellcheck jq
 ```
 
 ## `maina validate [TOOLS...]`

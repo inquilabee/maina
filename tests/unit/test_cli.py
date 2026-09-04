@@ -410,6 +410,19 @@ def test_cli_run_dry_run_prints_argv_and_skips_execution() -> None:
     assert dry.stdout.strip() == "jq -r .name"
 
 
+def test_cli_clean_removes_cache(tmp_path: Any) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "t.yaml", {"cli": "toolx", "install": {"backend": "path"}})
+    cache = tmp_path / "c"
+    (cache / "tools" / "toolx" / "1").mkdir(parents=True)
+    maina.use(Runtime.preferred(cache_root=cache, registry_dirs=[root]))
+    result = runner.invoke(app, ["clean", "t"])
+    assert result.exit_code == 0
+    assert "cleaned: toolx" in result.stdout
+    assert not (cache / "tools" / "toolx").exists()
+    assert "nothing to clean" in runner.invoke(app, ["clean"]).stdout
+
+
 def test_cli_run_timeout_and_cwd_opts(tmp_path: Any) -> None:
     root = tmp_path / "reg"
     write_yaml(

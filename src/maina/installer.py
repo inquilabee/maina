@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import shutil
 import warnings
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -296,3 +297,26 @@ class Installer:
             self.prepare(manifest)
             prepared.append(tid)
         return prepared
+
+    def clean_ids(self, tool_ids: list[str] | None = None) -> list[str]:
+        """Delete cached installs — for the named tools, or the whole tool cache.
+
+        Returns the ``cli`` directory names removed. A ``path``-backed tool has
+        nothing cached, so it is silently a no-op.
+        """
+        tools_dir = self.cache_root / "tools"
+        if not tools_dir.is_dir():
+            return []
+        clis = (
+            sorted(p.name for p in tools_dir.iterdir() if p.is_dir())
+            if tool_ids is None
+            else sorted({self.registry.load(tid).cli for tid in tool_ids})
+        )
+        removed: list[str] = []
+        root = tools_dir.resolve()
+        for cli in clis:
+            target = tools_dir / cli
+            if target.is_dir() and target.resolve().is_relative_to(root):
+                shutil.rmtree(target)
+                removed.append(cli)
+        return removed
