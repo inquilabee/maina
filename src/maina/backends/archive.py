@@ -12,7 +12,7 @@ import tempfile
 import zipfile
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import IO, TYPE_CHECKING, Any, Literal
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -283,16 +283,24 @@ class ArchiveFetcher:
         if name.endswith(cls.UNSUPPORTED_ASSET_SUFFIXES):
             raise InstallError(f"unsupported asset format: {name}")
         tmp = out.with_name(f".{out.name}.part")
-        if name.endswith(".gz"):
-            with gzip.open(archive, "rb") as src, tmp.open("wb") as dst:
-                shutil.copyfileobj(src, dst)
-        elif name.endswith(".xz"):
-            with lzma.open(archive, "rb") as src, tmp.open("wb") as dst:
-                shutil.copyfileobj(src, dst)
-        else:
+        opener = gzip.open if name.endswith(".gz") else lzma.open if name.endswith(".xz") else None
+        if opener is None:
             shutil.copy2(archive, tmp)
+        else:
+            with opener(archive, "rb") as src, tmp.open("wb") as dst:
+                cls._capped_copy(src, dst, name)
         cls.make_executable(tmp)
         tmp.replace(out)
+
+    @staticmethod
+    def _capped_copy(src: Any, dst: IO[bytes], name: str) -> None:
+        """Stream *src* (a decompressing reader) to *dst*, aborting past the cap."""
+        written = 0
+        while chunk := src.read(1 << 20):
+            written += len(chunk)
+            if written > EXTRACT_MAX_BYTES:
+                raise InstallError(f"{name} decompresses past the {EXTRACT_MAX_BYTES} byte cap")
+            dst.write(chunk)
 
     @classmethod
     def find_and_copy_binary(cls, tree: Path, dest_dir: Path, binary: str) -> None:

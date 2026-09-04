@@ -384,6 +384,21 @@ def test_copy_raw_asset_rejects_unsupported_format(tmp_path: Path) -> None:
         ArchiveFetcher.copy_raw_asset(src, tmp_path / "out", name="tool.tar.bz2")
 
 
+def test_copy_raw_asset_caps_gz_decompression(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import gzip
+
+    from maina.backends import archive as archive_mod
+    from maina.backends.archive import ArchiveFetcher
+
+    monkeypatch.setattr(archive_mod, "EXTRACT_MAX_BYTES", 4096)
+    src = tmp_path / "tool.gz"
+    src.write_bytes(gzip.compress(b"\0" * 100_000))  # ~100 KB from a tiny .gz
+    with pytest.raises(InstallError, match="decompresses past"):
+        ArchiveFetcher.copy_raw_asset(src, tmp_path / "out", name="tool.gz")
+
+
 def test_resolve_cache_root_is_absolute() -> None:
     import pathlib
 
