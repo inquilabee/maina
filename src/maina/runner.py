@@ -78,6 +78,7 @@ class ToolRunner:
         argv[0] = exe
         resolved_timeout = self._resolve_timeout(timeout)
         started = time.perf_counter()
+        started_wall = time.time()
         run = self._executor or subprocess.run
         run_kwargs: dict[str, Any] = {
             "check": False,
@@ -125,7 +126,7 @@ class ToolRunner:
             version=self.manifest.version,
             duration_ms=duration_ms,
         )
-        self._apply_from_file(result, kwargs, cwd)
+        self._apply_from_file(result, kwargs, cwd, started_wall)
         if result.parse_error is not None:
             # ``from_file`` already failed; don't run the parser over stdout and
             # clobber the diagnostic.
@@ -137,38 +138,55 @@ class ToolRunner:
         )
         return resolver.apply(result)
 
-    def _apply_from_file(self, result: ToolResult, kwargs: dict[str, Any], cwd: str | None) -> None:
+    def _apply_from_file(
+        self, result: ToolResult, kwargs: dict[str, Any], cwd: str | None, started_wall: float
+    ) -> None:
         """Point the parser at ``output.from_file`` instead of stdout.
 
         ``result.raw`` is left as the tool's stdout; the file contents go on
         ``result.report``. Every failure (unresolved template, escape, missing
-        file) is surfaced on ``result.parse_error`` — never a silent fallback.
+        file, a report older than this run) is surfaced on ``result.parse_error``
+        — never a silent fallback.
         """
         template = self.manifest.output.from_file
         if not template:
             return
         base = (Path(cwd) if cwd else Path.cwd()).resolve()
-        subs = {
-            key: value
-            for key, value in ArgParser(self.manifest.args).resolved_values(kwargs).items()
-            if isinstance(value, (str, int, float)) and not isinstance(value, bool)
-        }
-        try:
-            self._check_from_file_template(template)
-            rel = template.format(cwd=str(base), **subs)
-        except (KeyError, IndexError, ValueError) as exc:
-            result.parse_error = f"output.from_file template {template!r} unresolved: {exc}"
-            return
-        path = (base / rel).resolve()
-        if not path.is_relative_to(base):
-            result.parse_error = f"output.from_file escapes the run directory: {path}"
+        path, error = self._resolve_report_path(template, base, kwargs)
+        if path is None:
+            result.parse_error = error
             return
         if not path.is_file():
             result.parse_error = f"output.from_file not found: {path}"
             result.meta["parsed_from_missing"] = str(path)
             return
+        mtime = path.stat().st_mtime
+        result.meta |= {"parsed_from": str(path), "parsed_from_mtime": mtime}
+        if mtime < started_wall - 2.0:
+            result.parse_error = f"output.from_file {path} was not written by this run (stale)"
+            return
         result.report = path.read_text(encoding="utf-8", errors="replace")
-        result.meta["parsed_from"] = str(path)
+
+    def _resolve_report_path(
+        self, template: str, base: Path, kwargs: dict[str, Any]
+    ) -> tuple[Path | None, str | None]:
+        """Interpolate ``output.from_file`` to a path under *base* (``(path, error)``)."""
+        subs = {
+            key: value
+            for key, value in ArgParser(self.manifest.args).resolved_values(kwargs).items()
+            if key != "cwd" and isinstance(value, (str, int, float)) and not isinstance(value, bool)
+        }
+        try:
+            self._check_from_file_template(template)
+            rel = template.format(cwd=str(base), **subs)
+        except (KeyError, IndexError, ValueError, TypeError) as exc:
+            return None, f"output.from_file template {template!r} unresolved: {exc}"
+        path = (base / rel).resolve()
+        return (
+            (path, None)
+            if path.is_relative_to(base)
+            else (None, f"output.from_file escapes the run directory: {path}")
+        )
 
     @staticmethod
     def _check_from_file_template(template: str) -> None:

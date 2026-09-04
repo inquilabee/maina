@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -331,6 +332,36 @@ def test_from_file_absolute_rejected_at_load(tmp_path: Path) -> None:
     )
     with pytest.raises(ManifestError, match="relative path without"):
         reg.load("j")
+
+
+def test_from_file_with_cwd_arg_rejected_at_load(tmp_path: Path) -> None:
+    reg = make_reg(
+        tmp_path,
+        {
+            "j.yaml": {
+                "cli": "echo",
+                "install": {"backend": "path"},
+                "args": {"cwd": {"flag": "--cwd", "type": "string"}},
+                "output": {"success_codes": [0], "from_file": "{cwd}/r.json"},
+            }
+        },
+    )
+    with pytest.raises(ManifestError, match="cannot be named 'cwd'"):
+        reg.load("j")
+
+
+def test_from_file_stale_report_is_surfaced(tmp_path: Path) -> None:
+    work = tmp_path / "w"
+    (work / "report").mkdir(parents=True)
+    stale = work / "report" / "r.json"
+    stale.write_text('{"clones": 1}', encoding="utf-8")
+    old = stale.stat().st_mtime - 3600
+    os.utime(stale, (old, old))
+    result = from_file_runner(tmp_path).run({}, cwd=str(work))
+    assert result.parsed is None
+    assert result.parse_error is not None
+    assert "stale" in result.parse_error
+    assert result.meta.get("parsed_from_mtime") == old
 
 
 def test_cli_json_split_keeps_dashdash_tail() -> None:
