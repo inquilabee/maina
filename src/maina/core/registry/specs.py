@@ -535,9 +535,17 @@ class Manifest:
 
 
 def parse_args_map(raw: Any, *, tool_id: str) -> dict[str, ArgSpec]:
-    """Parse the args map into typed ArgSpec entries."""
+    """Parse the args map into typed ArgSpec entries.
+
+    A ``<name>: null`` entry is an inheritance drop marker with nothing to
+    drop (no parent declared it); it is ignored rather than an error.
+    """
     if raw is None:
         raw = {}
     if not isinstance(raw, dict):
         raise manifest_error(tool_id, "args must be a map")
-    return {name: ArgSpec.from_mapping(name, spec, tool_id=tool_id) for name, spec in raw.items()}
+    return {
+        name: ArgSpec.from_mapping(name, spec, tool_id=tool_id)
+        for name, spec in raw.items()
+        if spec is not None
+    }

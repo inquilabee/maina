@@ -126,6 +126,26 @@ def test_tool_id_rejects_dotdot_traversal(tmp_path: Path) -> None:
             registry.load(bad)
 
 
+def test_child_can_drop_an_inherited_arg_with_null(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "base.yaml",
+        {"abstract": True, "args": {"legacy": {"flag": "--legacy"}, "keep": {"flag": "--keep"}}},
+    )
+    write_yaml(
+        root / "child.yaml",
+        {
+            "cli": "echo",
+            "extends": "base",
+            "install": {"backend": "path"},
+            "args": {"legacy": None},
+        },
+    )
+    manifest = Registry(root).load("child")
+    assert "legacy" not in manifest.args
+    assert "keep" in manifest.args
+
+
 def test_extends_cycle(tmp_path: Path) -> None:
     root = tmp_path / "registry"
     write_yaml(root / "a.yaml", {"cli": "a", "extends": "b"})

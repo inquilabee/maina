@@ -192,7 +192,8 @@ up `base` when a `base.yaml` exists, so the effective chain is
 `base -> ... -> tool`. Merge rules:
 
 - `args`, `install`, `env`, `output`, `requires` deep-merge (child wins per
-  key).
+  key). In `args`, `<name>: null` drops an inherited arg entirely (as
+  `requires: { node: null }` drops a pin).
 - Every other key is replaced by the child's value.
 - `subcommand` segments accumulate down the chain into `Manifest.subcommands`.
 - A cycle in `extends` raises `ManifestError`.

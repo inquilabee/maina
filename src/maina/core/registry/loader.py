@@ -361,12 +361,16 @@ class Registry:
     def _merge_map_key(key: str, parent: dict[str, Any], child: dict[str, Any]) -> dict[str, Any]:
         """Merge a MAP_KEYS block. ``args`` merges per-arg-name then per-field so
         a child overriding one field (e.g. ``default:``) keeps the parent's
-        ``flag`` / ``type`` / ``required``; other blocks shallow-merge."""
+        ``flag`` / ``type`` / ``required``; ``<arg>: null`` drops an inherited
+        arg entirely (mirrors ``requires``). Other blocks shallow-merge."""
         out = deepcopy(parent)
         if key != "args":
             out |= deepcopy(child)
             return out
         for arg_name, child_spec in child.items():
+            if child_spec is None:
+                out.pop(arg_name, None)
+                continue
             mergeable = isinstance(child_spec, dict) and isinstance(out.get(arg_name), dict)
             out[arg_name] = {**out[arg_name], **child_spec} if mergeable else deepcopy(child_spec)
         return out
