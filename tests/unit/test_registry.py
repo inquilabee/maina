@@ -145,6 +145,17 @@ def test_parser_ref_outside_parsers_dir_rejected(tmp_path: Path, evil: str) -> N
         Registry(root).load("t")
 
 
+def test_base_presence_is_memoized_and_reset_on_append(tmp_path: Path) -> None:
+    a = tmp_path / "a"
+    write_yaml(a / "leaf.yaml", {"cli": "leaf", "install": {"backend": "path"}})
+    reg = Registry(a)
+    assert "shared" not in reg.load("leaf").args  # no base yet
+    b = tmp_path / "b"
+    write_yaml(b / "base.yaml", {"abstract": True, "args": {"shared": {"flag": "--shared"}}})
+    reg.append_roots([b])
+    assert "shared" in reg.load("leaf").args  # memo was invalidated
+
+
 @pytest.mark.parametrize("bad", [0, -5])
 def test_timeout_non_positive_rejected_at_load(tmp_path: Path, bad: int) -> None:
     root = tmp_path / "reg"

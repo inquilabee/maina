@@ -119,7 +119,7 @@ output:
 | --- | --- |
 | `format` | Free-form hint (`json` / `text` / ...); not enforced. |
 | `success_codes` | Exit codes counted as `ok`. Default `[0]`. |
-| `from_file` | When set, the parser reads **this file** instead of stdout — for tools that write a report file. `result.raw` still holds the tool's stdout; the file contents go on `result.report` and `result.meta["parsed_from"]` records the path. The template interpolates `{cwd}` and any arg by name (including one that only has a manifest `default:`); it is resolved relative to `cwd`. A relative path only — absolute paths and `..` are rejected at load. Any failure (unresolved placeholder, a path that escapes the run directory, a missing file) lands on `result.parse_error`; there is no silent fall back to stdout. |
+| `from_file` | When set, the parser reads **this file** instead of stdout — for tools that write a report file. `result.raw` still holds the tool's stdout; the file contents go on `result.report` and `result.meta["parsed_from"]` records the path. The template interpolates `{cwd}` and any string- or number-valued arg by name (including one that only has a manifest `default:`); list / bool args are not substituted. Placeholders are bare names only — `{cwd.parent}` / `{a[0]}` are rejected. It is resolved relative to `cwd`, a relative path only — absolute paths and `..` are rejected at load. Any failure (unresolved placeholder, a path that escapes the run directory, a missing file) lands on `result.parse_error`; there is no silent fall back to stdout. |
 
 ## install
 

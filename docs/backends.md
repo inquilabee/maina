@@ -47,6 +47,11 @@ install:
 Platform keys are `{os}-{arch}` where `os` is `linux` / `macos` / `windows` and
 `arch` is `x86_64` / `arm64`.
 
+`tag` defaults to `version`. `tag: latest` resolves the newest release **once**
+and then caches that binary under `<cache>/tools/<cli>/<version>-<hash>/`; it is
+not re-checked on later runs. To pick up a newer release, pin a real tag or
+delete that cache directory.
+
 ## `npm`
 
 Runs `npm install --prefix <cache>` for `package` and resolves the package's

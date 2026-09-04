@@ -47,6 +47,9 @@ class Registry:
             self.roots: list[Path] = []
         else:
             self.roots = [Path(root)] if isinstance(root, (str, Path)) else [Path(p) for p in root]
+        # Memo for "does any root ship a base.yaml": recomputed on append_roots.
+        # Without it every load() re-scans each root (rglob) for the base id.
+        self._base_present: bool | None = None
 
     @property
     def root(self) -> Path:
@@ -66,6 +69,7 @@ class Registry:
             if path.resolve() not in seen:
                 self.roots.append(path)
                 seen.add(path.resolve())
+        self._base_present = None
 
     def load(self, tool_id: str) -> Manifest:
         """Load and merge a tool manifest by registry id."""
@@ -208,7 +212,7 @@ class Registry:
         if extends := data.get("extends"):
             parent_id = self.normalize_id(str(extends))
             chain.extend(self._load_chain(parent_id, [*seen, tid]))
-        elif tid != BASE_TOOL_ID and self._has_manifest(BASE_TOOL_ID):
+        elif tid != BASE_TOOL_ID and self._has_base():
             chain.extend(self._load_chain(BASE_TOOL_ID, [*seen, tid]))
         chain.append((tid, path, owning_root, data))
         return chain
@@ -219,6 +223,12 @@ class Registry:
             return False
         tid = self.normalize_id(tool_id)
         return any(registry_ids.manifest_path_in(root, tid) is not None for root in self.roots)
+
+    def _has_base(self) -> bool:
+        """Memoized ``_has_manifest("base")`` — called on every ``load()``."""
+        if self._base_present is None:
+            self._base_present = self._has_manifest(BASE_TOOL_ID)
+        return self._base_present
 
     def _manifest_lookup(self, tool_id: str) -> tuple[Path, Path]:
         """Resolve id to (manifest path, owning root). Later roots win."""
