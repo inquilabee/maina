@@ -38,4 +38,5 @@ nav:
   - Install backends: backends.md
   - Parsers: parsers.md
   - Extending maina: extending.md
+  - Security model: security.md
   - Architecture: architecture.md

@@ -49,10 +49,12 @@ explicit `Tool(..., runtime=rt)`, or scope a swap to a block with
 `with maina.isolated(rt): ...` (restores the prior Runtime on exit).
 
 `Tool.run` / the call form take `timeout=<seconds>` (bounds the tool subprocess)
-and `env_allow=[...]`. With `env_allow` set, only a fixed essential set — `PATH`,
-`HOME`, `LANG`, `LC_ALL`, `TMPDIR`/`TEMP`/`TMP`, `SYSTEMROOT`, `MISE_DATA_DIR` —
-plus the named keys reach the tool subprocess, keeping other `os.environ` values
-out of third-party binaries. A tool that overruns raises `ToolTimeoutError` (a
+and `env_allow=[...]`. With `env_allow` set, only a fixed essential set plus the
+named keys reach the tool subprocess (and the install-phase subprocesses),
+keeping other `os.environ` values out of third-party binaries. The essential set
+is `PATH`, `HOME`, locale, temp dirs, the platform's shared-library and
+CA-bundle variables, `HTTP(S)_PROXY` / `NO_PROXY`, and `MISE_DATA_DIR` — the
+exact list is `ESSENTIAL_ENV` in `src/maina/core/envfilter.py`. A tool that overruns raises `ToolTimeoutError` (a
 `MainaError`, not an `InstallError`); a runtime provisioning failure raises
 `RuntimeProvisionError` (subclasses `InstallError`).
 
@@ -182,5 +184,12 @@ With no kwargs (or `--help` / `-h`), `run <tool_id>` prints that tool's registry
 instead of attempting a run.
 
 Registry arg `type: path` is emit-only metadata (help/docs); values are still
-passed as strings. Top-level YAML `name:` / `platforms:` are ignored at load
-(not enforced).
+passed as strings. Top-level YAML `name:` is decoration and ignored; `platforms:`
+**is** enforced (see above).
+
+## Security
+
+A registered registry directory is trusted code — it can ship a `parsers/*.py`
+that maina imports and runs in-process, and `Runtime.preferred()` honours
+`$MAINA_REGISTRY` unless you pass `use_env=False`. See
+[docs/security.md](docs/security.md).

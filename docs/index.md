@@ -44,3 +44,5 @@ runtime, so no hand-written wrapper is needed.
 - [Install backends](backends.md) — `path`, `github`, `npm`, and mise runtimes.
 - [Extending maina](extending.md) — add tools, parsers, and backends without a
   fork.
+- [Security model](security.md) — a registry root is trusted code; what
+  `env_allow` and `use_env=False` do.
