@@ -187,14 +187,16 @@ requires:
   clears every inherited pin; `requires: { node: null }` drops just that one.
 
 maina ships no `base.yaml`. If a registry root has one it auto-extends every
-tool in that root — a place for shared runtime pins. Without it, a `path` or
-`github` tool never touches mise; the `npm` backend provisions Node on its own.
+tool **in that same root** — a place for shared runtime pins. A `base.yaml` in
+another registered root does not leak in, so composing overlay catalogs is
+safe. Without a `base.yaml`, a `path` or `github` tool never touches mise; the
+`npm` backend provisions Node on its own.
 
 ## inheritance
 
 `extends` builds a chain root to leaf; a manifest with no `extends` still picks
-up `base` when a `base.yaml` exists, so the effective chain is
-`base -> ... -> tool`. Merge rules:
+up the `base` **from its own root** when that root has a `base.yaml`, so the
+effective chain is `base -> ... -> tool`. Merge rules:
 
 - `args`, `install`, `env`, `output`, `requires` deep-merge (child wins per
   key). In `args`, `<name>: null` drops an inherited arg entirely (as

@@ -45,9 +45,9 @@ class Registry:
             self.roots: list[Path] = []
         else:
             self.roots = [Path(root)] if isinstance(root, (str, Path)) else [Path(p) for p in root]
-        # Memo for "does any root ship a base.yaml": recomputed on append_roots.
-        # Without it every load() re-scans each root (rglob) for the base id.
-        self._base_present: bool | None = None
+        # Memo of "does <resolved root> ship a base.yaml", per root — without it
+        # every load() re-scans (rglob) for the base id. Cleared on append_roots.
+        self._base_present: dict[Path, bool] = {}
 
     @property
     def root(self) -> Path:
@@ -67,7 +67,7 @@ class Registry:
             if path.resolve() not in seen:
                 self.roots.append(path)
                 seen.add(path.resolve())
-        self._base_present = None
+        self._base_present.clear()
 
     def load(self, tool_id: str) -> Manifest:
         """Load and merge a tool manifest by registry id."""
@@ -241,28 +241,48 @@ class Registry:
         self,
         tool_id: str,
         seen: list[str],
+        *,
+        root: Path | None = None,
     ) -> list[tuple[str, Path, Path, dict[str, Any]]]:
         """Load the extends chain root→leaf for a tool id.
 
-        When a tool (other than ``base``) has no ``extends`` and a ``base``
-        manifest exists, ``base`` is prepended so the chain is
-        ``base → … → tool``. Parents that themselves lack ``extends`` also
-        pick up ``base``, so ``extends: foo`` still yields ``base → foo → tool``.
+        When a tool (other than ``base``) has no ``extends`` and **its own root**
+        holds a ``base.yaml``, ``base`` from *that* root is prepended so the
+        chain is ``base → … → tool``. A ``base.yaml`` in a *different* registered
+        root does not leak in — each root's ``base`` scopes to its own tools.
+        When *root* is set the lookup is pinned there (used to resolve ``base``
+        against the owning root).
         """
         tid = self.normalize_id(tool_id)
         if tid in seen:
             cycle = " -> ".join([*seen, tid])
             raise ManifestError(f"extends cycle: {cycle}")
-        path, owning_root = self._manifest_lookup(tid)
+        path, owning_root = self._lookup_in(tid, root)
         data = self._load_raw_yaml(path)
         chain: list[tuple[str, Path, Path, dict[str, Any]]] = []
         if extends := data.get("extends"):
             parent_id = self.normalize_id(str(extends))
             chain.extend(self._load_chain(parent_id, [*seen, tid]))
-        elif tid != BASE_TOOL_ID and self._has_base():
-            chain.extend(self._load_chain(BASE_TOOL_ID, [*seen, tid]))
+        elif tid != BASE_TOOL_ID and self._root_has_base(owning_root):
+            chain.extend(self._load_chain(BASE_TOOL_ID, [*seen, tid], root=owning_root))
         chain.append((tid, path, owning_root, data))
         return chain
+
+    def _lookup_in(self, tid: str, root: Path | None) -> tuple[Path, Path]:
+        """``(path, owning_root)`` for *tid* — pinned to *root* when given."""
+        if root is None:
+            return self._manifest_lookup(tid)
+        path = registry_ids.manifest_path_in(root, tid)
+        if path is None:
+            raise ManifestError(f"no manifest for {tid!r} under {root}")
+        return path, root
+
+    def _root_has_base(self, root: Path) -> bool:
+        """Whether *root* ships a ``base.yaml`` (memoized per resolved root)."""
+        key = root.resolve()
+        if key not in self._base_present:
+            self._base_present[key] = registry_ids.manifest_path_in(root, BASE_TOOL_ID) is not None
+        return self._base_present[key]
 
     def _has_manifest(self, tool_id: str) -> bool:
         """Return True when *tool_id* resolves under any registry root."""
@@ -270,12 +290,6 @@ class Registry:
             return False
         tid = self.normalize_id(tool_id)
         return any(registry_ids.manifest_path_in(root, tid) is not None for root in self.roots)
-
-    def _has_base(self) -> bool:
-        """Memoized ``_has_manifest("base")`` — called on every ``load()``."""
-        if self._base_present is None:
-            self._base_present = self._has_manifest(BASE_TOOL_ID)
-        return self._base_present
 
     def _manifest_lookup(self, tool_id: str) -> tuple[Path, Path]:
         """Resolve id to (manifest path, owning root). Later roots win."""

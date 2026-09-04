@@ -206,15 +206,24 @@ def test_yaml_anchor_flood_rejected(tmp_path: Path) -> None:
         Registry(root).load("t")
 
 
-def test_base_presence_is_memoized_and_reset_on_append(tmp_path: Path) -> None:
-    a = tmp_path / "a"
-    write_yaml(a / "leaf.yaml", {"cli": "leaf", "install": {"backend": "path"}})
-    reg = Registry(a)
-    assert "shared" not in reg.load("leaf").args  # no base yet
-    b = tmp_path / "b"
-    write_yaml(b / "base.yaml", {"abstract": True, "args": {"shared": {"flag": "--shared"}}})
-    reg.append_roots([b])
-    assert "shared" in reg.load("leaf").args  # memo was invalidated
+def test_base_yaml_is_scoped_to_its_own_root(tmp_path: Path) -> None:
+    mine = tmp_path / "mine"
+    write_yaml(mine / "mytool.yaml", {"cli": "echo", "install": {"backend": "path"}})
+    vendor = tmp_path / "vendor"
+    write_yaml(vendor / "base.yaml", {"abstract": True, "env": {"VENDOR": "1"}})
+    write_yaml(vendor / "theirs.yaml", {"cli": "echo", "install": {"backend": "path"}})
+    reg = Registry([mine, vendor])
+    # A base.yaml in the vendor root must not leak into my root's tool.
+    assert reg.load("mytool").env == {}
+    # …but the vendor's own tool still picks it up.
+    assert reg.load("theirs").env == {"VENDOR": "1"}
+
+
+def test_base_yaml_extends_a_tool_in_the_same_root(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "base.yaml", {"abstract": True, "args": {"shared": {"flag": "--shared"}}})
+    write_yaml(root / "leaf.yaml", {"cli": "leaf", "install": {"backend": "path"}})
+    assert "shared" in Registry(root).load("leaf").args
 
 
 def test_platforms_scalar_rejected_at_load(tmp_path: Path) -> None:
