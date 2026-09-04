@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from maina.installer import Installer
 
 # Test-only injectable; not a public pluggable runner API.
-Executor = Callable[..., subprocess.CompletedProcess[str]]
+Executor = Callable[..., subprocess.CompletedProcess[Any]]
 
 __all__ = ["ESSENTIAL_ENV", "Executor", "ToolRunner"]
 
@@ -50,7 +50,8 @@ class ToolRunner:
         cwd: str | None = None,
         timeout: float | None = None,
         env_allow: Iterable[str] | None = None,
-        stdin: str | None = None,
+        stdin: str | bytes | None = None,
+        text: bool = True,
     ) -> ToolResult:
         """Install/resolve, build argv, execute, and parse.
 
@@ -59,7 +60,10 @@ class ToolRunner:
         is forwarded; when set, only :data:`ESSENTIAL_ENV` plus the named keys are
         passed, so secrets in ``os.environ`` stay out of third-party binaries.
         The manifest's own ``env`` block is layered on afterwards and always
-        forwarded. ``stdin`` is written to the tool's stdin.
+        forwarded. ``stdin`` is written to the tool's stdin. With ``text=False``
+        ``result.raw`` / ``result.stderr`` are ``bytes`` and neither the parser
+        nor ``output.from_file`` runs — for a tool that emits an archive, image,
+        or other binary on stdout.
         """
         # Build argv first so a bad kwarg raises ArgError *before* any install
         # work (a typo'd argument should not pay for a download).
@@ -79,53 +83,14 @@ class ToolRunner:
         resolved_timeout = self._resolve_timeout(timeout)
         started = time.perf_counter()
         started_wall = time.time()
-        run = self._executor or subprocess.run
-        run_kwargs: dict[str, Any] = {
-            "check": False,
-            "capture_output": True,
-            "text": True,
-            "encoding": "utf-8",
-            "errors": "replace",
-            "env": env,
-            "cwd": cwd,
-            "timeout": resolved_timeout,
-        }
-        # Default to no stdin so a tool that reads stdin does not block on the
-        # caller's terminal; opt in with stdin=.
-        if stdin is None:
-            run_kwargs["stdin"] = subprocess.DEVNULL
-        else:
-            run_kwargs["input"] = stdin
-        try:
-            proc = run(argv, **run_kwargs)
-        except subprocess.TimeoutExpired as exc:
-            raise ToolTimeoutError(
-                f"{self.manifest.id} timed out after {resolved_timeout}s",
-                tool=self.manifest.id,
-                timeout=float(resolved_timeout or 0.0),
-                command=argv,
-            ) from exc
-        except OSError as exc:
-            raise ToolExecError(
-                f"{self.manifest.id}: could not run {exe}: {exc}",
-                tool=self.manifest.id,
-                command=argv,
-            ) from exc
-        duration_ms = (time.perf_counter() - started) * 1000
-        success_codes = self.manifest.output.success_codes
-        ok = proc.returncode in set(success_codes)
-        result = ToolResult(
-            tool=self.manifest.id,
-            ok=ok,
-            exit_code=proc.returncode,
-            raw=proc.stdout or "",
-            stderr=proc.stderr or "",
-            command=argv,
-            cwd=cwd,
-            exe=exe,
-            version=self.manifest.version,
-            duration_ms=duration_ms,
+        proc = self._execute(
+            argv, env=env, cwd=cwd, timeout=resolved_timeout, stdin=stdin, text=text
         )
+        duration_ms = (time.perf_counter() - started) * 1000
+        result = self._build_result(proc, argv=argv, cwd=cwd, exe=exe, duration_ms=duration_ms)
+        if not text:
+            # Binary passthrough: no text parser, no report-file interpolation.
+            return result
         self._apply_from_file(result, kwargs, cwd, started_wall)
         if result.parse_error is not None:
             # ``from_file`` already failed; don't run the parser over stdout and
@@ -137,6 +102,83 @@ class ToolRunner:
             override=parser,
         )
         return resolver.apply(result)
+
+    def _build_result(
+        self,
+        proc: subprocess.CompletedProcess[Any],
+        *,
+        argv: list[str],
+        cwd: str | None,
+        exe: str,
+        duration_ms: float,
+    ) -> ToolResult:
+        """Wrap a finished process in a ``ToolResult`` (bytes stdout when ``text=False``)."""
+        binary = isinstance(proc.stdout, bytes) or isinstance(proc.stderr, bytes)
+        raw_bytes = proc.stdout if isinstance(proc.stdout, bytes) else None
+        stderr_bytes = proc.stderr if isinstance(proc.stderr, bytes) else None
+        return ToolResult(
+            tool=self.manifest.id,
+            ok=proc.returncode in set(self.manifest.output.success_codes),
+            exit_code=proc.returncode,
+            raw=self._as_text(proc.stdout),
+            stderr=self._as_text(proc.stderr),
+            command=argv,
+            cwd=cwd,
+            exe=exe,
+            version=self.manifest.version,
+            duration_ms=duration_ms,
+            raw_bytes=raw_bytes if binary else None,
+            stderr_bytes=stderr_bytes if binary else None,
+        )
+
+    @staticmethod
+    def _as_text(value: str | bytes | None) -> str:
+        """stdout/stderr as text — decode lossily when the run was ``text=False``."""
+        return value.decode("utf-8", "replace") if isinstance(value, bytes) else value or ""
+
+    def _execute(
+        self,
+        argv: list[str],
+        *,
+        env: dict[str, str],
+        cwd: str | None,
+        timeout: float | None,
+        stdin: str | bytes | None,
+        text: bool,
+    ) -> subprocess.CompletedProcess[Any]:
+        """Run the subprocess, mapping a timeout / spawn failure to a MainaError."""
+        run = self._executor or subprocess.run
+        run_kwargs: dict[str, Any] = {
+            "check": False,
+            "capture_output": True,
+            "text": text,
+            "env": env,
+            "cwd": cwd,
+            "timeout": timeout,
+        }
+        if text:
+            run_kwargs |= {"encoding": "utf-8", "errors": "replace"}
+        # Default to no stdin so a tool that reads stdin does not block on the
+        # caller's terminal; opt in with stdin=.
+        if stdin is None:
+            run_kwargs["stdin"] = subprocess.DEVNULL
+        else:
+            run_kwargs["input"] = stdin
+        try:
+            return run(argv, **run_kwargs)
+        except subprocess.TimeoutExpired as exc:
+            raise ToolTimeoutError(
+                f"{self.manifest.id} timed out after {timeout}s",
+                tool=self.manifest.id,
+                timeout=float(timeout or 0.0),
+                command=argv,
+            ) from exc
+        except OSError as exc:
+            raise ToolExecError(
+                f"{self.manifest.id}: could not run {argv[0]}: {exc}",
+                tool=self.manifest.id,
+                command=argv,
+            ) from exc
 
     def _apply_from_file(
         self, result: ToolResult, kwargs: dict[str, Any], cwd: str | None, started_wall: float

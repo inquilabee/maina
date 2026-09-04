@@ -146,6 +146,32 @@ def test_toolrunner_timeout_kwarg(tmp_path: Path) -> None:
     assert excinfo.value.timeout == pytest.approx(0.05)
 
 
+def test_toolrunner_text_false_returns_bytes_and_skips_parser(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "t.yaml",
+        {
+            "cli": "printf",
+            "install": {"backend": "path"},
+            "parser": "json",
+            "args": {"s": {"positional": True, "type": "string", "required": True}},
+            "output": {"success_codes": [0]},
+        },
+    )
+    registry = Registry(root)
+    runner = ToolRunner(
+        registry.load("t"),
+        installer=path_installer(tmp_path, registry),
+        parsers=ParserResolver(generals=builtin_generals()),
+    )
+    result = runner.run({"s": "not-json"}, text=False)
+    assert result.raw_bytes == b"not-json"
+    assert result.raw == "not-json"  # lossy text view
+    assert result.parsed is None
+    assert result.parse_error is None  # parser never ran
+    assert result.to_dict()["raw"] == "not-json"
+
+
 def test_toolrunner_non_numeric_timeout_kwarg_raises_arg_error(tmp_path: Path) -> None:
     from maina.core.errors import ArgError
 

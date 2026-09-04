@@ -112,7 +112,8 @@ class Tool:
         cwd: str | None = None,
         timeout: float | None = None,
         env_allow: Iterable[str] | None = None,
-        stdin: str | None = None,
+        stdin: str | bytes | None = None,
+        text: bool = True,
         args: Mapping[str, Any] | None = None,
         **kwargs: Any,
     ) -> ToolResult:
@@ -121,8 +122,10 @@ class Tool:
         ``timeout`` caps the subprocess (seconds); ``env_allow`` trims the
         environment forwarded to the tool to essentials plus the named keys
         (see :meth:`maina.runner.ToolRunner.run`); ``stdin`` is written to the
-        tool's stdin. Pass a manifest arg whose name collides with one of these
-        parameters (``parser``, ``timeout``, ``cwd`` …) via ``args={...}``.
+        tool's stdin; ``text=False`` returns ``bytes`` in ``result.raw`` and
+        skips the parser (for a tool that emits binary on stdout). Pass a
+        manifest arg whose name collides with one of these parameters
+        (``parser``, ``timeout``, ``cwd`` …) via ``args={...}``.
         """
         if self._manifest is None:
             raise AbstractToolError("Tool() with no name cannot run; use help() or pass a name")
@@ -142,6 +145,7 @@ class Tool:
             timeout=timeout,
             env_allow=env_allow,
             stdin=stdin,
+            text=text,
         )
 
     def argv(
@@ -176,7 +180,8 @@ class Tool:
         cwd: str | None = None,
         timeout: float | None = None,
         env_allow: Iterable[str] | None = None,
-        stdin: str | None = None,
+        stdin: str | bytes | None = None,
+        text: bool = True,
         args: Mapping[str, Any] | None = None,
         **kwargs: Any,
     ) -> ToolResult:
@@ -187,6 +192,7 @@ class Tool:
             timeout=timeout,
             env_allow=env_allow,
             stdin=stdin,
+            text=text,
             args=args,
             **kwargs,
         )

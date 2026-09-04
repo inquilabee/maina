@@ -207,8 +207,9 @@ up `base` when a `base.yaml` exists, so the effective chain is
 | `tool` | str | Resolved tool id. |
 | `ok` | bool | `exit_code in success_codes`. |
 | `exit_code` | int | Process return code. |
-| `raw` | str | stdout, exactly as produced. |
-| `stderr` | str | stderr. |
+| `raw` | str | stdout as text (a `text=False` run decodes it lossily). |
+| `stderr` | str | stderr as text. |
+| `raw_bytes` / `stderr_bytes` | bytes or None | Exact bytes — set only for a `run(text=False)` call, which also skips the parser and `output.from_file`. |
 | `command` | list[str] | The argv that ran (argv[0] is the resolved executable). |
 | `parsed` | any | Parser output, or `None`. |
 | `parse_error` | str or None | Why parsing did not happen or failed (a raising parser, a bad/missing `output.from_file`). `parsed` stays `None`; the run never crashes. |

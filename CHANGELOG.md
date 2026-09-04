@@ -130,6 +130,10 @@
 - `ToolResult` gains `parse_error`, `cwd`, `exe`, `report` (the
   `output.from_file` contents), `parse_input` (report when set, else `raw`),
   and `to_dict()` (JSON-safe, stable key set).
+- `Tool.run(text=False)` / `ToolRunner.run(text=False)` returns the raw
+  stdout / stderr bytes in `result.raw_bytes` / `result.stderr_bytes` and skips
+  the parser and `output.from_file` — for a tool that writes an archive, image,
+  or other binary to stdout. `result.raw` still carries a lossy text view.
 
 ## 0.1.0
 

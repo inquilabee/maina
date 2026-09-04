@@ -16,7 +16,7 @@ class ToolResult:
     tool: str
     ok: bool
     exit_code: int
-    raw: str
+    raw: str  # stdout as text (a ``text=False`` run decodes it lossily; see ``raw_bytes``)
     stderr: str
     command: list[str]
     parsed: Any = None
@@ -26,6 +26,8 @@ class ToolResult:
     exe: str | None = None
     version: str | None = None
     duration_ms: float | None = None
+    raw_bytes: bytes | None = None  # exact stdout / stderr, only for a ``text=False`` run
+    stderr_bytes: bytes | None = None
     meta: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -37,6 +39,8 @@ class ToolResult:
         """JSON-safe view with a stable key set.
 
         A non-serialisable ``parsed`` is dropped and noted in ``parse_error``.
+        ``raw_bytes`` / ``stderr_bytes`` are omitted (not JSON-safe); ``raw`` /
+        ``stderr`` carry the lossy text view.
         """
         parsed = self.parsed
         parse_error = self.parse_error
