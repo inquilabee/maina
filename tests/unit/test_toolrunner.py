@@ -263,3 +263,56 @@ def test_toolrunner_manifest_env_survives_env_allow(tmp_path: Path) -> None:
     )
     runner.run({}, env_allow=[])
     assert seen["env"]["TOOL_FLAG"] == "on"
+
+
+def test_toolrunner_bad_kwarg_raises_before_install(tmp_path: Path) -> None:
+    from maina.core.errors import ArgError
+
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "t.yaml",
+        {"cli": "t", "install": {"backend": "github", "repo": "acme/t"}},
+    )
+    registry = Registry(root)
+    calls: list[str] = []
+
+    class ExplodingInstaller(Installer):
+        def resolve(self, manifest: Any, *, env_allow: Any = None) -> Any:
+            del manifest, env_allow
+            calls.append("resolve")
+            raise AssertionError("install must not run when a kwarg is invalid")
+
+    runner = ToolRunner(
+        registry.load("t"),
+        installer=ExplodingInstaller(
+            cache_root=tmp_path / "cache",
+            language=FakeLanguage(tmp_path / "cache"),
+            registry=registry,
+            backends=[PathBackend()],
+        ),
+    )
+    with pytest.raises(ArgError, match="unknown"):
+        runner.run({"nope": "1"})
+    assert calls == []
+
+
+def test_from_file_template_rejects_attribute_access(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "t.yaml",
+        {
+            "cli": "echo",
+            "install": {"backend": "path"},
+            "parser": "json",
+            "output": {"success_codes": [0], "from_file": "{cwd.__class__}/r.json"},
+        },
+    )
+    registry = Registry(root)
+    runner = ToolRunner(
+        registry.load("t"),
+        installer=path_installer(tmp_path, registry),
+        parsers=ParserResolver(generals=builtin_generals()),
+    )
+    result = runner.run({})
+    assert result.parse_error is not None
+    assert "attribute or item access" in result.parse_error

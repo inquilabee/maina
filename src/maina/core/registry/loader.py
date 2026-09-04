@@ -121,8 +121,12 @@ class Registry:
 
     @staticmethod
     def _validate_timeout(tid: str, timeout: Any) -> None:
-        if timeout is not None and not isinstance(timeout, (int, float)):
+        if timeout is None:
+            return
+        if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
             raise manifest_error(tid, f"timeout {timeout!r} must be a number of seconds")
+        if timeout <= 0:
+            raise manifest_error(tid, f"timeout {timeout!r} must be > 0 (omit it for no limit)")
 
     @staticmethod
     def _validate_platforms(tid: str, platforms: Any) -> None:

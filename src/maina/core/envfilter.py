@@ -13,7 +13,9 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 # Always forwarded even when ``env_allow`` is set: without these a subprocess
-# cannot find its own binary, its runtime data dir, or locale.
+# cannot find its own binary, its shared libraries, CA bundle, proxy, runtime
+# data dir, temp dir, or locale. Matched case-insensitively so Windows spellings
+# (``SystemRoot``, ``Path``, ``PathExt``) survive too.
 ESSENTIAL_ENV = frozenset(
     {
         "PATH",
@@ -24,14 +26,38 @@ ESSENTIAL_ENV = frozenset(
         "TMPDIR",
         "TEMP",
         "TMP",
+        # Windows: shell, system dir, executable-extension list.
         "SYSTEMROOT",
+        "WINDIR",
+        "COMSPEC",
+        "PATHEXT",
+        "NUMBER_OF_PROCESSORS",
+        "PROCESSOR_ARCHITECTURE",
+        # Shared-library search paths.
+        "LD_LIBRARY_PATH",
+        "DYLD_LIBRARY_PATH",
+        "DYLD_FALLBACK_LIBRARY_PATH",
+        # TLS trust stores.
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+        "REQUESTS_CA_BUNDLE",
+        "CURL_CA_BUNDLE",
+        # Proxy configuration (upper- and lower-case are both conventional).
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "NO_PROXY",
+        "ALL_PROXY",
     }
 )
 
 
 def filter_env(env: dict[str, str], env_allow: Iterable[str] | None) -> dict[str, str]:
-    """Return *env* unchanged, or trimmed to essentials + *env_allow* keys."""
+    """Return *env* unchanged, or trimmed to essentials + *env_allow* keys.
+
+    Matching is case-insensitive so a Windows ``SystemRoot`` / ``Path`` is not
+    dropped by an all-caps allowlist.
+    """
     if env_allow is None:
         return env
-    keep = ESSENTIAL_ENV | set(env_allow)
-    return {key: value for key, value in env.items() if key in keep}
+    keep = {key.lower() for key in ESSENTIAL_ENV} | {key.lower() for key in env_allow}
+    return {key: value for key, value in env.items() if key.lower() in keep}

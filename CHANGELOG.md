@@ -31,6 +31,20 @@
   single-file archive fallback only accepts an executable file. Binary copies
   into the cache are atomic (`os.replace`).
 - `requires-python` is now `>=3.11.4`.
+- `env_allow` matches its essential-var list case-insensitively (Windows
+  `SystemRoot` / `Path` no longer dropped) and the list now covers
+  `LD_LIBRARY_PATH` / `DYLD_*`, `SSL_CERT_FILE` / `SSL_CERT_DIR` /
+  `REQUESTS_CA_BUNDLE`, `HTTP(S)_PROXY` / `NO_PROXY`, and `COMSPEC` / `PATHEXT`.
+- `output.from_file` templates may only use bare `{name}` placeholders — a
+  `{cwd.__class__…}` / `{a[0]}` placeholder is rejected (surfaces on
+  `parse_error`).
+- `timeout: 0` or a negative timeout is rejected at manifest load (it used to
+  mean "expire immediately"); a non-positive `run(timeout=)` now means "no
+  limit".
+- A tool's kwargs are validated **before** any install work — a typo'd argument
+  no longer pays for a download first.
+- `github` archive binary lookup is deterministic (shallowest path, then
+  lexicographic) instead of filesystem-iteration order.
 
 ### CLI
 

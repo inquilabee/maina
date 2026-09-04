@@ -306,8 +306,15 @@ class ArchiveFetcher:
 
     @staticmethod
     def _locate_binary(tree: Path, binary: str) -> Path:
-        """The file to install as *binary* from an extracted tree."""
-        if by_name := [p for p in tree.rglob(binary) if p.is_file()]:
+        """The file to install as *binary* from an extracted tree.
+
+        With more than one match, pick deterministically: shallowest path first,
+        then lexicographic — not filesystem iteration order.
+        """
+        if by_name := sorted(
+            (p for p in tree.rglob(binary) if p.is_file()),
+            key=lambda p: (len(p.relative_to(tree).parts), str(p)),
+        ):
             return by_name[0]
         # Single-file fallback only when that file is itself executable —
         # otherwise an archive could ship one arbitrary file as "the binary".

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import string
 import subprocess
 import time
 from collections.abc import Callable, Iterable
@@ -60,17 +61,20 @@ class ToolRunner:
         The manifest's own ``env`` block is layered on afterwards and always
         forwarded. ``stdin`` is written to the tool's stdin.
         """
+        # Build argv first so a bad kwarg raises ArgError *before* any install
+        # work (a typo'd argument should not pay for a download).
+        argv = ArgParser(self.manifest.args).build(
+            self.manifest.cli,
+            self.manifest.subcommands,
+            kwargs,
+            extra=extra,
+        )
         exe, env = self.installer.resolve(self.manifest, env_allow=env_allow)
         # resolve() already trimmed the base env for install subprocesses; trim
         # again here (backends may have re-read os.environ) and overlay the
         # manifest's own vars (empty dict when the manifest declares none).
         env = {**filter_env(env, env_allow), **self.manifest.env}
-        argv = ArgParser(self.manifest.args).build(
-            exe,
-            self.manifest.subcommands,
-            kwargs,
-            extra=extra,
-        )
+        argv[0] = exe
         resolved_timeout = self._resolve_timeout(timeout)
         started = time.perf_counter()
         run = self._executor or subprocess.run
@@ -149,6 +153,7 @@ class ToolRunner:
             if isinstance(value, (str, int, float)) and not isinstance(value, bool)
         }
         try:
+            self._check_from_file_template(template)
             rel = template.format(cwd=str(base), **subs)
         except (KeyError, IndexError, ValueError) as exc:
             result.parse_error = f"output.from_file template {template!r} unresolved: {exc}"
@@ -164,9 +169,25 @@ class ToolRunner:
         result.report = path.read_text(encoding="utf-8", errors="replace")
         result.meta["parsed_from"] = str(path)
 
+    @staticmethod
+    def _check_from_file_template(template: str) -> None:
+        """Reject an ``output.from_file`` placeholder that reaches past a bare name.
+
+        ``{cwd}`` and ``{argname}`` are fine; ``{cwd.__class__…}`` / ``{a[0]}``
+        are not — the template only names a directory and args.
+        """
+        for _literal, field, _spec, _conv in string.Formatter().parse(template):
+            if field and set("[.") & set(field):
+                raise ValueError(f"placeholder {field!r} may not use attribute or item access")
+
     def _resolve_timeout(self, timeout: float | None) -> float | None:
-        """Prefer explicit kwarg, then top-level manifest ``timeout``."""
-        if timeout is not None:
-            return float(timeout)
-        raw = self.manifest.data.get("timeout")
-        return None if raw is None else float(raw)
+        """Prefer explicit kwarg, then top-level manifest ``timeout``.
+
+        A non-positive value (``0`` / negative) means "no limit", not "expire
+        immediately" — the manifest loader already rejects ``timeout <= 0``.
+        """
+        raw = timeout if timeout is not None else self.manifest.data.get("timeout")
+        if raw is None:
+            return None
+        seconds = float(raw)
+        return seconds if seconds > 0 else None
