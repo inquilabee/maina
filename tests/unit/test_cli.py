@@ -431,6 +431,20 @@ def test_cli_run_dry_run_prints_argv_and_skips_execution() -> None:
     assert dry.stdout.strip() == "jq -r .name"
 
 
+def test_cli_describe_json_and_summary() -> None:
+    import json as _json
+
+    j = runner.invoke(app, ["describe", "jq", "--json"])
+    assert j.exit_code == 0
+    data = _json.loads(j.stdout)
+    assert data["id"] == "jq"
+    assert data["install"]["backend"] == "github"
+    summary = runner.invoke(app, ["describe", "jq"])
+    assert summary.exit_code == 0
+    assert "jq" in summary.stdout
+    assert "filter" in summary.stdout
+
+
 def test_cli_clean_removes_cache(tmp_path: Any) -> None:
     root = tmp_path / "reg"
     write_yaml(root / "t.yaml", {"cli": "toolx", "install": {"backend": "path"}})

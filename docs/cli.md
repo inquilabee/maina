@@ -93,6 +93,17 @@ maina clean                    # everything
 maina clean shellcheck jq
 ```
 
+## `maina describe <tool_id> [--json]`
+
+Print a tool's manifest as data — for building docs, a form, or shell
+completion from a catalog without writing Python. `--json` emits exactly
+`Tool(id).describe()`; without it, a human-readable summary of the same
+fields.
+
+```bash
+maina describe jq --json | jq '.args'
+```
+
 ## `maina validate [TOOLS...]`
 
 Load every manifest under the registry roots (or just the named ids) and

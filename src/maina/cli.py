@@ -150,6 +150,33 @@ def validate_one(rt: Any, tid: str) -> str | None:
 
 
 @app.command()
+def describe(
+    tool_id: Annotated[str, typer.Argument(help="Registry tool id")],
+    as_json: Annotated[
+        bool, typer.Option("--json", help="Emit the raw JSON (default: a compact summary)")
+    ] = False,
+) -> None:
+    """Print a tool's manifest as data — for docs, forms, or shell completion.
+
+    ``--json`` emits exactly ``Tool(id).describe()``; without it, a human-readable
+    summary of the same fields.
+    """
+    try:
+        desc = Tool(tool_id).describe()
+    except MainaError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from exc
+    if as_json:
+        typer.echo(json.dumps(desc, indent=2, default=str))
+        return
+    typer.echo(f"{desc['id']}  (cli: {desc['cli']}, backend: {desc['install']['backend']})")
+    for name, arg in desc["args"].items():
+        slot = arg["flag"] or ("positional" if arg["positional"] else "?")
+        req = " required" if arg["required"] else ""
+        typer.echo(f"  {name}: {arg['type']} {slot}{req}")
+
+
+@app.command()
 def prepare(
     tools: Annotated[
         list[str] | None,

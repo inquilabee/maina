@@ -86,6 +86,8 @@
   (argv[0] is the bare `cli` name) and exits without executing.
 - `maina validate [TOOLS...]` loads every manifest (or the named ids) and
   reports each error without aborting — a catalog lint step.
+- `maina describe <id> [--json]` prints a tool's manifest as data
+  (`Tool.describe()`), so a catalog is consumable from the shell.
 - `maina run` reaches more of `Tool.run`: `--timeout=<s>` / `--cwd=<dir>`
   options, and `arg.subkey=value` tokens that build a `type: pairs` dict
   (`env.K=V env.A=B`).
