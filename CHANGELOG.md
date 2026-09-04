@@ -80,8 +80,9 @@
 
 ### Manifest expressiveness
 
-- `args.<name>.type: pairs` emits `--flag key value` per pair (`jq --arg`,
-  `docker -e K=V`).
+- `args.<name>.type: pairs` emits one flag per pair — three tokens
+  `--flag key value` by default (`jq --arg`), or two (`--flag key=value`) when
+  the arg also sets `joiner: "="` (`docker -e K=V`).
 - `args.<name>.separator` emits a literal token before an arg (e.g. `--` before
   positional paths).
 - `output.from_file: "<template>"` — the parser reads that file instead of

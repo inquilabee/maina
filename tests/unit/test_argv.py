@@ -89,3 +89,15 @@ def test_build_argv_empty_list_omits_flag() -> None:
     schema = {"glob": {"flag": "--glob", "type": "string", "repeat": True}}
     argv = ArgParser(schema).build("rg", [], {"glob": []})
     assert argv == ["rg"]
+
+
+def test_build_argv_pairs_default_three_tokens() -> None:
+    schema = {"arg": {"flag": "--arg", "type": "pairs"}}
+    argv = ArgParser(schema).build("jq", [], {"arg": {"name": "v"}})
+    assert argv == ["jq", "--arg", "name", "v"]
+
+
+def test_build_argv_pairs_with_joiner_two_tokens() -> None:
+    schema = {"env": {"flag": "-e", "type": "pairs", "joiner": "="}}
+    argv = ArgParser(schema).build("docker", ["run"], {"env": {"K": "V", "A": "B"}})
+    assert argv == ["docker", "run", "-e", "K=V", "-e", "A=B"]

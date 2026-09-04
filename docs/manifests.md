@@ -94,12 +94,15 @@ Calling rules:
   pass it via `run(args={"timeout": "30"})`.
 - Child `args` merge onto the parent per field: overriding `default:` keeps the
   inherited `flag` / `type` / `required`.
-- `type: pairs` takes a dict or a list of `[key, value]` items and emits
-  `--flag key value` per pair (`jq --arg`, `docker -e K=V`, `kubectl --from-literal`).
+- `type: pairs` takes a dict or a list of `[key, value]` items and emits one
+  flag per pair. Default is three tokens `--flag key value` (`jq --arg name v`).
+  Add `joiner:` for the two-token `--flag key<joiner>value` shape
+  (`docker -e K=V` uses `joiner: "="`).
 
 ```yaml
 args:
-  arg: { flag: --arg, type: pairs }        # run(arg={"x": "1"}) -> --arg x 1
+  arg: { flag: --arg, type: pairs }              # run(arg={"x": "1"}) -> --arg x 1
+  env: { flag: -e, type: pairs, joiner: "=" }    # run(env={"K": "V"}) -> -e K=V
   paths: { positional: true, separator: "--" }   # ... -- src/
 ```
 

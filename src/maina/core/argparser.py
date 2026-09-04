@@ -98,7 +98,7 @@ class ArgParser:
         if spec.type == "flag":
             return ArgParser._emit_flag(name, spec.flag, value)
         if spec.type == "pairs":
-            return ArgParser._emit_pairs(name, spec.flag, value)
+            return ArgParser._emit_pairs(name, spec.flag, value, joiner=spec.joiner)
         if isinstance(value, list):
             return ArgParser._emit_list(
                 name,
@@ -119,8 +119,15 @@ class ArgParser:
         )
 
     @staticmethod
-    def _emit_pairs(name: str, flag: str | None, value: Any) -> list[str]:
-        """Emit ``--flag k v`` for each (key, value) pair (dict or list of pairs)."""
+    def _emit_pairs(
+        name: str, flag: str | None, value: Any, *, joiner: str | None = None
+    ) -> list[str]:
+        """Emit one flag per (key, value) pair.
+
+        Default is three tokens ``--flag key value`` (``jq --arg name val``).
+        With ``joiner:`` set it is two — ``--flag key<joiner>value`` — for
+        ``docker -e K=V`` (``joiner: "="``) and the like.
+        """
         if not flag:
             raise ArgParser._arg_error(name, "type: pairs needs a flag")
         items = value.items() if isinstance(value, dict) else value
@@ -130,7 +137,10 @@ class ArgParser:
                 key, val = pair
             except (TypeError, ValueError) as exc:
                 raise ArgParser._arg_error(name, "pairs expects (key, value) items") from exc
-            out.extend([flag, str(key), str(val)])
+            if joiner is None:
+                out.extend([flag, str(key), str(val)])
+            else:
+                out.extend([flag, f"{key}{joiner}{val}"])
         return out
 
     @staticmethod
