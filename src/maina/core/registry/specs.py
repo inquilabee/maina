@@ -69,7 +69,17 @@ ARG_TYPES = frozenset({"string", "flag", "path", "pairs"})
 JOIN_VALUES = frozenset({"csv"})
 VALID_PLATFORMS = frozenset({"linux", "macos", "windows"})
 INSTALL_KEYS = frozenset(
-    {"backend", "repo", "assets", "binary", "tag", "package", "sha256", "allow_scripts"}
+    {
+        "backend",
+        "repo",
+        "assets",
+        "binary",
+        "tag",
+        "package",
+        "sha256",
+        "allow_scripts",
+        "allow_any_executable",
+    }
 )
 
 
@@ -165,6 +175,7 @@ class InstallSpec:
     package: str | None = None
     sha256: dict[str, str] = field(default_factory=dict)
     allow_scripts: bool = False
+    allow_any_executable: bool = False
 
     @classmethod
     def from_mapping(cls, raw: Any, *, tool_id: str) -> InstallSpec:
@@ -189,13 +200,15 @@ class InstallSpec:
             package=cls._parse_package(raw.get("package"), tool_id=tool_id),
             sha256=cls._parse_sha256(raw.get("sha256"), tool_id=tool_id),
             allow_scripts=raw.get("allow_scripts", False) is True,
+            allow_any_executable=raw.get("allow_any_executable", False) is True,
         )
 
-    def identity_key(self) -> str:
+    def identity_key(self, *, extra: tuple[Any, ...] = ()) -> str:
         """Short stable hash of what this spec fetches (repo/tag/asset/sha256).
 
         Two manifests that share ``cli`` + ``version`` but differ here must not
-        share a cache directory.
+        share a cache directory. *extra* lets the caller fold in context the
+        spec does not own (e.g. the ``requires:`` runtime pins for ``npm``).
         """
         payload = repr(
             (
@@ -207,6 +220,8 @@ class InstallSpec:
                 self.package,
                 self.binary,
                 self.allow_scripts,
+                self.allow_any_executable,
+                extra,
             )
         )
         return hashlib.blake2s(payload.encode("utf-8"), digest_size=5).hexdigest()

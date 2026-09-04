@@ -74,6 +74,7 @@ class GithubBackend:
             binary=binary,
             asset_name=str(asset),
             sha256=manifest.install.sha256.get(key),
+            allow_any_executable=manifest.install.allow_any_executable,
         )
         self._finalize_binary(manifest.id, dest, dest_dir, binary, str(asset))
         return dest

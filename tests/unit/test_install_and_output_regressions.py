@@ -375,6 +375,23 @@ def test_cli_json_split_keeps_dashdash_tail() -> None:
 # --- review C: robustness P2s (B4, B8, B9, B10) -------------------------------
 
 
+def test_locate_binary_needs_the_named_member(tmp_path: Path) -> None:
+    from maina.backends.archive import ArchiveFetcher
+
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    payload = tree / "payload.sh"
+    payload.write_text("#!/bin/sh\necho hi\n", encoding="utf-8")
+    payload.chmod(0o755)
+    # No member named "shellcheck" -> hard error, not "run the lone executable".
+    with pytest.raises(InstallError, match="not in archive"):
+        ArchiveFetcher._locate_binary(tree, "shellcheck")
+    # Opt in explicitly: the lone executable is accepted, with a warning.
+    with pytest.warns(RuntimeWarning, match="allow_any_executable"):
+        found = ArchiveFetcher._locate_binary(tree, "shellcheck", allow_any_executable=True)
+    assert found == payload
+
+
 def test_copy_raw_asset_rejects_unsupported_format(tmp_path: Path) -> None:
     from maina.backends.archive import ArchiveFetcher
 

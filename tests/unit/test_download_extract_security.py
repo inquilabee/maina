@@ -53,7 +53,9 @@ class RecordingFetcher(ArchiveFetcher):
         binary: str,
         asset_name: str,
         sha256: str | None = None,
+        allow_any_executable: bool = False,
     ) -> None:
+        del allow_any_executable
         self.calls.append((url, dest_dir, binary, asset_name))
         self.sha256_seen.append(sha256)
         dest_dir.mkdir(parents=True, exist_ok=True)

@@ -139,6 +139,13 @@ class ToolRunner:
         """stdout/stderr as text — decode lossily when the run was ``text=False``."""
         return value.decode("utf-8", "replace") if isinstance(value, bytes) else value or ""
 
+    @staticmethod
+    def _coerce_stdin(stdin: str | bytes, *, text: bool) -> str | bytes:
+        """Match ``stdin`` to the run's text/binary mode (str under text, bytes otherwise)."""
+        as_bytes = stdin.encode("utf-8") if isinstance(stdin, str) else stdin
+        as_text = stdin.decode("utf-8", "replace") if isinstance(stdin, bytes) else stdin
+        return as_text if text else as_bytes
+
     def _execute(
         self,
         argv: list[str],
@@ -162,13 +169,11 @@ class ToolRunner:
         if text:
             run_kwargs |= {"encoding": "utf-8", "errors": "replace"}
         # Default to no stdin so a tool that reads stdin does not block on the
-        # caller's terminal; opt in with stdin=. In binary mode a str is encoded.
+        # caller's terminal; opt in with stdin=.
         if stdin is None:
             run_kwargs["stdin"] = subprocess.DEVNULL
         else:
-            run_kwargs["input"] = (
-                stdin.encode("utf-8") if not text and isinstance(stdin, str) else stdin
-            )
+            run_kwargs["input"] = self._coerce_stdin(stdin, text=text)
         try:
             return run(argv, **run_kwargs)
         except subprocess.TimeoutExpired as exc:

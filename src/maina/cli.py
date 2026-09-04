@@ -479,18 +479,24 @@ class RunArgParser:
         cls, kwargs: dict[str, Any], token: str, *, flag_names: frozenset[str]
     ) -> None:
         """Fold one ``key=value`` / ``key:=value`` / bare-flag token into *kwargs*."""
-        if ":=" in token:
-            key, _, value = token.partition(":=")
+        eq, colon_eq = token.find("="), token.find(":=")
+        if colon_eq != -1 and (eq == -1 or colon_eq < eq):  # key:=value forces a literal string
+            key, value = token[:colon_eq], token[colon_eq + 2 :]
             cls._require_key(token, key)
             cls._assign(kwargs, key, value=value)
             return
-        if "=" in token:
-            key, _, value = token.partition("=")
+        if eq != -1:
+            key, value = token[:eq], token[eq + 1 :]
             cls._require_key(token, key)
             if "." in key:  # arg.subkey=value -> a pairs dict
                 arg, _, sub = key.partition(".")
                 cls._require_key(token, arg)
-                kwargs.setdefault(arg, {})[sub] = value
+                bucket = kwargs.setdefault(arg, {})
+                if not isinstance(bucket, dict):
+                    raise typer.BadParameter(
+                        f"{arg!r} was already given a plain value; use only {arg}.key=value tokens"
+                    )
+                bucket[sub] = value
                 return
             cls._assign(kwargs, key, value=cls._coerce(value) if key in flag_names else value)
             return

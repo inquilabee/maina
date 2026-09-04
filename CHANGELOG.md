@@ -131,6 +131,16 @@
 
 - An asset with an extension maina can't unpack (`.tar.bz2`, `.zst`, `.7z`, ...)
   raises `InstallError` instead of being `chmod +x`'d as-is.
+- A `github` archive with no member named `install.binary` is a hard error
+  (the message lists the members). The old "run the archive's one executable"
+  fallback is now opt-in via `install.allow_any_executable: true` and warns.
+- The `github` / `npm` cache-dir hash folds in the `requires:` runtime pins,
+  so two manifests that share `cli` + `version` but pin different node
+  versions no longer reuse each other's npm build.
+- `run(stdin=)` accepts whichever of `str` / `bytes` matches the run's
+  text/binary mode; a mismatch is coerced, not a raw `AttributeError`.
+- `maina run key=value:=x` — a `:=` after the first `=` is part of the value,
+  not the forced-literal separator.
 - A relative `MAINA_CACHE` / `cache_root` is resolved to an absolute path (a
   relative `argv[0]` broke a run with an explicit `cwd`).
 - A failed `subprocess` start (bad `cwd`, missing exe) raises `ToolExecError`,

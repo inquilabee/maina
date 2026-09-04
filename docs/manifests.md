@@ -163,6 +163,7 @@ install:
 | `sha256` | `github` | Optional platform key to hex digest. A mismatch aborts before `chmod +x`. |
 | `package` | `npm` | npm package name — validated at load (`@scope/name` allowed). Defaults to `cli`. |
 | `allow_scripts` | `npm` | `true` lets `npm install` run the package's lifecycle scripts. Default `false` (`--ignore-scripts`). |
+| `allow_any_executable` | `github` | `true` lets extraction fall back to the archive's single executable member when no member is named `binary`. Default `false` — otherwise a missing named member is a hard error, so maina never runs a binary the manifest did not name. |
 
 `.tar.gz`, `.tar.xz`, `.zip`, `.gz`, `.xz`, and bare-binary assets are all
 handled. Archive members that escape the destination are rejected.

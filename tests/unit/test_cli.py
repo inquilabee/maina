@@ -398,6 +398,18 @@ def test_run_argparser_raw_string_form() -> None:
     assert kwargs["flag"] is True
 
 
+def test_run_argparser_colon_eq_after_eq_is_a_value() -> None:
+    kwargs, _ = RunArgParser.parse(["filter=.x:=1"])
+    assert kwargs == {"filter": ".x:=1"}
+
+
+def test_run_argparser_pairs_then_plain_collision_is_bad_parameter() -> None:
+    import typer
+
+    with pytest.raises(typer.BadParameter, match="already given a plain value"):
+        RunArgParser.parse(["env=oops", "env.K=V"])
+
+
 def test_tool_argv_previews_argv_without_running() -> None:
     argv = Tool("jq").argv(filter=".", compact=True)
     assert argv == ["jq", "-c", "."]

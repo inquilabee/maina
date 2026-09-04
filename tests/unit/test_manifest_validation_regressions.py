@@ -25,6 +25,20 @@ def make_reg(tmp_path: Path, files: dict[str, dict[str, Any]]) -> Registry:
 # --- review D: install identity + manifest validation --------------------------
 
 
+def test_cache_version_covers_requires_for_npm(tmp_path: Path) -> None:
+    from maina.installer import Installer
+
+    base = {"cli": "jscpd", "version": "4.0.5", "install": {"backend": "npm", "package": "jscpd"}}
+    reg = make_reg(
+        tmp_path,
+        {
+            "a.yaml": {**base, "requires": {"node": "18"}},
+            "b.yaml": {**base, "requires": {"node": "22"}},
+        },
+    )
+    assert Installer._cache_version(reg.load("a")) != Installer._cache_version(reg.load("b"))
+
+
 def test_identity_key_covers_binary_and_allow_scripts() -> None:
     base = InstallSpec(backend="github", repo="acme/x", tag="v1", assets={"k": "x.tgz"})
     other_binary = InstallSpec(

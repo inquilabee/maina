@@ -118,15 +118,15 @@ class Installer:
         """Cache dir segment: ``<version>`` or ``<version>-<identity8>``.
 
         github / npm tools include a short hash of repo/tag/asset/sha256/package
-        so two manifests that share cli+version but differ in *what* they fetch
-        do not collide (and a digest pin is not bypassed by a stale cache hit).
+        **and the ``requires:`` runtime pins** (an npm build depends on the node
+        version), so two manifests that share cli+version but differ in *what*
+        they fetch or build do not collide.
         """
         version = manifest.version or "default"
-        return (
-            f"{version}-{manifest.install.identity_key()}"
-            if manifest.install.backend in IDENTITY_BACKENDS
-            else version
-        )
+        if manifest.install.backend not in IDENTITY_BACKENDS:
+            return version
+        pins = tuple(sorted(manifest.requires.runtimes.items()))
+        return f"{version}-{manifest.install.identity_key(extra=(pins,))}"
 
     def resolve(
         self, manifest: Manifest, *, env_allow: Iterable[str] | None = None

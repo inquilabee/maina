@@ -9,6 +9,7 @@ import shutil
 import stat
 import tarfile
 import tempfile
+import warnings
 import zipfile
 from contextlib import suppress
 from pathlib import Path
@@ -67,6 +68,7 @@ class ArchiveFetcher:
         binary: str,
         asset_name: str,
         sha256: str | None = None,
+        allow_any_executable: bool = False,
     ) -> None:
         """Download an asset and extract/copy the binary into dest_dir.
 
@@ -87,6 +89,7 @@ class ArchiveFetcher:
                 dest_dir,
                 binary=binary,
                 asset_name=asset_name,
+                allow_any_executable=allow_any_executable,
             )
 
     @staticmethod
@@ -168,21 +171,22 @@ class ArchiveFetcher:
         *,
         binary: str,
         asset_name: str,
+        allow_any_executable: bool = False,
     ) -> None:
         """Extract or copy a downloaded asset into dest_dir."""
         name = asset_name.lower()
-        if name.endswith((".tar.gz", ".tgz")):
-            self.safe_extract_tar(archive, tmp_path, mode="r:gz")
-            self.find_and_copy_binary(tmp_path, dest_dir, binary)
-            return
-        if name.endswith(".tar.xz"):
-            self.safe_extract_tar(archive, tmp_path, mode="r:xz")
-            self.find_and_copy_binary(tmp_path, dest_dir, binary)
-            return
-        if name.endswith(".zip"):
-            self.safe_extract_zip(archive, tmp_path)
-            self.find_and_copy_binary(tmp_path, dest_dir, binary)
-            return
+        extractors = {
+            (".tar.gz", ".tgz"): lambda: self.safe_extract_tar(archive, tmp_path, mode="r:gz"),
+            (".tar.xz",): lambda: self.safe_extract_tar(archive, tmp_path, mode="r:xz"),
+            (".zip",): lambda: self.safe_extract_zip(archive, tmp_path),
+        }
+        for suffixes, extract in extractors.items():
+            if name.endswith(suffixes):
+                extract()
+                self.find_and_copy_binary(
+                    tmp_path, dest_dir, binary, allow_any_executable=allow_any_executable
+                )
+                return
         self.copy_raw_asset(archive, dest_dir / binary, name=name)
 
     @staticmethod
@@ -303,32 +307,51 @@ class ArchiveFetcher:
             dst.write(chunk)
 
     @classmethod
-    def find_and_copy_binary(cls, tree: Path, dest_dir: Path, binary: str) -> None:
+    def find_and_copy_binary(
+        cls, tree: Path, dest_dir: Path, binary: str, *, allow_any_executable: bool = False
+    ) -> None:
         """Locate binary in an extracted tree and copy it to dest_dir, atomically."""
-        source = cls._locate_binary(tree, binary)
+        source = cls._locate_binary(tree, binary, allow_any_executable=allow_any_executable)
         dest = dest_dir / binary
         tmp = dest.with_name(f".{dest.name}.part")
         shutil.copy2(source, tmp)
         cls.make_executable(tmp)
         tmp.replace(dest)
 
-    @staticmethod
-    def _locate_binary(tree: Path, binary: str) -> Path:
+    @classmethod
+    def _locate_binary(cls, tree: Path, binary: str, *, allow_any_executable: bool = False) -> Path:
         """The file to install as *binary* from an extracted tree.
 
-        With more than one match, pick deterministically: shallowest path first,
-        then lexicographic — not filesystem iteration order.
+        Only a member literally **named** *binary* is used (shallowest path, then
+        lexicographic). If none matches, the extraction fails — unless the
+        manifest opts in with ``install.allow_any_executable: true``, in which
+        case a lone executable member is accepted with a warning. Without the
+        opt-in maina never runs a binary the manifest did not name.
         """
         if by_name := sorted(
             (p for p in tree.rglob(binary) if p.is_file()),
             key=lambda p: (len(p.relative_to(tree).parts), str(p)),
         ):
             return by_name[0]
-        # Single-file fallback only when that file is itself executable —
-        # otherwise an archive could ship one arbitrary file as "the binary".
+        if not allow_any_executable:
+            members = sorted(str(p.relative_to(tree)) for p in tree.rglob("*") if p.is_file())
+            raise InstallError(
+                f"binary {binary!r} not in archive (members: {', '.join(members) or 'none'}); "
+                "set install.allow_any_executable: true to accept a lone executable"
+            )
+        return cls._lone_executable(tree, binary)
+
+    @staticmethod
+    def _lone_executable(tree: Path, binary: str) -> Path:
+        """The single executable member of *tree* (``allow_any_executable`` opt-in)."""
         executable = [p for p in tree.rglob("*") if p.is_file() and p.stat().st_mode & 0o111]
         if len(executable) != 1:
-            raise InstallError(f"binary {binary!r} not found in archive")
+            raise InstallError(f"binary {binary!r} not found and no single executable member")
+        warnings.warn(
+            f"install.allow_any_executable: using {executable[0].relative_to(tree)} as {binary!r}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
         return executable[0]
 
     @staticmethod

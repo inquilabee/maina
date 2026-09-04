@@ -172,13 +172,15 @@ def test_toolrunner_text_false_returns_bytes_and_skips_parser(tmp_path: Path) ->
     assert result.to_dict()["raw"] == "not-json"
 
 
-def test_toolrunner_text_false_encodes_str_stdin(tmp_path: Path) -> None:
+def test_toolrunner_stdin_type_matches_run_mode(tmp_path: Path) -> None:
     root = tmp_path / "reg"
     write_yaml(root / "cat.yaml", {"cli": "cat", "install": {"backend": "path"}})
     registry = Registry(root)
     runner = ToolRunner(registry.load("cat"), installer=path_installer(tmp_path, registry))
-    result = runner.run({}, text=False, stdin="piped text")
-    assert result.raw_bytes == b"piped text"
+    # str stdin under text=False is encoded...
+    assert runner.run({}, text=False, stdin="piped text").raw_bytes == b"piped text"
+    # ...and bytes stdin under text=True is decoded (not a raw AttributeError).
+    assert runner.run({}, stdin=b"piped bytes").raw == "piped bytes"
 
 
 def test_toolrunner_non_numeric_timeout_kwarg_raises_arg_error(tmp_path: Path) -> None:
