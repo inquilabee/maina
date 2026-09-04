@@ -91,6 +91,10 @@
   reports each error without aborting — a catalog lint step.
 - `maina describe <id> [--json]` prints a tool's manifest as data
   (`Tool.describe()`), so a catalog is consumable from the shell.
+- `maina schema` prints a Draft 2020-12 JSON Schema for the manifest,
+  generated from the loader's own key sets (`build_manifest_schema()`, also
+  published at `docs/maina-manifest.schema.json`). Point an editor at it with a
+  `# yaml-language-server: $schema=` header for validation while authoring.
 - `maina run` reaches more of `Tool.run`: `--timeout=<s>` / `--cwd=<dir>`
   options, and `arg.subkey=value` tokens that build a `type: pairs` dict
   (`env.K=V env.A=B`).

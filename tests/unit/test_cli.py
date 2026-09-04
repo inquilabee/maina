@@ -461,6 +461,17 @@ def test_cli_describe_json_and_summary() -> None:
     assert "filter" in summary.stdout
 
 
+def test_cli_schema_emits_valid_json_schema() -> None:
+    import json as _json
+
+    result = runner.invoke(app, ["schema"])
+    assert result.exit_code == 0
+    doc = _json.loads(result.stdout)
+    assert doc["$schema"] == "https://json-schema.org/draft/2020-12/schema"
+    assert "cli" in doc["properties"]
+    assert doc["$defs"]["install"]["properties"]["backend"]["enum"]
+
+
 def test_cli_clean_removes_cache(tmp_path: Any) -> None:
     root = tmp_path / "reg"
     write_yaml(root / "t.yaml", {"cli": "toolx", "install": {"backend": "path"}})

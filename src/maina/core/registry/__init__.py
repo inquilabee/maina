@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from .common import MANIFEST_PREFIX, manifest_error, optional_str, scalar_str, unknown_keys
 from .ids import join_tool_id, normalize_id, yaml_path_to_id
+from .jsonschema import build_manifest_schema
 from .loader import MAP_KEYS, Registry
 from .requires import RequiresSpec
 from .specs import (
@@ -33,6 +34,7 @@ __all__ = [
     "OutputSpec",
     "Registry",
     "RequiresSpec",
+    "build_manifest_schema",
     "join_tool_id",
     "manifest_error",
     "normalize_id",

@@ -107,6 +107,20 @@ fields.
 maina describe jq --json | jq '.args'
 ```
 
+## `maina schema`
+
+Print the manifest JSON Schema (Draft 2020-12), generated from the loader's own
+key sets. Save it next to a catalog and point an editor at it:
+
+```bash
+maina schema > maina-manifest.schema.json
+# then, as the first line of a manifest:
+# yaml-language-server: $schema=./maina-manifest.schema.json
+```
+
+It catches unknown keys, wrong scalar types, and bad enums before `Tool(id)`
+runs. Cross-field and backend-specific rules stay with the loader.
+
 ## `maina validate [TOOLS...]`
 
 Load every manifest under the registry roots (or just the named ids) and

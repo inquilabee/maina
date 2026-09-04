@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/inquilabee/maina/main/docs/maina-manifest.schema.json",
+  "title": "maina tool manifest",
+  "description": "Shape of a maina YAML manifest. Cross-field and backend-specific rules are still enforced by the loader at Tool() time.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "abstract": {
+      "type": "boolean"
+    },
+    "args": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/arg"
+      }
+    },
+    "cli": {
+      "type": "string",
+      "minLength": 1
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "extends": {
+      "type": "string"
+    },
+    "install": {
+      "$ref": "#/$defs/install"
+    },
+    "name": {
+      "type": "string"
+    },
+    "output": {
+      "$ref": "#/$defs/output"
+    },
+    "parser": {
+      "type": "string",
+      "minLength": 1
+    },
+    "platforms": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "linux",
+          "macos",
+          "windows"
+        ]
+      }
+    },
+    "requires": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "schema": {
+      "const": 1
+    },
+    "separator": {
+      "type": "string",
+      "minLength": 1
+    },
+    "subcommand": {
+      "type": "string"
+    },
+    "timeout": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "arg": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default": {},
+        "description": {
+          "type": "string"
+        },
+        "flag": {
+          "type": "string",
+          "minLength": 1
+        },
+        "help": {
+          "type": "string"
+        },
+        "join": {
+          "enum": [
+            "csv"
+          ]
+        },
+        "joiner": {
+          "type": "string"
+        },
+        "order": {
+          "type": "integer"
+        },
+        "positional": {
+          "type": "boolean"
+        },
+        "repeat": {
+          "type": "boolean"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "type": {
+          "enum": [
+            "flag",
+            "pairs",
+            "path",
+            "string"
+          ]
+        }
+      }
+    },
+    "install": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allow_any_executable": {
+          "type": "boolean"
+        },
+        "allow_scripts": {
+          "type": "boolean"
+        },
+        "assets": {
+          "type": "object",
+          "propertyNames": {
+            "enum": [
+              "linux-arm64",
+              "linux-x86_64",
+              "macos-arm64",
+              "macos-x86_64",
+              "windows-arm64",
+              "windows-x86_64"
+            ]
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "backend": {
+          "enum": [
+            "github",
+            "npm",
+            "path"
+          ]
+        },
+        "binary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "package": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "object",
+          "propertyNames": {
+            "enum": [
+              "linux-arm64",
+              "linux-x86_64",
+              "macos-arm64",
+              "macos-x86_64",
+              "windows-arm64",
+              "windows-x86_64"
+            ]
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{64}$"
+          }
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "type": "string"
+        },
+        "from_file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "success_codes": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  }
+}

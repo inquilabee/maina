@@ -5,6 +5,22 @@ chain, and produces a `Manifest` ready to install and run. Unknown keys inside
 `args`, `install`, `output`, and `requires` are rejected; the loader fails
 closed.
 
+## JSON Schema
+
+`maina schema` prints a Draft 2020-12 JSON Schema for the manifest shape,
+generated from the same key sets the loader validates against. The published
+copy is [`maina-manifest.schema.json`](maina-manifest.schema.json). Point an
+editor at it with a header line:
+
+```yaml
+# yaml-language-server: $schema=https://inquilabee.github.io/maina/maina-manifest.schema.json
+```
+
+It is a *shape* check — unknown keys, wrong scalar types, bad enums. Cross-field
+rules (`separator` vs `args.order`, a `from_file` template var that must also be
+an arg, which `install` keys a backend needs) are still only enforced when
+`Tool(id)` loads the manifest.
+
 ## File layout and ids
 
 - `registry/jq.yaml` -> id `jq`

@@ -179,6 +179,9 @@ maina                      # Typer package help
 maina help                 # same as bare `maina`
 maina list                 # concrete (callable) tool ids
 maina list kubectl         # children of a parent id (abstract parents ok)
+maina validate             # lint every manifest under the registry roots
+maina describe jq --json   # a tool's manifest as JSON
+maina schema               # the manifest JSON Schema (Draft 2020-12)
 maina run                  # Typer run help
 maina run eslint --help    # registry help for that tool
 maina run shellcheck --help   # that tool's registry help (also bare: run shellcheck)

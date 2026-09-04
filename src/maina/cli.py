@@ -24,6 +24,7 @@ from maina.core.errors import (
     ManifestError,
 )
 from maina.core.platform import KNOWN_PLATFORM_KEYS
+from maina.core.registry import build_manifest_schema
 from maina.runtime import runtime
 from maina.tool import Tool
 
@@ -174,6 +175,17 @@ def describe(
         slot = arg["flag"] or ("positional" if arg["positional"] else "?")
         req = " required" if arg["required"] else ""
         typer.echo(f"  {name}: {arg['type']} {slot}{req}")
+
+
+@app.command()
+def schema() -> None:
+    """Print the manifest JSON Schema (Draft 2020-12).
+
+    Pipe it to a file and point an editor at it with a header line::
+
+        # yaml-language-server: $schema=./maina-manifest.schema.json
+    """
+    typer.echo(json.dumps(build_manifest_schema(), indent=2))
 
 
 @app.command()
