@@ -218,6 +218,25 @@ class Registry:
         raise ManifestError(f"no registry entry for {tid!r} under {roots}")
 
     @staticmethod
+    def _validate_parser_ref(parser: str) -> None:
+        """A ``parsers/`` ref is a plain relative filename — no ``..``, no abs path.
+
+        The resolved file is ``exec``'d, so a manifest must not be able to point
+        it outside the family ``parsers/`` directory.
+        """
+        parts = parser.replace("\\", "/").split("/")
+        if (
+            parser != parser.strip()
+            or "\x00" in parser
+            or parser.startswith("/")
+            or ".." in parts
+            or Path(parser).is_absolute()
+        ):
+            raise ManifestError(
+                f"parser {parser!r} must be a plain relative filename under parsers/"
+            )
+
+    @staticmethod
     def _resolve_parser_path(
         leaf_path: Path,
         leaf_root: Path,
@@ -228,8 +247,11 @@ class Registry:
             return None
         if not parser.endswith(".py"):
             return None
+        Registry._validate_parser_ref(parser)
         family_parsers = registry_ids.family_parsers_dir(leaf_path, leaf_root)
         candidate = family_parsers / parser
+        if not candidate.resolve().is_relative_to(family_parsers.resolve()):
+            raise ManifestError(f"parser {parser!r} escapes {family_parsers}")
         if candidate.is_file():
             return candidate
         raise ManifestError(f"parser {parser!r} not found under {family_parsers}")
