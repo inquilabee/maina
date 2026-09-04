@@ -276,6 +276,27 @@ def test_toolrunner_env_allow_trims_environment(
     assert "SUPER_SECRET" in seen["env"]
 
 
+def test_toolrunner_per_call_env_overlay(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "echo.yaml",
+        {"cli": "echo", "install": {"backend": "path"}, "env": {"WINS": "manifest"}},
+    )
+    registry = Registry(root)
+    seen: dict[str, Any] = {}
+
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        seen["env"] = kwargs.get("env")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    runner = ToolRunner(
+        registry.load("echo"), installer=path_installer(tmp_path, registry), executor=fake_run
+    )
+    runner.run({}, env_allow=[], env={"CALL_VAR": "1", "WINS": "call"})
+    assert seen["env"]["CALL_VAR"] == "1"
+    assert seen["env"]["WINS"] == "manifest"  # manifest env: still wins a collision
+
+
 def test_toolrunner_manifest_env_survives_env_allow(tmp_path: Path) -> None:
     root = tmp_path / "reg"
     write_yaml(

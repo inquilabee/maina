@@ -50,6 +50,7 @@ class ToolRunner:
         cwd: str | None = None,
         timeout: float | None = None,
         env_allow: Iterable[str] | None = None,
+        env: dict[str, str] | None = None,
         stdin: str | bytes | None = None,
         text: bool = True,
     ) -> ToolResult:
@@ -59,11 +60,12 @@ class ToolRunner:
         the tool subprocess. When ``None`` (default) the full composed environment
         is forwarded; when set, only :data:`ESSENTIAL_ENV` plus the named keys are
         passed, so secrets in ``os.environ`` stay out of third-party binaries.
-        The manifest's own ``env`` block is layered on afterwards and always
-        forwarded. ``stdin`` is written to the tool's stdin. With ``text=False``
-        ``result.raw`` / ``result.stderr`` are ``bytes`` and neither the parser
-        nor ``output.from_file`` runs — for a tool that emits an archive, image,
-        or other binary on stdout.
+        ``env`` overlays extra ``NAME: value`` pairs for this call (after the
+        trim, before the manifest's own ``env`` block); the manifest block still
+        wins a key collision. ``stdin`` is written to the tool's stdin. With
+        ``text=False`` ``result.raw`` / ``result.stderr`` are ``bytes`` and
+        neither the parser nor ``output.from_file`` runs — for a tool that emits
+        an archive, image, or other binary on stdout.
         """
         # Build argv first so a bad kwarg raises ArgError *before* any install
         # work (a typo'd argument should not pay for a download).
@@ -74,17 +76,18 @@ class ToolRunner:
             extra=extra,
             separator=self.manifest.separator,
         )
-        exe, env = self.installer.resolve(self.manifest, env_allow=env_allow)
+        exe, composed_env = self.installer.resolve(self.manifest, env_allow=env_allow)
         # resolve() already trimmed the base env for install subprocesses; trim
-        # again here (backends may have re-read os.environ) and overlay the
-        # manifest's own vars (empty dict when the manifest declares none).
-        env = {**filter_env(env, env_allow), **self.manifest.env}
+        # again here (backends may have re-read os.environ), then overlay the
+        # caller's per-run ``env`` and finally the manifest's own vars (which
+        # win a collision, and are an empty dict when the manifest declares none).
+        proc_env = {**filter_env(composed_env, env_allow), **(env or {}), **self.manifest.env}
         argv[0] = exe
         resolved_timeout = self._resolve_timeout(timeout)
         started = time.perf_counter()
         started_wall = time.time()
         proc = self._execute(
-            argv, env=env, cwd=cwd, timeout=resolved_timeout, stdin=stdin, text=text
+            argv, env=proc_env, cwd=cwd, timeout=resolved_timeout, stdin=stdin, text=text
         )
         duration_ms = (time.perf_counter() - started) * 1000
         result = self._build_result(proc, argv=argv, cwd=cwd, exe=exe, duration_ms=duration_ms)

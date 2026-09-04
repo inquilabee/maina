@@ -48,10 +48,12 @@ The process-wide session is not thread-safe. For concurrent or nested use pass a
 explicit `Tool(..., runtime=rt)`, or scope a swap to a block with
 `with maina.isolated(rt): ...` (restores the prior Runtime on exit).
 
-`Tool.run` / the call form take `timeout=<seconds>` (bounds the tool subprocess)
-and `env_allow=[...]`. With `env_allow` set, only a fixed essential set plus the
-named keys reach the tool subprocess (and the install-phase subprocesses),
-keeping other `os.environ` values out of third-party binaries. The essential set
+`Tool.run` / the call form take `timeout=<seconds>` (bounds the tool subprocess),
+`env_allow=[...]`, and `env={...}` (extra per-call variables, layered after the
+trim; the manifest's own `env:` block still wins a collision). With `env_allow`
+set, only a fixed essential set plus the named keys reach the tool subprocess
+(and the install-phase subprocesses), keeping other `os.environ` values out of
+third-party binaries. The essential set
 is `PATH`, `HOME`, locale, temp dirs, the platform's shared-library and
 CA-bundle variables, `HTTP(S)_PROXY` / `NO_PROXY`, and `MISE_DATA_DIR` — the
 exact list is `ESSENTIAL_ENV` in `src/maina/core/envfilter.py`. A tool that overruns raises `ToolTimeoutError` (a

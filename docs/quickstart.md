@@ -66,12 +66,16 @@ Tool("rg").run(
     path=["src"],
     timeout=30,                 # seconds; ToolTimeoutError on overrun
     env_allow=["RIPGREP_CONFIG_PATH"],  # trim env; secrets stay out of the tool
+    env={"RIPGREP_CONFIG_PATH": "/repo/.rgrc"},  # extra per-call variables
     cwd="/repo",
+    text=False,                 # bytes in result.raw_bytes; skips the parser
 )
 ```
 
 With `env_allow` set, only essential variables (`PATH`, locale, temp,
-`MISE_DATA_DIR`) plus the names you list are forwarded to the subprocess.
+shared-library / CA-bundle / proxy vars, `MISE_DATA_DIR`) plus the names you
+list are forwarded to the subprocess. `env={...}` layers on top of that; the
+manifest's own `env:` block still wins a key collision.
 
 ## The CLI
 
