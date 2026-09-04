@@ -387,6 +387,13 @@ def test_cli_run_dry_run_prints_argv_and_skips_execution() -> None:
     assert dry.stdout.strip() == "jq -r .name"
 
 
+def test_cli_run_maina_flag_before_tool_id() -> None:
+    # `--dry-run` written before the id must not be parsed as the id.
+    dry = runner.invoke(app, ["run", "--dry-run", "jq", "filter=.name", "raw"])
+    assert dry.exit_code == 0, dry.stdout + dry.stderr
+    assert dry.stdout.strip() == "jq -r .name"
+
+
 def test_cli_run_surfaces_parse_error(tmp_path: Any) -> None:
     root = tmp_path / "reg"
     write_yaml(

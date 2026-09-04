@@ -65,12 +65,18 @@ INSTALL_KEYS = frozenset(
 )
 
 
+# A safe path segment: no separators / NUL, no leading "." (covers "." / ".."),
+# no leading "-" (would be read as a flag when used as argv[0] or a `which` arg),
+# and no shell-glob metacharacters (would match arbitrary files under rglob).
+UNSAFE_SEGMENT_CHARS = "/\\\x00*?[]"
+
+
 def is_unsafe_segment(text: str) -> bool:
     return (
         not text
         or text != text.strip()
-        or text.startswith(".")  # covers "." and ".."
-        or any(char in text for char in "/\\\x00")
+        or text[0] in ".-"
+        or any(char in text for char in UNSAFE_SEGMENT_CHARS)
     )
 
 

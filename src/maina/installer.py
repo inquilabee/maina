@@ -136,6 +136,11 @@ class Installer:
         # a typo'd ``backend:`` must not cost a mise install first.
         backend = self._backends.get(backend_name)
         if backend is None:
+            if not self._backends:
+                raise InstallError(
+                    "no install backends registered — build the Runtime with "
+                    "Runtime.preferred(), or pass installers=[...] to register()"
+                )
             raise InstallError(f"unknown install backend: {backend_name!r}")
         version = self._cache_version(manifest)
         # Trim os.environ first, then compose: the language provider runs its
@@ -149,6 +154,10 @@ class Installer:
         # but never lock or write outside the cache root.
         if not lock_dir.resolve().is_relative_to(self.cache_root.resolve()):
             raise InstallError(f"{manifest.id}: install path escapes the cache root")
+        # ``path`` resolves an on-PATH binary and writes nothing — skip the lock
+        # dir (and its .maina-install.lock clutter).
+        if backend_name == "path":
+            return backend.resolve(manifest, version=version, env=env, ctx=ctx)
         with self.install_dir_lock(lock_dir):
             return backend.resolve(manifest, version=version, env=env, ctx=ctx)
 
@@ -271,9 +280,11 @@ class Installer:
         """Prepare installs for given ids or all non-abstract manifests.
 
         When *tool_ids* is omitted, abstract surfaces and tools unsupported on
-        this host are skipped. When the caller names ids explicitly, abstract
-        (or unknown) ids raise :class:`InstallError` and an unsupported host
-        raises :class:`UnsupportedPlatformError` instead of a silent no-op.
+        this host are skipped. When the caller names ids explicitly, an abstract
+        id raises :class:`InstallError`, an unknown id raises
+        :class:`~maina.core.errors.ManifestError` (from the registry load), and
+        an unsupported host raises :class:`UnsupportedPlatformError` — never a
+        silent no-op.
         """
         prepared: list[str] = []
         for tid, manifest in self._selected_manifests(tool_ids):

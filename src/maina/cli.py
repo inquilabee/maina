@@ -177,14 +177,14 @@ def run(
         raise typer.Exit(0)
     # Only the head (before `--`) is maina's; `--json` after `--` is the tool's.
     head, tail = split_at_dashdash(tokens)
-    maina_flags = {t for t in head if t in {"--json", "--dry-run"}}
+    maina_flags = {t for t in head if t in RunInvocation.MAINA_FLAGS}
     head = [t for t in head if t not in maina_flags]
     tokens = head if tail is None else [*head, "--", *tail]
     dispatch_run(
         resolved_id,
         tokens,
-        as_json="--json" in maina_flags,
-        dry_run="--dry-run" in maina_flags,
+        as_json=RunInvocation.JSON_FLAG in maina_flags,
+        dry_run=RunInvocation.DRY_RUN_FLAG in maina_flags,
     )
 
 
@@ -197,6 +197,8 @@ def dispatch_run(resolved_id: str, tokens: list[str], *, as_json: bool, dry_run:
     emit_result(result, as_json=as_json)
     if result.parse_error:
         echo_stderr(f"parse error: {result.parse_error}")
+    elif as_json and result.parsed is None:
+        echo_stderr("note: --json output is null (no parser: configured, or it returned None)")
     if not result.ok:
         echo_stderr(result.stderr)
         # Docs contract: exit 1 = tool ran and failed; 2 = bad usage / unknown id.
@@ -293,10 +295,36 @@ class RunInvocation:
         raw_after = RAW_ARGV.after_command("run")
         return cls.parse_raw(raw_after) if raw_after is not None else cls.parse(tool_id, ctx_args)
 
+    JSON_FLAG = "--json"
+    DRY_RUN_FLAG = "--dry-run"
+    MAINA_FLAGS = frozenset({JSON_FLAG, DRY_RUN_FLAG})
+
+    @classmethod
+    def _lift_lead_flag(
+        cls, tool_id: str | None, tokens: list[str]
+    ) -> tuple[str | None, list[str]]:
+        """`maina run --json <id> …` — move a leading maina flag past the id."""
+        return (
+            (tokens[0], [str(tool_id), *tokens[1:]])
+            if tool_id in cls.MAINA_FLAGS and tokens
+            else (tool_id, tokens)
+        )
+
     @classmethod
     def parse_raw(cls, after_run: list[str]) -> tuple[str | None, list[str], bool]:
-        """Parse tokens captured after the ``run`` command name."""
-        return cls.parse(after_run[0], after_run[1:]) if after_run else (None, [], False)
+        """Parse tokens captured after the ``run`` command name.
+
+        A maina flag (``--json`` / ``--dry-run``) written *before* the tool id
+        is relocated into the token stream so it is not read as the id.
+        """
+        split = next(
+            (i for i, tok in enumerate(after_run) if tok not in cls.MAINA_FLAGS), len(after_run)
+        )
+        lead, rest = after_run[:split], after_run[split:]
+        if not rest:
+            return None, [], False
+        tid, tokens, wants_help = cls.parse(rest[0], rest[1:])
+        return tid, [*lead, *tokens], wants_help
 
     @classmethod
     def parse(
@@ -307,6 +335,7 @@ class RunInvocation:
         """Return ``(tool_id, tokens, wants_help)`` with help flags stripped from the head."""
         if tool_id in cls.HELP_FLAGS:
             tool_id = None
+        tool_id, tokens = cls._lift_lead_flag(tool_id, tokens)
         head, tail = split_at_dashdash(tokens)
         if tail is not None:
             wants_help = any(t in cls.HELP_FLAGS for t in head)
