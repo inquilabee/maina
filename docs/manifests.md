@@ -23,8 +23,8 @@ closed, it is not silently ignored).
 | Key | Type | Notes |
 | --- | --- | --- |
 | `schema` | int | Manifest schema version. Optional; must be `1`. |
-| `cli` | string | Required for a concrete tool. The executable name (a single safe path segment). |
-| `version` | string | Drives the cache directory and the default `github` tag (a single safe path segment). |
+| `cli` | string | Required for a concrete tool. The executable name (a single safe path segment). **Quote it** — a bare `bool`/`float` (`cli: yes`, `version: 3.10`) is rejected at load. |
+| `version` | string | Drives the cache directory and the default `github` tag (a single safe path segment). Quote it. |
 | `subcommand` | string | A fixed segment inserted after `cli`. Collected down an `extends` chain. |
 | `extends` | string | Parent registry id. See [inheritance](#inheritance). |
 | `abstract` | bool | `true` marks an inheritance-only surface. **Not inherited** — a child is abstract only if it says so itself. |

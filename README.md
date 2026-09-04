@@ -79,7 +79,11 @@ root — put shared defaults (e.g. org-wide runtime pins) there. maina ships no
 - `requires: null` on a child clears every inherited pin;
   `requires: { node: null }` drops just one
 
-Quote version pins in YAML (`python: "3.10"`); unquoted floats are rejected.
+**Quote every string-valued field** in YAML — `version`, `cli`, `install.tag`,
+`install.binary`, `install.assets.*`, and `env:` values. YAML 1.1 turns `3.10`
+into the float `3.1` and `yes` / `on` into booleans; maina rejects a bare
+`bool` / `float` in these fields at load rather than downloading the wrong
+release.
 
 A manifest may declare `platforms: [linux, macos]`. On any other host `resolve`
 raises `UnsupportedPlatformError` up front, and `maina prepare` (no ids) skips

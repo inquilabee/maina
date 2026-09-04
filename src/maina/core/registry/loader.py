@@ -12,20 +12,18 @@ import yaml
 from maina.core.errors import ManifestError
 
 from . import ids as registry_ids
+from .common import MANIFEST_PREFIX, manifest_error, scalar_str, unknown_keys
+from .requires import RequiresSpec
 from .specs import (
     BASE_TOOL_ID,
     CURRENT_SCHEMA,
     IGNORED_MANIFEST_KEYS,
-    MANIFEST_PREFIX,
     TOP_LEVEL_KEYS,
     VALID_PLATFORMS,
     InstallSpec,
     Manifest,
     OutputSpec,
-    RequiresSpec,
-    manifest_error,
     parse_args_map,
-    unknown_keys,
 )
 
 if TYPE_CHECKING:
@@ -139,6 +137,23 @@ class Registry:
         cls._validate_timeout(tid, merged.get("timeout"))
         cls._validate_platforms(tid, merged.get("platforms"))
         cls._validate_separator_and_from_file(tid, merged)
+        cls._validate_scalar_fields(tid, merged)
+
+    @staticmethod
+    def _validate_scalar_fields(tid: str, merged: dict[str, Any]) -> None:
+        """Force the ``bool`` / ``float`` rejection for lazily-read scalar fields.
+
+        ``cli`` / ``version`` and every ``env`` value are read through properties;
+        validate them here so an unquoted ``version: 3.10`` fails at load, not at
+        the first download.
+        """
+        env = merged.get("env")
+        scalars = {
+            **{k: merged[k] for k in ("cli", "version") if merged.get(k) is not None},
+            **{f"env.{k}": v for k, v in (env.items() if isinstance(env, dict) else ())},
+        }
+        for field_name, value in scalars.items():
+            scalar_str(value, field_name=field_name, tool_id=tid)
 
     @staticmethod
     def _validate_separator_and_from_file(tid: str, merged: dict[str, Any]) -> None:

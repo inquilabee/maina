@@ -224,6 +224,24 @@ def test_platforms_scalar_rejected_at_load(tmp_path: Path) -> None:
         Registry(root).load("t")
 
 
+@pytest.mark.parametrize(
+    ("field", "yaml"),
+    [
+        ("version", "cli: t\nversion: 3.10\ninstall: {backend: path}\n"),
+        ("cli", "cli: yes\ninstall: {backend: path}\n"),
+        ("install.tag", "cli: t\ninstall: {backend: github, repo: a/b, tag: on}\n"),
+        ("env.DEBUG", "cli: t\ninstall: {backend: path}\nenv: {DEBUG: yes}\n"),
+    ],
+)
+def test_unquoted_yaml_scalar_rejected(tmp_path: Path, field: str, yaml: str) -> None:
+    del field
+    root = tmp_path / "reg"
+    root.mkdir()
+    (root / "t.yaml").write_text(yaml, encoding="utf-8")
+    with pytest.raises(ManifestError, match="quoted string"):
+        Registry(root).load("t")
+
+
 @pytest.mark.parametrize("bad", ["-rf", "*", "a?b", "x[0]"])
 def test_cli_name_rejects_flag_and_glob_chars(tmp_path: Path, bad: str) -> None:
     root = tmp_path / "reg"
