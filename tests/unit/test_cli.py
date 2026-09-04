@@ -70,7 +70,8 @@ def test_help_returns_str(capsys: pytest.CaptureFixture[str]) -> None:
 
 def test_run_arg_parser_kwargs_and_extra() -> None:
     kwargs, extra = RunArgParser.parse(
-        ["filter=.", "null_input", "path=a", "path=b", "--", "-c", "--arg", "x", "y"]
+        ["filter=.", "null_input", "path=a", "path=b", "--", "-c", "--arg", "x", "y"],
+        flag_names=frozenset({"null_input"}),
     )
     assert kwargs == {
         "filter": ".",
@@ -78,6 +79,13 @@ def test_run_arg_parser_kwargs_and_extra() -> None:
         "path": ["a", "b"],
     }
     assert extra == ["-c", "--arg", "x", "y"]
+
+
+def test_run_arg_parser_bare_non_flag_token_rejected() -> None:
+    import typer
+
+    with pytest.raises(typer.BadParameter, match="not a flag"):
+        RunArgParser.parse(["verbose"], flag_names=frozenset())
 
 
 def test_run_arg_parser_bool_coercion() -> None:

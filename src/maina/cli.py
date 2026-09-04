@@ -346,19 +346,28 @@ class RunArgParser:
         kw_tokens, extra = split_at_dashdash(tokens)
         kwargs: dict[str, Any] = {}
         for token in kw_tokens:
-            if not token:
-                continue
-            if ":=" in token:
-                key, _, value = token.partition(":=")
-                cls._require_key(token, key)
-                cls._assign(kwargs, key, value=value)
-            elif "=" in token:
-                key, _, value = token.partition("=")
-                cls._require_key(token, key)
-                cls._assign(kwargs, key, value=cls._coerce(value) if key in flag_names else value)
-            else:
-                cls._assign(kwargs, token, value=True)
+            if token:
+                cls._parse_token(kwargs, token, flag_names=flag_names)
         return kwargs, extra
+
+    @classmethod
+    def _parse_token(
+        cls, kwargs: dict[str, Any], token: str, *, flag_names: frozenset[str]
+    ) -> None:
+        """Fold one ``key=value`` / ``key:=value`` / bare-flag token into *kwargs*."""
+        if ":=" in token:
+            key, _, value = token.partition(":=")
+            cls._require_key(token, key)
+            cls._assign(kwargs, key, value=value)
+            return
+        if "=" in token:
+            key, _, value = token.partition("=")
+            cls._require_key(token, key)
+            cls._assign(kwargs, key, value=cls._coerce(value) if key in flag_names else value)
+            return
+        if token not in flag_names:
+            raise typer.BadParameter(f"{token!r} is not a flag; pass it as {token}=<value>")
+        cls._assign(kwargs, token, value=True)
 
     @staticmethod
     def _require_key(token: str, key: str) -> None:

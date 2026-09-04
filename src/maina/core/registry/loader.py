@@ -282,13 +282,21 @@ class Registry:
             return candidate
         raise ManifestError(f"parser {parser!r} not found under {family_parsers}")
 
-    @staticmethod
-    def _load_raw_yaml(path: Path) -> dict[str, Any]:
+    # A manifest is a small hand-written config; a wall of YAML anchors is either
+    # a mistake or an alias-expansion ("billion laughs") attempt.
+    MAX_YAML_ANCHORS = 64
+
+    @classmethod
+    def _load_raw_yaml(cls, path: Path) -> dict[str, Any]:
         """Load a single YAML manifest file."""
         try:
-            raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+            text = path.read_text(encoding="utf-8")
         except OSError as exc:
             raise ManifestError(f"cannot read {path}: {exc}") from exc
+        if text.count("&") > cls.MAX_YAML_ANCHORS:
+            raise ManifestError(f"{MANIFEST_PREFIX}{path} has too many YAML anchors")
+        try:
+            raw = yaml.safe_load(text)
         except yaml.YAMLError as exc:
             raise ManifestError(f"invalid YAML in {path}: {exc}") from exc
         if raw is None:

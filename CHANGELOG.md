@@ -45,6 +45,11 @@
   no longer pays for a download first.
 - `github` archive binary lookup is deterministic (shallowest path, then
   lexicographic) instead of filesystem-iteration order.
+- A manifest with an implausible number of YAML anchors is rejected before
+  parsing (alias-expansion / "billion laughs" guard).
+- `maina run <id> <bare-token>` where the token is not a `type: flag` arg is a
+  usage error (`… is not a flag; pass it as token=<value>`) instead of silently
+  sending `--token True`.
 
 ### CLI
 

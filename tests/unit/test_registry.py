@@ -145,6 +145,17 @@ def test_parser_ref_outside_parsers_dir_rejected(tmp_path: Path, evil: str) -> N
         Registry(root).load("t")
 
 
+def test_yaml_anchor_flood_rejected(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    root.mkdir()
+    anchors = ",".join(f"&a{i} 1" for i in range(200))
+    (root / "t.yaml").write_text(
+        f"cli: t\ninstall: {{backend: path}}\nx: [{anchors}]\n", encoding="utf-8"
+    )
+    with pytest.raises(ManifestError, match="anchors"):
+        Registry(root).load("t")
+
+
 def test_base_presence_is_memoized_and_reset_on_append(tmp_path: Path) -> None:
     a = tmp_path / "a"
     write_yaml(a / "leaf.yaml", {"cli": "leaf", "install": {"backend": "path"}})
