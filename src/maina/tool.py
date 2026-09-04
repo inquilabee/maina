@@ -92,6 +92,9 @@ class Tool:
             "parser": m.parser,
             "separator": m.separator,
             "platforms": list(m.platforms),
+            "timeout": m.data.get("timeout"),
+            "requires": dict(m.requires.runtimes),
+            "env": dict(m.env),
             "args": {name: self._describe_arg(spec) for name, spec in m.args.items()},
             "install": {
                 "backend": m.install.backend,

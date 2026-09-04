@@ -383,6 +383,14 @@ class Manifest:
         }
 
 
+# Names ``Tool.run`` / ``__call__`` bind as their own parameters — a manifest
+# arg with one of these names is still valid, but the caller must pass it via
+# ``run(args={"env": ...})`` rather than ``run(env=...)``.
+RESERVED_RUN_PARAMS = frozenset(
+    {"extra", "parser", "cwd", "timeout", "env_allow", "env", "stdin", "text", "args"}
+)
+
+
 def parse_args_map(raw: Any, *, tool_id: str) -> dict[str, ArgSpec]:
     """Parse the args map into typed ArgSpec entries.
 

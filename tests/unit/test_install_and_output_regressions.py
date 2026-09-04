@@ -456,6 +456,9 @@ def test_tool_describe_is_json_safe(tmp_path: Path) -> None:
         {
             "cli": "echo",
             "version": "1.0",
+            "timeout": 30,
+            "requires": {"node": "22"},
+            "env": {"DEMO": "1"},
             "install": {"backend": "path"},
             "args": {
                 "msg": {"positional": True, "type": "string", "required": True},
@@ -470,6 +473,9 @@ def test_tool_describe_is_json_safe(tmp_path: Path) -> None:
     json.dumps(desc)  # must not raise
     assert desc["id"] == "demo"
     assert desc["args"]["msg"]["required"] is True
+    assert desc["timeout"] == 30
+    assert desc["requires"] == {"node": "22"}
+    assert desc["env"] == {"DEMO": "1"}
     assert set(tool.args) == {"msg", "loud"}
     assert tool.manifest.cli == "echo"
 

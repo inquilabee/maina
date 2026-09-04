@@ -90,9 +90,10 @@ Calling rules:
   (`--flag a --flag b`) unless `repeat: false`. `joiner` applies to each token
   (`--flag=a --flag=b`).
 - Passing an argument name not in the schema raises `ArgError`.
-- An `args` entry whose name collides with a `run()` parameter (`parser`,
-  `timeout`, `cwd`, `stdin`, `env_allow`, `extra`, `args`) is still valid —
-  pass it via `run(args={"timeout": "30"})`.
+- An `args` entry whose name collides with a `run()` parameter — `parser`,
+  `timeout`, `cwd`, `stdin`, `env_allow`, `env`, `text`, `extra`, `args` — is
+  still valid, but pass it via `run(args={"env": "browser"})`, not
+  `run(env="browser")` (which sets the subprocess environment instead).
 - Child `args` merge onto the parent per field: overriding `default:` keeps the
   inherited `flag` / `type` / `required`.
 - By default all options are emitted before all positionals (each in
