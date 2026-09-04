@@ -141,6 +141,12 @@
   text/binary mode; a mismatch is coerced, not a raw `AttributeError`.
 - `maina run key=value:=x` — a `:=` after the first `=` is part of the value,
   not the forced-literal separator.
+- `env_allow` is materialised once per `run()` — a one-shot generator argument
+  no longer applies to the install subprocesses but not the tool.
+- `required: true` is not satisfied by `None` — from `run(x=None)` or
+  `default: null` — it still raises `ArgError`.
+- `install.assets` / `install.sha256` deep-merge across `extends` per platform
+  key (a child overriding one platform no longer drops the others).
 - A relative `MAINA_CACHE` / `cache_root` is resolved to an absolute path (a
   relative `argv[0]` broke a run with an explicit `cwd`).
 - A failed `subprocess` start (bad `cwd`, missing exe) raises `ToolExecError`,

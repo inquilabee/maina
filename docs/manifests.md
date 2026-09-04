@@ -201,9 +201,11 @@ safe. Without a `base.yaml`, a `path` or `github` tool never touches mise; the
 up the `base` **from its own root** when that root has a `base.yaml`, so the
 effective chain is `base -> ... -> tool`. Merge rules:
 
-- `args`, `install`, `env`, `output`, `requires` deep-merge (child wins per
-  key). In `args`, `<name>: null` drops an inherited arg entirely (as
-  `requires: { node: null }` drops a pin).
+- `args`, `install`, `env`, `output`, `requires` merge per key (child wins). In
+  `args`, `<name>: null` drops an inherited arg entirely (as
+  `requires: { node: null }` drops a pin). `install` merges one level, but its
+  `assets` and `sha256` sub-maps merge per platform key — a child overriding one
+  platform's asset keeps the parent's other platforms.
 - Every other key is replaced by the child's value.
 - `subcommand` segments accumulate down the chain into `Manifest.subcommands`.
 - A cycle in `extends` raises `ManifestError`.

@@ -287,6 +287,29 @@ def test_toolrunner_env_allow_trims_environment(
     assert "SUPER_SECRET" in seen["env"]
 
 
+def test_toolrunner_env_allow_generator_is_not_exhausted(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "echo.yaml", {"cli": "echo", "install": {"backend": "path"}})
+    registry = Registry(root)
+    seen: dict[str, Any] = {}
+
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        seen["env"] = kwargs.get("env")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    import os as _os
+
+    _os.environ["KEEP_ME_TR"] = "yes"
+    try:
+        runner = ToolRunner(
+            registry.load("echo"), installer=path_installer(tmp_path, registry), executor=fake_run
+        )
+        runner.run({}, env_allow=(k for k in ["KEEP_ME_TR"]))  # a one-shot generator
+        assert seen["env"].get("KEEP_ME_TR") == "yes"  # reached the tool despite double use
+    finally:
+        _os.environ.pop("KEEP_ME_TR", None)
+
+
 def test_toolrunner_per_call_env_overlay(tmp_path: Path) -> None:
     root = tmp_path / "reg"
     write_yaml(

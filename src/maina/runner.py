@@ -67,6 +67,9 @@ class ToolRunner:
         neither the parser nor ``output.from_file`` runs — for a tool that emits
         an archive, image, or other binary on stdout.
         """
+        # Materialise env_allow once — it is consumed twice (install-phase and
+        # tool subprocess), so a one-shot generator would apply differently.
+        env_allow = None if env_allow is None else frozenset(env_allow)
         # Build argv first so a bad kwarg raises ArgError *before* any install
         # work (a typo'd argument should not pay for a download).
         argv = ArgParser(self.manifest.args).build(

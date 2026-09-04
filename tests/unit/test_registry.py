@@ -126,6 +126,42 @@ def test_tool_id_rejects_dotdot_traversal(tmp_path: Path) -> None:
             registry.load(bad)
 
 
+def test_install_assets_deep_merge_across_extends(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "base.yaml",
+        {
+            "abstract": True,
+            "install": {
+                "backend": "github",
+                "repo": "a/b",
+                "assets": {"linux-x86_64": "t-linux", "macos-arm64": "t-mac"},
+            },
+        },
+    )
+    write_yaml(
+        root / "child.yaml",
+        {
+            "cli": "t",
+            "extends": "base",
+            "install": {"assets": {"linux-x86_64": "t-linux-v2"}},
+        },
+    )
+    inst = Registry(root).load("child").install
+    assert inst.assets == {"linux-x86_64": "t-linux-v2", "macos-arm64": "t-mac"}
+
+
+def test_required_arg_is_not_satisfied_by_none() -> None:
+    from maina.core.argparser import ArgParser
+    from maina.core.errors import ArgError
+
+    schema = {"x": {"positional": True, "required": True, "default": None}}
+    with pytest.raises(ArgError, match="missing required argument: x"):
+        ArgParser(schema).build("echo", [], {})
+    with pytest.raises(ArgError, match="missing required argument: x"):
+        ArgParser(schema).build("echo", [], {"x": None})
+
+
 def test_child_can_drop_an_inherited_arg_with_null(tmp_path: Path) -> None:
     root = tmp_path / "reg"
     write_yaml(

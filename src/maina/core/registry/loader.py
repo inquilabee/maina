@@ -399,16 +399,29 @@ class Registry:
             out[key] = deepcopy(value)
         return out
 
-    @staticmethod
-    def _merge_map_key(key: str, parent: dict[str, Any], child: dict[str, Any]) -> dict[str, Any]:
-        """Merge a MAP_KEYS block. ``args`` merges per-arg-name then per-field so
-        a child overriding one field (e.g. ``default:``) keeps the parent's
-        ``flag`` / ``type`` / ``required``; ``<arg>: null`` drops an inherited
-        arg entirely (mirrors ``requires``). Other blocks shallow-merge."""
+    # install sub-maps that deep-merge per platform key (a child that overrides
+    # one platform's asset must not drop the others).
+    _INSTALL_DEEP_KEYS = ("assets", "sha256")
+
+    @classmethod
+    def _merge_map_key(
+        cls, key: str, parent: dict[str, Any], child: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Merge a MAP_KEYS block. ``args`` merges per-arg-name then per-field;
+        ``install`` shallow-merges but deep-merges ``assets`` / ``sha256``;
+        ``<arg>: null`` drops an inherited arg (mirrors ``requires``)."""
         out = deepcopy(parent)
-        if key != "args":
-            out |= deepcopy(child)
-            return out
+        if key == "args":
+            return cls._merge_args(out, child)
+        out |= deepcopy(child)
+        deep_subs = cls._INSTALL_DEEP_KEYS if key == "install" else ()
+        for sub in deep_subs:
+            if isinstance(parent.get(sub), dict) and isinstance(child.get(sub), dict):
+                out[sub] = {**parent[sub], **child[sub]}
+        return out
+
+    @staticmethod
+    def _merge_args(out: dict[str, Any], child: dict[str, Any]) -> dict[str, Any]:
         for arg_name, child_spec in child.items():
             if child_spec is None:
                 out.pop(arg_name, None)

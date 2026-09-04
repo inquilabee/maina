@@ -101,14 +101,16 @@ class ArgParser:
 
     @staticmethod
     def _resolve_value(name: str, spec: ArgSpec, kwargs: dict[str, Any]) -> Any:
-        """Resolve one kwarg, applying defaults and required checks."""
-        if name in kwargs:
-            return kwargs[name]
-        if spec.has_default:
-            return spec.default
-        if not spec.required:
-            return None
-        raise ArgError(f"missing required argument: {name}")
+        """Resolve one kwarg, applying defaults and the required check.
+
+        ``required: true`` is not satisfied by ``None`` — whether that ``None``
+        comes from ``run(x=None)`` or from ``default: null`` — it still raises.
+        """
+        fallback = spec.default if spec.has_default else None
+        value = kwargs.get(name, fallback)
+        if value is None and spec.required:
+            raise ArgError(f"missing required argument: {name}")
+        return value
 
     @staticmethod
     def _emit_arg(name: str, spec: ArgSpec, value: Any) -> list[str]:
