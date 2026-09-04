@@ -192,8 +192,10 @@ class Installer:
         """True when *manifest* needs no install work on this host.
 
         Side-effect free: no download, no ``mise`` call. Abstract surfaces and
-        tools unsupported on this host count as satisfied (nothing to do). A
-        backend without a ``probe`` method is treated as not satisfied.
+        tools unsupported on this host count as satisfied (nothing to do). An
+        unknown ``install.backend`` raises :class:`InstallError` (a manifest
+        bug, not a "missing" install); a backend without a ``probe`` method is
+        treated as not satisfied.
         """
         if manifest.abstract:
             return True
@@ -201,6 +203,10 @@ class Installer:
             return True
         if not self._requires_present(manifest.requires):
             return False
+        if manifest.install.backend not in self._backends:
+            raise InstallError(
+                f"{manifest.id}: unknown install backend {manifest.install.backend!r}"
+            )
         backend = self._backends.get(manifest.install.backend)
         probe = getattr(backend, "probe", None)
         if probe is None:

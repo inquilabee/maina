@@ -141,6 +141,27 @@ def test_register_parsers_dir(tmp_path: Path) -> None:
     assert resolver.generic_parser("foo")("x", make_result()) == "foo:x"
 
 
+def test_parsers_dir_shadowing_a_builtin_warns(tmp_path: Path) -> None:
+    parsers_dir = tmp_path / "parsers"
+    parsers_dir.mkdir()
+    (parsers_dir / "json.py").write_text(
+        "def parse(raw, result):\n    return 'HIJACKED'\n", encoding="utf-8"
+    )
+    resolver = ParserResolver()
+    with pytest.warns(RuntimeWarning, match="shadows the built-in"):
+        resolver.load_parsers_dirs([parsers_dir])
+
+
+def test_same_stem_parser_modules_are_distinct(tmp_path: Path) -> None:
+    a = tmp_path / "a" / "p.py"
+    b = tmp_path / "b" / "p.py"
+    for path, tag in ((a, "A"), (b, "B")):
+        path.parent.mkdir(parents=True)
+        path.write_text(f"def parse(raw, result):\n    return {tag!r}\n", encoding="utf-8")
+    assert ParserResolver.load_parser_module(a)("x", make_result()) == "A"
+    assert ParserResolver.load_parser_module(b)("x", make_result()) == "B"
+
+
 def test_parser_name_replace() -> None:
     resolver = ParserResolver()
     resolver.register("mode", lambda _raw, _r: "first")

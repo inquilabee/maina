@@ -162,11 +162,13 @@ class ToolRunner:
         if text:
             run_kwargs |= {"encoding": "utf-8", "errors": "replace"}
         # Default to no stdin so a tool that reads stdin does not block on the
-        # caller's terminal; opt in with stdin=.
+        # caller's terminal; opt in with stdin=. In binary mode a str is encoded.
         if stdin is None:
             run_kwargs["stdin"] = subprocess.DEVNULL
         else:
-            run_kwargs["input"] = stdin
+            run_kwargs["input"] = (
+                stdin.encode("utf-8") if not text and isinstance(stdin, str) else stdin
+            )
         try:
             return run(argv, **run_kwargs)
         except subprocess.TimeoutExpired as exc:

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import sys
+import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -120,11 +122,23 @@ class ParserResolver:
         for name, fn in parsers.items():
             self.register(name, fn)
 
+    _BUILTIN_NAMES = frozenset({"json", "json-lenient", "lines", "text", "raw"})
+
     def load_parsers_dirs(self, dirs: Sequence[Path]) -> None:
-        """Load ``*.py`` modules defining ``parse``; register under file stem."""
+        """Load ``*.py`` modules defining ``parse``; register under file stem.
+
+        A file whose stem matches a built-in parser (``json.py`` …) would
+        silently shadow it — warn so that is a choice, not an accident.
+        """
         for directory in dirs:
             paths = sorted(path for path in directory.glob("*.py") if not path.name.startswith("_"))
             for path in paths:
+                if path.stem in self._BUILTIN_NAMES:
+                    warnings.warn(
+                        f"parser module {path} shadows the built-in {path.stem!r} parser",
+                        RuntimeWarning,
+                        stacklevel=2,
+                    )
                 self.register(path.stem, self.load_parser_module(path))
 
     def is_general(self, name: str) -> bool:
@@ -162,7 +176,10 @@ class ParserResolver:
         key = (str(path), stat.st_mtime_ns, stat.st_size)
         if (cached := cls._MODULE_CACHE.get(key)) is not None:
             return cached
-        mod_name = f"maina_parser_{path.stem}"
+        # Hash the full path in so two ``parsers/`` dirs with a same-named file
+        # (``add.py``) get distinct ``sys.modules`` entries.
+        digest = hashlib.blake2s(str(path).encode(), digest_size=6).hexdigest()
+        mod_name = f"maina_parser_{path.stem}_{digest}"
         spec = importlib.util.spec_from_file_location(mod_name, path)
         if spec is None or spec.loader is None:
             raise ManifestError(f"cannot load parser module {path}")

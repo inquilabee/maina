@@ -172,6 +172,15 @@ def test_toolrunner_text_false_returns_bytes_and_skips_parser(tmp_path: Path) ->
     assert result.to_dict()["raw"] == "not-json"
 
 
+def test_toolrunner_text_false_encodes_str_stdin(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "cat.yaml", {"cli": "cat", "install": {"backend": "path"}})
+    registry = Registry(root)
+    runner = ToolRunner(registry.load("cat"), installer=path_installer(tmp_path, registry))
+    result = runner.run({}, text=False, stdin="piped text")
+    assert result.raw_bytes == b"piped text"
+
+
 def test_toolrunner_non_numeric_timeout_kwarg_raises_arg_error(tmp_path: Path) -> None:
     from maina.core.errors import ArgError
 

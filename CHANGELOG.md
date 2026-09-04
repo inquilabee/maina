@@ -94,6 +94,13 @@
 - `examples/catalog/` — a worked catalog covering the `github` and `npm`
   backends, `output.from_file`, and a subcommand family, with an offline
   `demo.py`.
+- A `parsers_dirs` module whose stem shadows a built-in parser (`json.py`)
+  warns; two `parsers/*.py` files with the same stem get distinct
+  `sys.modules` names.
+- `prepare --check` on a tool with an unknown `install.backend` now errors
+  (a manifest bug) instead of reporting it "missing".
+- `run(text=False, stdin="…")` encodes the string rather than raising a bare
+  `TypeError`.
 
 ### API
 

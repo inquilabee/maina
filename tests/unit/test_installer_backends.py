@@ -365,7 +365,7 @@ def test_check_ids_honours_missing_runtime(tmp_path: Path) -> None:
     assert satisfied == []
 
 
-def test_check_ids_unknown_backend_is_missing(tmp_path: Path) -> None:
+def test_check_ids_unknown_backend_errors(tmp_path: Path) -> None:
     root = tmp_path / "reg"
     write_yaml(root / "x.yaml", {"cli": "x", "install": {"backend": "mystery"}})
     registry = Registry(root)
@@ -375,7 +375,9 @@ def test_check_ids_unknown_backend_is_missing(tmp_path: Path) -> None:
         registry=registry,
         backends=[PathBackend()],
     )
-    assert installer.is_satisfied(registry.load("x")) is False
+    # An unknown backend is a manifest bug, not a "missing" install.
+    with pytest.raises(InstallError, match="unknown install backend"):
+        installer.is_satisfied(registry.load("x"))
 
 
 def test_npm_install_rejects_out_of_cache_bin(
