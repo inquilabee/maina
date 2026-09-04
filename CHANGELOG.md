@@ -240,12 +240,51 @@
   warns (`RuntimeWarning`) from `Registry.iter_ids()` / `maina list`, and
   `maina validate` reports it as an error naming both files. Previously the
   shadowed file had no diagnostic anywhere.
+- `Tool.run(env=...)` raises `ArgError` for a non-mapping `env` (a string, a
+  manifest arg literally named `env` passed the wrong way) instead of a bare
+  `TypeError` escaping from deep inside the runner.
+- `Tool.argv()` accepts the same run-only parameters `Tool.run()` does
+  (`parser`, `cwd`, `timeout`, `env_allow`, `env`, `stdin`, `text`) and
+  ignores them — so a manifest arg whose name collides with one of them binds
+  the same way in both, and a `--dry-run` preview can no longer disagree with
+  what `run()` actually sends to argv.
+- `maina prepare --check` is batch-resilient: a manifest with a bug (e.g. an
+  unknown `install.backend`) no longer aborts the whole readiness report —
+  it's reported as its own `error: <id>: ...` line alongside `satisfied:` /
+  `missing:` for the rest. `Installer.check_ids()` returns
+  `(satisfied, missing, failures)`.
+- The published JSON Schema accepts the null-drop idiom (`<key>: null`) in
+  `args`, `env`, and `install.assets` / `sha256` — it used to reject exactly
+  the inheritance idiom the manifest docs teach on the same page.
+  `install.backend` is an open string with the built-in names as non-binding
+  `examples`, not a closed enum, since a caller can register a custom
+  backend; `args.<name>.choices` items accept an integer as well as a string.
+- `maina list <parent>` no longer misses a descendant whose intermediate
+  directory has no manifest of its own (`family/foo/bar.yaml` extending the
+  family root directly, with no `foo.yaml`) — it used to invent an id for the
+  directory, fail to load it, and print a raw Python
+  `.../loader.py:N: RuntimeWarning: ...` warning plus an empty listing.
+  `list_commands` is also no longer O(N²) on this layout: a per-root
+  id→path index is now built once (one `rglob`) and reused by every lookup,
+  `iter_ids()`, and `duplicate_ids()`.
+- Every `RuntimeWarning` a CLI command can trigger (a skipped broken
+  manifest, a same-root id collision) now prints as a plain
+  `warning: <message>` line on stderr instead of Python's default
+  `.../loader.py:N: RuntimeWarning: ...` dump, which leaked maina's own
+  source path into CLI output.
+- `Tool.describe()["install"]` carries every `install:` field (`assets`,
+  `binary`, `sha256`, `allow_scripts`, `allow_any_executable`), not just
+  `backend` / `repo` / `package` / `tag` — a catalog browser can now show
+  which platforms a `github` tool has assets for.
 
 ### Manifest expressiveness
 
 - `args.<name>.choices: [...]` limits a value (or every item, for a list) to
   a fixed set — checked on every `run()` / `argv()`, not just at load. Not
-  valid on `type: flag` / `type: pairs`.
+  valid on `type: flag` / `type: pairs`. A `default:` that is not itself one
+  of the arg's own `choices:` is rejected at load, and a `type: pairs`
+  `default:` must be a mapping or a list of `[key, value]` pairs — both used
+  to load clean and fail every call.
 - `args.<name>.type: pairs` emits one flag per pair — three tokens
   `--flag key value` by default (`jq --arg`), or two (`--flag key=value`) when
   the arg also sets `joiner: "="` (`docker -e K=V`).

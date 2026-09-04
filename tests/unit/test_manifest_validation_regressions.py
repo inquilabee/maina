@@ -258,6 +258,50 @@ def test_arg_choices_rejects_empty_list_and_flag_type(tmp_path: Path) -> None:
         on_flag.load("f")
 
 
+def test_arg_default_must_be_one_of_its_own_choices(tmp_path: Path) -> None:
+    reg = make_reg(
+        tmp_path,
+        {
+            "t.yaml": {
+                "cli": "echo",
+                "install": {"backend": "path"},
+                "args": {
+                    "fmt": {"flag": "-f", "default": "json", "choices": ["tty", "gcc"]},
+                },
+            }
+        },
+    )
+    with pytest.raises(ManifestError, match=r"default 'json' is not one of its own choices"):
+        reg.load("t")
+
+
+def test_pairs_default_must_be_a_mapping_or_pairs_list(tmp_path: Path) -> None:
+    reg = make_reg(
+        tmp_path,
+        {
+            "t.yaml": {
+                "cli": "echo",
+                "install": {"backend": "path"},
+                "args": {"e": {"flag": "-e", "type": "pairs", "default": "K=V"}},
+            }
+        },
+    )
+    with pytest.raises(ManifestError, match=r"args\.e default must be a mapping"):
+        reg.load("t")
+
+    ok = make_reg(
+        tmp_path,
+        {
+            "t.yaml": {
+                "cli": "echo",
+                "install": {"backend": "path"},
+                "args": {"e": {"flag": "-e", "type": "pairs", "default": {"K": "V"}}},
+            }
+        },
+    )
+    assert ok.load("t").args["e"].default == {"K": "V"}
+
+
 # --- env null-drop and bare-key rejection ---------------------------------------
 
 

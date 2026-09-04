@@ -48,6 +48,13 @@ class Registry:
         # Memo of "does <resolved root> ship a base.yaml", per root — without it
         # every load() re-scans (rglob) for the base id. Cleared on append_roots.
         self._base_present: dict[Path, bool] = {}
+        # Per-root (id, path) pairs from one rglob, built lazily on first use
+        # and reused by every id lookup, `iter_ids`, and `duplicate_ids`
+        # (`load()` / `list` / `validate` would otherwise rescan the tree once
+        # per id). `_scan_index` is the derived id -> first-path map. Both
+        # cleared on append_roots.
+        self._id_paths: dict[Path, list[tuple[str, Path]]] = {}
+        self._scan_index: dict[Path, dict[str, Path]] = {}
 
     @property
     def root(self) -> Path:
@@ -68,6 +75,8 @@ class Registry:
                 self.roots.append(path)
                 seen.add(path.resolve())
         self._base_present.clear()
+        self._id_paths.clear()
+        self._scan_index.clear()
 
     def load(self, tool_id: str) -> Manifest:
         """Load and merge a tool manifest by registry id."""
@@ -201,33 +210,25 @@ class Registry:
             raise manifest_error(tid, f"platforms {unknown} not in {{{allowed}}}")
 
     def list_commands(self, tool_id: str | None = None) -> list[str]:
-        """List callable registry ids, or concrete children of a parent.
+        """List callable registry ids, or concrete descendants of a parent.
 
         When *tool_id* is None, returns every non-abstract id in the registry
         (sorted), including nested hyphen ids such as ``kubectl-get``. Abstract
         surfaces stay hidden from catalogs but remain loadable and may be used
-        as a parent filter (``list kubectl``).
+        as a parent filter (``list kubectl``). A descendant is any id whose
+        hyphen segments start with the parent's — nested at any depth, so a
+        directory that groups manifests without a manifest of its own (no
+        ``foo.yaml`` for a ``family/foo/`` directory) does not hide what is
+        under it, unlike inventing and trying to load an id for that directory.
         """
         if tool_id is None or tool_id == "":
             return sorted(self._exclude_abstract(self.iter_ids()))
         tid = self.normalize_id(tool_id)
-        by_id: dict[str, None] = {}
-        found_any = False
-        parts = tid.split("-")
-        for root in self.roots:
-            base = next(
-                (d for d in registry_ids.id_dir_candidates(root, parts) if d.is_dir()), None
-            )
-            if base is not None:
-                found_any = True
-                for child_id in registry_ids.list_child_ids(base, tid):
-                    by_id[child_id] = None
-            elif registry_ids.manifest_path_in(root, tid) is not None:
-                found_any = True
-        if not found_any:
-            self._manifest_lookup(tid)
-            return []
-        return sorted(self._exclude_abstract(list(by_id)))
+        prefix = f"{tid}-"
+        descendants = [sid for sid in self.iter_ids() if sid.startswith(prefix)]
+        if not descendants and not self._has_manifest(tid):
+            self._manifest_lookup(tid)  # raises: no registry entry for tid
+        return sorted(self._exclude_abstract(descendants))
 
     def _exclude_abstract(self, ids: list[str]) -> list[str]:
         """Drop inheritance-only surfaces from a catalog listing.
@@ -255,7 +256,7 @@ class Registry:
         """
         seen: dict[str, None] = {}
         for root in self.roots:
-            for tid, paths in registry_ids.duplicate_ids(root).items():
+            for tid, paths in self._root_duplicate_ids(root).items():
                 files = ", ".join(str(p) for p in paths)
                 warnings.warn(
                     f"{tid!r} is derived from {len(paths)} manifests under {root}: "
@@ -263,15 +264,22 @@ class Registry:
                     RuntimeWarning,
                     stacklevel=2,
                 )
-            seen |= dict.fromkeys(registry_ids.iter_yaml_ids(root))
+            seen |= dict.fromkeys(tid for tid, _path in self._root_id_paths(root))
         return list(seen)
 
     def duplicate_ids(self) -> dict[str, list[Path]]:
         """Same-root id collisions across every root — see :meth:`iter_ids`."""
         out: dict[str, list[Path]] = {}
         for root in self.roots:
-            out |= registry_ids.duplicate_ids(root)
+            out |= self._root_duplicate_ids(root)
         return out
+
+    def _root_duplicate_ids(self, root: Path) -> dict[str, list[Path]]:
+        """Ids derived from more than one manifest file under *root*."""
+        by_id: dict[str, list[Path]] = {}
+        for tid, path in self._root_id_paths(root):
+            by_id.setdefault(tid, []).append(path)
+        return {tid: paths for tid, paths in by_id.items() if len(paths) > 1}
 
     def _load_chain(
         self,
@@ -308,16 +316,41 @@ class Registry:
         """``(path, owning_root)`` for *tid* — pinned to *root* when given."""
         if root is None:
             return self._manifest_lookup(tid)
-        path = registry_ids.manifest_path_in(root, tid)
+        path = self._locate(root, tid)
         if path is None:
             raise ManifestError(f"no manifest for {tid!r} under {root}")
         return path, root
+
+    def _locate(self, root: Path, tid: str) -> Path | None:
+        """Like :func:`registry_ids.manifest_path_in`, but a scan-fallback miss
+        is answered from a per-root index built once (not a fresh ``rglob`` per
+        id) — the fast candidates alone stay a plain, cheap retry."""
+        if (path := registry_ids.fast_candidate_path(root, tid)) is not None:
+            return path
+        return self._root_scan_index(root).get(tid)
+
+    def _root_id_paths(self, root: Path) -> list[tuple[str, Path]]:
+        """``(id, path)`` pairs under *root* — one ``rglob``, cached per root."""
+        key = root.resolve()
+        if key not in self._id_paths:
+            self._id_paths[key] = registry_ids.iter_yaml_id_paths(root)
+        return self._id_paths[key]
+
+    def _root_scan_index(self, root: Path) -> dict[str, Path]:
+        """id -> first-matching-path (sorted-rglob order) under *root*, memoized."""
+        key = root.resolve()
+        if key not in self._scan_index:
+            index: dict[str, Path] = {}
+            for tid, path in self._root_id_paths(root):
+                index.setdefault(tid, path)  # first match wins, like scan_for_id
+            self._scan_index[key] = index
+        return self._scan_index[key]
 
     def _root_has_base(self, root: Path) -> bool:
         """Whether *root* ships a ``base.yaml`` (memoized per resolved root)."""
         key = root.resolve()
         if key not in self._base_present:
-            self._base_present[key] = registry_ids.manifest_path_in(root, BASE_TOOL_ID) is not None
+            self._base_present[key] = self._locate(root, BASE_TOOL_ID) is not None
         return self._base_present[key]
 
     def _has_manifest(self, tool_id: str) -> bool:
@@ -325,7 +358,7 @@ class Registry:
         if not self.roots:
             return False
         tid = self.normalize_id(tool_id)
-        return any(registry_ids.manifest_path_in(root, tid) is not None for root in self.roots)
+        return any(self._locate(root, tid) is not None for root in self.roots)
 
     def _manifest_lookup(self, tool_id: str) -> tuple[Path, Path]:
         """Resolve id to (manifest path, owning root). Later roots win."""
@@ -335,7 +368,7 @@ class Registry:
         if not self.roots:
             raise ManifestError(f"no registry entry for {tid!r} (registry has no roots)")
         for root in reversed(self.roots):
-            if (path := registry_ids.manifest_path_in(root, tid)) is not None:
+            if (path := self._locate(root, tid)) is not None:
                 return path, root
         roots = ", ".join(str(r) for r in self.roots)
         raise ManifestError(f"no registry entry for {tid!r} under {roots}")

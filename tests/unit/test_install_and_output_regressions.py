@@ -495,6 +495,19 @@ def test_tool_describe_is_json_safe(tmp_path: Path) -> None:
     assert desc["env"] == {"DEMO": "1"}
     assert set(tool.args) == {"msg", "loud"}
     assert tool.manifest.cli == "echo"
+    # install carries every InstallSpec field, not just backend/repo/package/tag
+    # (a catalog browser needs assets/sha256 to show which platforms are covered).
+    assert set(desc["install"]) == {
+        "backend",
+        "repo",
+        "assets",
+        "binary",
+        "tag",
+        "package",
+        "sha256",
+        "allow_scripts",
+        "allow_any_executable",
+    }
 
 
 def test_append_roots_dedupes(tmp_path: Path) -> None:

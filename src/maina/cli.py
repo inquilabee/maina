@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import shlex
 import sys
+import warnings
+from contextlib import contextmanager
 from string import Formatter
 from typing import TYPE_CHECKING, Annotated, Any
 
@@ -53,6 +55,23 @@ def echo_typer_help(ctx: Any) -> None:
     typer.echo(ctx.get_help())
 
 
+@contextmanager
+def rendered_warnings() -> Any:
+    """Catch a ``RuntimeWarning`` from the registry/installer (a skipped
+    broken manifest, a same-root id collision, ...) and print it as a plain
+    ``warning: ...`` line on stderr, instead of the raw
+    ``.../loader.py:N: RuntimeWarning: ...`` Python default — a CLI user
+    should never see maina's own source path and line number.
+    """
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        try:
+            yield
+        finally:
+            for one in caught:
+                typer.echo(f"warning: {one.message}", err=True)
+
+
 @app.callback(invoke_without_command=True)
 def root(
     ctx: typer.Context,
@@ -92,7 +111,8 @@ def list_cmd(
     parents stay hidden from the default catalog but may be passed as TOOL_ID.
     """
     registry = runtime().registry
-    ids = registry.list_commands(tool_id)
+    with rendered_warnings():
+        ids = registry.list_commands(tool_id)
     if not ids:
         if tool_id is None and not registry.roots:
             typer.echo(
@@ -124,7 +144,14 @@ def validate(
     ``ok:`` / ``error:`` per id and exits non-zero if any failed.
     """
     rt = runtime()
-    ids = tools or rt.registry.iter_ids()
+    if tools:
+        ids = tools
+    else:
+        # iter_ids() also warns about a same-root id collision; validate
+        # already reports that as its own error: line below, so don't repeat it.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            ids = rt.registry.iter_ids()
     if not ids:
         typer.echo("no manifests registered")
         return
@@ -262,12 +289,14 @@ def prepare(
     reject_bad_prepare_flags(tools, check=check, force=force)
     installer = runtime().installer
     if check:
-        emit_check(installer, tools)
+        with rendered_warnings():
+            emit_check(installer, tools)
         return
     try:
         for cli in installer.clean_ids(tools) if force else []:
             typer.echo(f"cleaned: {cli}")
-        prepared, failures = installer.prepare_ids(tools)
+        with rendered_warnings():
+            prepared, failures = installer.prepare_ids(tools)
     except (ManifestError, InstallError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(2) from exc
@@ -291,13 +320,17 @@ def emit_prepare_outcome(prepared: list[str], failures: dict[str, str]) -> None:
 
 
 def emit_check(installer: Any, tools: list[str] | None) -> None:
-    """``prepare --check``: print each id's state and exit non-zero if any missing."""
-    satisfied, missing = installer.check_ids(tools)
+    """``prepare --check``: print each id's state and exit non-zero if any
+    missing or errored — one bad manifest never blanks the rest of the report.
+    """
+    satisfied, missing, failures = installer.check_ids(tools)
     for tid in satisfied:
         typer.echo(f"satisfied: {tid}")
     for tid in missing:
         typer.echo(f"missing: {tid}")
-    if missing:
+    for tid, message in failures.items():
+        typer.echo(f"error: {tid}: {message}", err=True)
+    if missing or failures:
         raise typer.Exit(1)
 
 

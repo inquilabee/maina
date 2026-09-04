@@ -284,7 +284,7 @@ def test_prepare_ids_skips_broken_manifest_but_explicit_raises(tmp_path: Path) -
         backends=[PathBackend()],
     )
     with pytest.warns(RuntimeWarning, match="failed to load"):
-        satisfied, missing = installer.check_ids()
+        satisfied, missing, _failures = installer.check_ids()
     assert "good" in satisfied + missing
     assert "broken" not in satisfied + missing
     with pytest.raises(ManifestError):
@@ -368,7 +368,7 @@ def test_check_ids_reports_satisfied_and_missing(tmp_path: Path) -> None:
         registry=registry,
         backends=[PathBackend()],
     )
-    satisfied, missing = installer.check_ids()
+    satisfied, missing, _failures = installer.check_ids()
     assert satisfied == ["here"]
     assert missing == ["gone"]
     # is_satisfied on an abstract manifest is a no-op "satisfied".
@@ -395,7 +395,7 @@ def test_check_ids_honours_missing_runtime(tmp_path: Path) -> None:
         registry=registry,
         backends=[PathBackend()],
     )
-    satisfied, missing = installer.check_ids()
+    satisfied, missing, _failures = installer.check_ids()
     assert missing == ["needsnode"]
     assert satisfied == []
 
@@ -413,6 +413,23 @@ def test_check_ids_unknown_backend_errors(tmp_path: Path) -> None:
     # An unknown backend is a manifest bug, not a "missing" install.
     with pytest.raises(InstallError, match="unknown install backend"):
         installer.is_satisfied(registry.load("x"))
+
+
+def test_check_ids_is_batch_resilient_to_a_bad_backend(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "good.yaml", {"cli": "true", "install": {"backend": "path"}})
+    write_yaml(root / "bad.yaml", {"cli": "x", "install": {"backend": "mystery"}})
+    installer = Installer(
+        cache_root=tmp_path / "cache",
+        language=FakeLanguage(tmp_path / "cache"),
+        registry=Registry(root),
+        backends=[PathBackend()],
+    )
+    satisfied, missing, failures = installer.check_ids()
+    assert satisfied == ["good"]
+    assert missing == []
+    assert "bad" in failures
+    assert "unknown install backend" in failures["bad"]
 
 
 def test_npm_install_rejects_out_of_cache_bin(

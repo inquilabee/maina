@@ -99,8 +99,13 @@ class Tool:
             "install": {
                 "backend": m.install.backend,
                 "repo": m.install.repo,
-                "package": m.install.package,
+                "assets": dict(m.install.assets),
+                "binary": m.install.binary,
                 "tag": m.install.tag,
+                "package": m.install.package,
+                "sha256": dict(m.install.sha256),
+                "allow_scripts": m.install.allow_scripts,
+                "allow_any_executable": m.install.allow_any_executable,
             },
             "output": {
                 "format": m.output.format,
@@ -177,6 +182,13 @@ class Tool:
         self,
         *,
         extra: str | list[str] | None = None,
+        parser: Any = None,
+        cwd: str | None = None,
+        timeout: float | None = None,
+        env_allow: Iterable[str] | None = None,
+        env: dict[str, str] | None = None,
+        stdin: str | bytes | None = None,
+        text: bool = True,
         args: Mapping[str, Any] | None = None,
         **kwargs: Any,
     ) -> list[str]:
@@ -185,7 +197,14 @@ class Tool:
         A real :meth:`run` resolves argv[0] to the installed/cached executable;
         every token after it is exactly what ``run`` would pass. Use it for a
         dry run, a preview, or to drive the subprocess yourself.
+
+        Binds the same run-only parameters ``run()`` does (``parser``, ``cwd``,
+        ``timeout``, ``env_allow``, ``env``, ``stdin``, ``text``) — accepted for
+        symmetry and ignored here, since none affects argv. A manifest arg whose
+        name collides with one of them is reached the same way ``run()`` reaches
+        it: ``argv(args={"timeout": ...})``, never a same-named plain kwarg.
         """
+        del parser, cwd, timeout, env_allow, env, stdin, text
         manifest = self.manifest
         if manifest.abstract:
             raise AbstractToolError(f"{manifest.id!r} is abstract; call a concrete child surface")

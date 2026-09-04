@@ -12,7 +12,14 @@
     "args": {
       "type": "object",
       "additionalProperties": {
-        "$ref": "#/$defs/arg"
+        "anyOf": [
+          {
+            "$ref": "#/$defs/arg"
+          },
+          {
+            "type": "null"
+          }
+        ]
       }
     },
     "cli": {
@@ -22,7 +29,10 @@
     "env": {
       "type": "object",
       "additionalProperties": {
-        "type": "string"
+        "type": [
+          "string",
+          "null"
+        ]
       }
     },
     "extends": {
@@ -89,7 +99,10 @@
         "choices": {
           "type": "array",
           "items": {
-            "type": "string"
+            "type": [
+              "string",
+              "integer"
+            ]
           },
           "minItems": 1
         },
@@ -157,11 +170,16 @@
             ]
           },
           "additionalProperties": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "backend": {
-          "enum": [
+          "type": "string",
+          "minLength": 1,
+          "examples": [
             "github",
             "npm",
             "path"
@@ -192,8 +210,15 @@
             ]
           },
           "additionalProperties": {
-            "type": "string",
-            "pattern": "^[0-9a-fA-F]{64}$"
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-fA-F]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "tag": {

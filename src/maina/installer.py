@@ -147,7 +147,7 @@ class Installer:
                     "no install backends registered — build the Runtime with "
                     "Runtime.preferred(), or pass installers=[...] to register()"
                 )
-            raise InstallError(f"unknown install backend: {backend_name!r}")
+            raise InstallError(f"{manifest.id}: unknown install backend: {backend_name!r}")
         version = self._cache_version(manifest)
         # Trim os.environ first, then compose: the language provider runs its
         # provisioning subprocesses (mise / npm) with this trimmed env too, so a
@@ -205,7 +205,7 @@ class Installer:
             return False
         if manifest.install.backend not in self._backends:
             raise InstallError(
-                f"{manifest.id}: unknown install backend {manifest.install.backend!r}"
+                f"{manifest.id}: unknown install backend: {manifest.install.backend!r}"
             )
         backend = self._backends.get(manifest.install.backend)
         probe = getattr(backend, "probe", None)
@@ -278,16 +278,27 @@ class Installer:
         )
         return None if wrong_host else manifest
 
-    def check_ids(self, tool_ids: list[str] | None = None) -> tuple[list[str], list[str]]:
-        """Return ``(satisfied, missing)`` ids without installing anything.
+    def check_ids(
+        self, tool_ids: list[str] | None = None
+    ) -> tuple[list[str], list[str], dict[str, str]]:
+        """Return ``(satisfied, missing, failures)`` without installing anything.
 
-        Same id selection and abstract handling as :meth:`prepare_ids`.
+        Same id selection and abstract handling as :meth:`prepare_ids`. A
+        manifest bug (e.g. an unknown ``install.backend``) lands in *failures*
+        rather than aborting the whole check — one bad id must not blank the
+        readiness report for the rest.
         """
         satisfied: list[str] = []
         missing: list[str] = []
+        failures: dict[str, str] = {}
         for tid, manifest in self._selected_manifests(tool_ids):
-            (satisfied if self.is_satisfied(manifest) else missing).append(tid)
-        return satisfied, missing
+            try:
+                ok = self.is_satisfied(manifest)
+            except InstallError as exc:
+                failures[tid] = str(exc)
+            else:
+                (satisfied if ok else missing).append(tid)
+        return satisfied, missing, failures
 
     def prepare(self, manifest: Manifest) -> None:
         """Ensure runtimes and tool installs for one manifest."""

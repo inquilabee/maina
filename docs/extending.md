@@ -57,7 +57,10 @@ tool.argv(path=["src"])  # the argv a run would build (argv[0] = bare cli name)
 
 `tool.argv(**kwargs)` maps kwargs the same way `run` does but stops before
 executing — use it for a dry run, a preview, or to hand the argv to your own
-subprocess call.
+subprocess call. It binds the same run-only parameter names `run()` does
+(`parser`, `cwd`, `timeout`, `env_allow`, `env`, `stdin`, `text`) and ignores
+them, so a manifest arg whose name collides with one never disagrees between
+the two — see [reserved names](manifests.md#args).
 
 `Manifest`, `ArgSpec`, `InstallSpec`, `OutputSpec`, `Registry`, and `ToolRunner`
 are importable straight from `maina`.

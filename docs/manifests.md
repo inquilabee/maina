@@ -94,7 +94,7 @@ args:
 | `order` | int | Sort key for this arg's tokens in argv. Default is options (0) before positionals (100), each in declaration order; set `order:` to interleave — e.g. an option *after* a positional (`find <path> -name '*.py'`). |
 | `positional` | bool | Emit the value with no flag, after all options. A child that gives a parent's positional arg a `flag:` must also set `positional: false` — arg fields merge per-field down `extends`, so `positional: true` otherwise stays set and the load fails. |
 | `required` | bool | Missing value with no `default` raises `ArgError`. |
-| `default` | any | Value used when the caller omits the argument. |
+| `default` | any | Value used when the caller omits the argument. For `type: pairs` it must be a mapping or a list of `[key, value]` pairs; if `choices:` is also set, the default must be one of them — both checked at load. |
 | `repeat` | bool | For list values: `true` repeats the flag per item, `false` emits one flag then all items. |
 | `join` | string | `csv` joins a list into one comma-separated token. |
 | `choices` | list of string | A non-empty allowlist; the value (or, for a list, every item) must match one, checked at every `run` / `argv`. Not valid on `type: flag` / `type: pairs`. |

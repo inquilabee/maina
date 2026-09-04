@@ -1,10 +1,18 @@
-"""Tests for Tool.__str__ / Tool.help()."""
+"""Tests for Tool.__str__ / Tool.help() / Tool.argv()."""
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
+from helpers import write_yaml
+from maina.backends import PathBackend
+from maina.runtime import Runtime, register
 from maina.tool import Tool
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_str_bound_tool_owns_help_block() -> None:
@@ -60,3 +68,36 @@ def test_help_returns_str(capsys: pytest.CaptureFixture[str]) -> None:
 def test_tool_argv_previews_argv_without_running() -> None:
     argv = Tool("jq").argv(filter=".", compact=True)
     assert argv == ["jq", "-c", "."]
+
+
+def test_argv_agrees_with_run_for_a_reserved_param_name(tmp_path: Path) -> None:
+    """A manifest arg named like a Tool.run parameter (here `timeout`) binds to
+    that parameter in both argv() and run() — neither silently treats it as
+    the manifest arg unless routed through args={...}, so a --dry-run preview
+    never disagrees with what run() actually sends to argv."""
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "collide.yaml",
+        {"cli": "echo", "install": {"backend": "path"}, "args": {"timeout": {"flag": "--timeout"}}},
+    )
+    rt = Runtime(cache_root=tmp_path / "cache")
+    register(rt, registry_dirs=[root], installers=[PathBackend()])
+    tool = Tool("collide", runtime=rt)
+    assert tool.argv(timeout=5) == ["echo"]
+    assert tool.argv(args={"timeout": "5"}) == ["echo", "--timeout", "5"]
+    result = tool.run(timeout=5, args={"timeout": "9"})
+    assert result.command[1:] == ["--timeout", "9"]
+
+
+def test_run_rejects_a_non_mapping_env_with_arg_error(tmp_path: Path) -> None:
+    from typing import Any
+
+    from maina.core.errors import ArgError
+
+    root = tmp_path / "reg"
+    write_yaml(root / "t.yaml", {"cli": "echo", "install": {"backend": "path"}})
+    rt = Runtime(cache_root=tmp_path / "cache")
+    register(rt, registry_dirs=[root])
+    bad_env: Any = "production"  # a manifest bug (or a caller typo), not a real mapping
+    with pytest.raises(ArgError, match="env= must be a mapping"):
+        Tool("t", runtime=rt).run(env=bad_env)

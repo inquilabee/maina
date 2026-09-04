@@ -127,6 +127,12 @@ class ArgSpec:
         cls._check_shape(
             name, arg_type, positional=positional, flag=flag, join=join, tool_id=tool_id
         )
+        default = cls._scalar_default(raw, arg_type, name=name, tool_id=tool_id)
+        choices = cls._parse_choices(raw, arg_type, name=name, tool_id=tool_id)
+        if has_default := "default" in raw:
+            cls._check_default_shape(
+                default, arg_type=arg_type, choices=choices, name=name, tool_id=tool_id
+            )
         return cls(
             type=arg_type,
             flag=flag,
@@ -140,12 +146,33 @@ class ArgSpec:
             ),
             join=join,
             order=cls._parse_order(raw.get("order"), name=name, tool_id=tool_id),
-            default=cls._scalar_default(raw, arg_type, name=name, tool_id=tool_id),
-            has_default="default" in raw,
+            default=default,
+            has_default=has_default,
             description=optional_str(raw.get("description")),
             help=optional_str(raw.get("help")),
-            choices=cls._parse_choices(raw, arg_type, name=name, tool_id=tool_id),
+            choices=choices,
         )
+
+    @staticmethod
+    def _check_default_shape(
+        default: Any, *, arg_type: str, choices: tuple[str, ...] | None, name: str, tool_id: str
+    ) -> None:
+        """A ``default:`` must be usable — never true by construction, unlike
+        ``required``: nothing else forces the caller to pass a value that
+        would override it, so a manifest with a bad default loads clean and
+        then fails every call that omits the argument."""
+        if arg_type == "pairs" and default is not None and not isinstance(default, (dict, list)):
+            raise manifest_error(
+                tool_id,
+                f"args.{name} default must be a mapping or a list of [key, value] pairs "
+                f"for type: pairs, not {type(default).__name__}",
+            )
+        if choices is not None and default is not None and str(default) not in choices:
+            allowed = ", ".join(choices)
+            raise manifest_error(
+                tool_id,
+                f"args.{name} default {default!r} is not one of its own choices: {{{allowed}}}",
+            )
 
     @staticmethod
     def _parse_choices(

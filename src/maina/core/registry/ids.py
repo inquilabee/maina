@@ -82,36 +82,6 @@ def id_candidate_paths(root: Path, tool_id: str, parts: list[str]) -> Iterator[P
         yield root.joinpath(*parts, parts[-1]).with_suffix(suffix)
 
 
-# A hyphen id whose every gap is enumerated as "separator or literal" is
-# 2**(n-1) guesses; past this segment count we only try the two extremes
-# (fully split, fully joined) and let ``scan_for_id`` cover the rest.
-MAX_ENUMERATED_ID_PARTS = 6
-
-
-def id_dir_candidates(root: Path, parts: list[str]) -> Iterator[Path]:
-    """Directory-surface guesses for a hyphen id under *root*.
-
-    Each hyphen may be a path separator or a literal character in a directory
-    name, so ``my-tool`` could live at ``my/tool/`` or ``my-tool/``. Fully-split
-    is yielded first (the common layout); combinations follow.
-    """
-    if len(parts) == 1:
-        yield root / parts[0]
-        return
-    if len(parts) > MAX_ENUMERATED_ID_PARTS:
-        yield root.joinpath(*parts)
-        yield root / "-".join(parts)
-        return
-    for mask in range(2 ** (len(parts) - 1)):
-        segments = [parts[0]]
-        for index in range(1, len(parts)):
-            if mask & (1 << (index - 1)):
-                segments[-1] = f"{segments[-1]}-{parts[index]}"
-            else:
-                segments.append(parts[index])
-        yield root.joinpath(*segments)
-
-
 def scan_for_id(root: Path, tool_id: str) -> Path | None:
     """Walk *root* for the manifest whose derived id equals *tool_id*."""
     if not root.is_dir():
@@ -123,13 +93,10 @@ def scan_for_id(root: Path, tool_id: str) -> Path | None:
     return None
 
 
-def manifest_path_in(root: Path, tool_id: str) -> Path | None:
-    """Resolve a hyphen registry id under one root, or None if missing.
-
-    Tries the fast split-on-``-`` candidates first, then falls back to scanning
-    the tree so a hyphenated filename in a subdirectory (``family/my-tool.yaml``
-    → id ``family-my-tool``) still resolves.
-    """
+def fast_candidate_path(root: Path, tool_id: str) -> Path | None:
+    """The split-on-``-`` guesses for *tool_id* under *root* — no directory
+    walk, so this is cheap enough to retry per lookup. ``None`` on a miss (the
+    id may still resolve via a tree scan; see :func:`scan_for_id`)."""
     parts = tool_id.split("-")
     if not parts or any(part in UNSAFE_ID_SEGMENTS for part in parts):
         return None
@@ -137,7 +104,19 @@ def manifest_path_in(root: Path, tool_id: str) -> Path | None:
     for candidate in id_candidate_paths(root, tool_id, parts):
         if candidate.is_file() and candidate.resolve().is_relative_to(root_resolved):
             return candidate
-    return scan_for_id(root, tool_id)
+    return None
+
+
+def manifest_path_in(root: Path, tool_id: str) -> Path | None:
+    """Resolve a hyphen registry id under one root, or None if missing.
+
+    Tries the fast split-on-``-`` candidates first, then falls back to scanning
+    the tree so a hyphenated filename in a subdirectory (``family/my-tool.yaml``
+    → id ``family-my-tool``) still resolves. Callers doing this for many ids in
+    the same root (``Registry``) should prefer a cached id→path index over
+    repeating the tree scan per miss — see ``Registry._locate``.
+    """
+    return fast_candidate_path(root, tool_id) or scan_for_id(root, tool_id)
 
 
 def family_parsers_dir(leaf_path: Path, leaf_root: Path) -> Path:
@@ -151,36 +130,6 @@ def family_parsers_dir(leaf_path: Path, leaf_root: Path) -> Path:
         if current.resolve() == resolved_root or current.parent == current:
             return parsers
         current = current.parent
-
-
-def dir_has_manifests(path: Path) -> bool:
-    """True when a directory contains YAML manifests."""
-    return any(
-        (path / f"{path.name}{suffix}").is_file() or any(path.glob(f"*{suffix}"))
-        for suffix in ID_SUFFIXES
-    )
-
-
-def child_entry_id(base: Path, prefix: str, path: Path) -> str | None:
-    """Return a child registry id for a path under base, or None if skipped."""
-    return (
-        None
-        if path.name in {"parsers"} or path.name.startswith(".")
-        else (
-            (None if path.stem == base.name else f"{prefix}-{path.stem}")
-            if path.is_file() and path.suffix in ID_SUFFIXES
-            else (f"{prefix}-{path.name}" if path.is_dir() and dir_has_manifests(path) else None)
-        )
-    )
-
-
-def list_child_ids(base: Path, prefix: str) -> list[str]:
-    """List child registry ids under a directory surface."""
-    return [
-        child_id
-        for path in sorted(base.iterdir())
-        if (child_id := child_entry_id(base, prefix, path)) is not None
-    ]
 
 
 def iter_yaml_id_paths(root: Path) -> list[tuple[str, Path]]:

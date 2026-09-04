@@ -92,6 +92,22 @@ def test_cli_list_children_hyphen_parent() -> None:
     assert "git-remote-add" in result.stdout.splitlines()
 
 
+def test_cli_list_finds_grandchild_with_no_manifest_at_the_intermediate_level(
+    tmp_path: Any,
+) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "git" / "git.yaml", {"cli": "git", "abstract": True})
+    write_yaml(
+        root / "git" / "foo" / "bar.yaml",
+        {"extends": "git", "subcommand": "bar", "install": {"backend": "path"}},
+    )
+    maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root], use_env=False))
+    result = runner.invoke(app, ["list", "git"])
+    assert result.exit_code == 0
+    assert result.stdout.strip() == "git-foo-bar"
+    assert result.stderr == ""
+
+
 def test_cli_run_accepts_hyphen_id() -> None:
     result = runner.invoke(app, ["run", "kubectl-get"])
     assert result.exit_code == 0
@@ -247,15 +263,21 @@ def test_cli_version_flag() -> None:
     assert "maina" not in result.stdout.lower() or result.stdout.strip()[0].isdigit()
 
 
-def test_cli_bad_manifest_is_one_line_not_traceback(tmp_path: Any, monkeypatch: Any) -> None:
+def test_cli_bad_manifest_is_one_line_not_traceback(
+    tmp_path: Any, monkeypatch: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
     reg = tmp_path / "reg"
     reg.mkdir()
     (reg / "broke.yaml").write_text("cli: [oops\n", encoding="utf-8")
     monkeypatch.setenv("MAINA_REGISTRY", str(reg))
     maina.use(Runtime.preferred())
-    # `list` skips the broken manifest (with a warning) rather than aborting.
-    with pytest.warns(RuntimeWarning):
-        assert main(["list"]) == 0
+    # `list` skips the broken manifest — rendered as a plain `warning:` line
+    # (not a raw Python .../loader.py:N: RuntimeWarning: ... dump) rather
+    # than aborting.
+    assert main(["list"]) == 0
+    err = capsys.readouterr().err
+    assert err.startswith("warning: skipping 'broke':")
+    assert "loader.py" not in err
     # Naming the broken id explicitly is still a one-line error, exit 2.
     assert main(["run", "broke"]) == 2
 
@@ -289,7 +311,7 @@ def test_cli_schema_emits_valid_json_schema() -> None:
     doc = _json.loads(result.stdout)
     assert doc["$schema"] == "https://json-schema.org/draft/2020-12/schema"
     assert "cli" in doc["properties"]
-    assert doc["$defs"]["install"]["properties"]["backend"]["enum"]
+    assert doc["$defs"]["install"]["properties"]["backend"]["examples"]
 
 
 def test_cli_run_timeout_and_cwd_opts(tmp_path: Any) -> None:

@@ -19,8 +19,11 @@ Library callers use `register(rt, registry_dirs=[...])` instead.
 
 List callable tool ids in the registered catalog. With no argument, every
 concrete id is printed (including nested hyphen ids such as `kubectl-get`). With
-a parent id, only its children are listed. Abstract parents never appear in the
-listing but may be passed as `PARENT`.
+a parent id, every id nested under it (at any depth) is listed — even one whose
+intermediate segment has no manifest of its own, e.g. `family/foo/bar.yaml`
+extending the family root directly shows up under `maina list family` with no
+`foo.yaml` required. Abstract parents never appear in the listing but may be
+passed as `PARENT`.
 
 ```bash
 maina list
@@ -73,7 +76,8 @@ Ensure mise runtimes and tool installs.
 - Explicit ids: prepare exactly those. An abstract id fails with exit `2`.
 - `--check`: install nothing. Print `satisfied: <id>` or `missing: <id>` for
   each tool and exit non-zero if anything is missing. Side-effect free — no
-  download, no mise call.
+  download, no mise call. A manifest bug (e.g. an unknown `install.backend`)
+  is its own `error: <id>: ...` line rather than aborting the whole report.
 - `--force`: delete the named tools' cached installs before preparing. It needs
   explicit ids and cannot be combined with `--check`. To wipe the whole tool
   cache, use `maina clean`.

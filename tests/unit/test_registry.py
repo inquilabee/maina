@@ -71,68 +71,6 @@ def test_abstract_refuses_run() -> None:
         Tool("kubectl").run(resource="pods")
 
 
-def test_list_commands() -> None:
-    registry = fixture_registry()
-    tops = registry.list_commands(None)
-    assert "jq" in tops
-    assert "base" not in tops
-    assert "kubectl" not in tops
-    assert "git" not in tops
-    assert "kubectl-get" in tops
-    assert "kubectl-apply" in tops
-    assert "git-remote-add" in tops
-    children = registry.list_commands("kubectl")
-    assert "kubectl-get" in children
-    assert "kubectl-apply" in children
-    assert "kubectl" not in children
-
-
-def test_list_commands_excludes_abstract(tmp_path: Path) -> None:
-    root = tmp_path / "registry"
-    write_yaml(root / "base.yaml", {"abstract": True, "cli": "base"})
-    write_yaml(root / "leaf.yaml", {"cli": "leaf", "install": {"backend": "path"}})
-    write_yaml(
-        root / "family" / "family.yaml",
-        {"cli": "family", "abstract": True, "install": {"backend": "path"}},
-    )
-    write_yaml(
-        root / "family" / "child.yaml",
-        {
-            "extends": "family",
-            "subcommand": "child",
-            "abstract": False,
-            "install": {"backend": "path"},
-        },
-    )
-    registry = Registry(root)
-    tops = registry.list_commands(None)
-    assert "leaf" in tops
-    assert "family-child" in tops
-    assert "base" not in tops
-    assert "family" not in tops
-    assert registry.list_commands("family") == ["family-child"]
-
-
-def test_cli_less_base_is_not_a_callable_id(tmp_path: Path) -> None:
-    root = tmp_path / "registry"
-    write_yaml(root / "base.yaml", {"env": {"LC_ALL": "C"}})  # no cli:, no abstract:
-    write_yaml(root / "greet.yaml", {"cli": "echo", "install": {"backend": "path"}})
-    registry = Registry(root)
-    assert registry.list_commands(None) == ["greet"]
-    assert not registry.load("base").has_cli
-
-
-def test_list_commands_finds_children_under_a_hyphenated_directory(tmp_path: Path) -> None:
-    root = tmp_path / "registry"
-    write_yaml(root / "my-tool" / "my-tool.yaml", {"cli": "my-tool", "abstract": True})
-    write_yaml(
-        root / "my-tool" / "sub.yaml",
-        {"cli": "my-tool", "subcommand": "sub", "install": {"backend": "path"}},
-    )
-    registry = Registry(root)
-    assert registry.list_commands("my-tool") == ["my-tool-sub"]
-
-
 def test_tool_id_rejects_dotdot_traversal(tmp_path: Path) -> None:
     root = tmp_path / "reg"
     write_yaml(root / "ok.yaml", {"cli": "true", "install": {"backend": "path"}})
@@ -383,15 +321,6 @@ def test_timeout_non_positive_rejected_at_load(tmp_path: Path, bad: int) -> None
     write_yaml(root / "t.yaml", {"cli": "t", "install": {"backend": "path"}, "timeout": bad})
     with pytest.raises(ManifestError, match="timeout"):
         Registry(root).load("t")
-
-
-def test_list_commands_skips_broken_manifest_with_warning(tmp_path: Path) -> None:
-    root = tmp_path / "reg"
-    write_yaml(root / "good.yaml", {"cli": "good", "install": {"backend": "path"}})
-    (root / "broken.yaml").write_text("cli: broken\noutputs: {}\n", encoding="utf-8")
-    with pytest.warns(RuntimeWarning, match="broken"):
-        ids = Registry(root).list_commands()
-    assert ids == ["good"]
 
 
 def test_inherited_parser_resolves_against_declaring_family(tmp_path: Path) -> None:

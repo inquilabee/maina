@@ -35,8 +35,33 @@ def test_schema_blocks_are_closed() -> None:
         assert schema["$defs"][name]["additionalProperties"] is False
 
 
-def test_builtin_backend_enum_matches_the_shipped_backends() -> None:
+def test_schema_accepts_the_null_drop_idiom_everywhere_the_loader_does() -> None:
+    """`<key>: null` down `extends` drops an inherited args / env / assets /
+    sha256 entry (loader.py); the schema must not red-flag the docs' own
+    examples of that idiom."""
+    schema = build_manifest_schema()
+    assert schema["properties"]["args"]["additionalProperties"] == {
+        "anyOf": [{"$ref": "#/$defs/arg"}, {"type": "null"}]
+    }
+    assert "null" in schema["properties"]["env"]["additionalProperties"]["type"]
+    install = schema["$defs"]["install"]["properties"]
+    assert "null" in install["assets"]["additionalProperties"]["type"]
+    sha256_any_of = install["sha256"]["additionalProperties"]["anyOf"]
+    assert {"type": "null"} in sha256_any_of
+
+
+def test_schema_choices_items_allow_the_types_scalar_str_accepts() -> None:
+    schema = build_manifest_schema()
+    choices = schema["$defs"]["arg"]["properties"]["choices"]
+    assert set(choices["items"]["type"]) == {"string", "integer"}
+
+
+def test_builtin_backend_hint_matches_the_shipped_backends() -> None:
     registered = Runtime.preferred().installer.backend_names
     assert set(BUILTIN_BACKENDS) == set(registered)
     schema = build_manifest_schema()
-    assert schema["$defs"]["install"]["properties"]["backend"]["enum"] == list(BUILTIN_BACKENDS)
+    backend_schema = schema["$defs"]["install"]["properties"]["backend"]
+    # An open string (a caller can register a custom backend), not an enum —
+    # the builtins are only a hint.
+    assert backend_schema["type"] == "string"
+    assert backend_schema["examples"] == list(BUILTIN_BACKENDS)

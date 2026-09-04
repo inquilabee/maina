@@ -38,10 +38,13 @@ SCHEMA_ID = (
 # forces an update here.
 BUILTIN_BACKENDS = ("github", "npm", "path")
 
+# Every ``<key>: null`` in these maps is the null-drop idiom (drop that
+# inherited entry down `extends`) that args / requires / env / install.assets
+# all share — the schema must accept it, not just the loader.
 PLATFORM_MAP: dict[str, Any] = {
     "type": "object",
     "propertyNames": {"enum": sorted(KNOWN_PLATFORM_KEYS)},
-    "additionalProperties": {"type": "string"},
+    "additionalProperties": {"type": ["string", "null"]},
 }
 
 TOP_LEVEL_PROPERTIES: dict[str, dict[str, Any]] = {
@@ -55,8 +58,11 @@ TOP_LEVEL_PROPERTIES: dict[str, dict[str, Any]] = {
     "timeout": {"type": "number", "exclusiveMinimum": 0},
     "separator": {"type": "string", "minLength": 1},
     "parser": {"type": "string", "minLength": 1},
-    "env": {"type": "object", "additionalProperties": {"type": "string"}},
-    "args": {"type": "object", "additionalProperties": {"$ref": "#/$defs/arg"}},
+    "env": {"type": "object", "additionalProperties": {"type": ["string", "null"]}},
+    "args": {
+        "type": "object",
+        "additionalProperties": {"anyOf": [{"$ref": "#/$defs/arg"}, {"type": "null"}]},
+    },
     "install": {"$ref": "#/$defs/install"},
     "requires": {"type": ["object", "null"], "additionalProperties": {"type": ["string", "null"]}},
     "output": {"$ref": "#/$defs/output"},
@@ -75,11 +81,18 @@ ARG_PROPERTIES: dict[str, dict[str, Any]] = {
     "default": {},
     "description": {"type": "string"},
     "help": {"type": "string"},
-    "choices": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "choices": {
+        "type": "array",
+        "items": {"type": ["string", "integer"]},
+        "minItems": 1,
+    },
 }
 
 INSTALL_PROPERTIES: dict[str, dict[str, Any]] = {
-    "backend": {"enum": list(BUILTIN_BACKENDS)},
+    # Open string, not an enum: a caller can register a custom backend
+    # (Runtime.preferred(installers=[MyBackend()])), so the builtins are only
+    # a hint here, not the full set the loader accepts.
+    "backend": {"type": "string", "minLength": 1, "examples": list(BUILTIN_BACKENDS)},
     "repo": {"type": "string", "minLength": 1},
     "assets": PLATFORM_MAP,
     "binary": {"type": "string", "minLength": 1},
@@ -88,7 +101,9 @@ INSTALL_PROPERTIES: dict[str, dict[str, Any]] = {
     "sha256": {
         "type": "object",
         "propertyNames": {"enum": sorted(KNOWN_PLATFORM_KEYS)},
-        "additionalProperties": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+        "additionalProperties": {
+            "anyOf": [{"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}, {"type": "null"}]
+        },
     },
     "allow_scripts": {"type": "boolean"},
     "allow_any_executable": {"type": "boolean"},

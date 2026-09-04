@@ -5,7 +5,7 @@ from __future__ import annotations
 import string
 import subprocess
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -22,8 +22,10 @@ if TYPE_CHECKING:
 # Test-only injectable; not a public pluggable runner API.
 Executor = Callable[..., subprocess.CompletedProcess[Any]]
 
-# Cap on an ``output.from_file`` report slurped into memory — every other input
-# path in maina is bounded (download / extract caps); this is the last one.
+# Cap on an ``output.from_file`` report slurped into memory (download / extract
+# have their own caps). A tool's stdout/stderr is NOT capped — `_execute` uses
+# `subprocess.run(capture_output=True)`, so a tool that floods stdout still
+# buffers unbounded into this process.
 REPORT_MAX_BYTES = 64 * 1024 * 1024
 
 __all__ = ["ESSENTIAL_ENV", "Executor", "ToolRunner"]
@@ -71,6 +73,11 @@ class ToolRunner:
         neither the parser nor ``output.from_file`` runs — for a tool that emits
         an archive, image, or other binary on stdout.
         """
+        if env is not None and not isinstance(env, Mapping):
+            raise ArgError(
+                f"{self.manifest.id}: env= must be a mapping of NAME: value, not "
+                f"{type(env).__name__} (a manifest arg named env belongs in args={{'env': ...}})"
+            )
         # Materialise env_allow once — it is consumed twice (install-phase and
         # tool subprocess), so a one-shot generator would apply differently.
         env_allow = None if env_allow is None else frozenset(env_allow)
