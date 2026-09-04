@@ -37,7 +37,11 @@ Call `Tool(tool_id).run(**kwargs)`.
 - `true` / `yes` / `1` / `0` in a `key=value` are coerced to booleans **only for
   args the manifest declares as `type: flag`**; every other value stays a
   string. `key:=value` always forces the literal string.
+- `arg.subkey=value` builds a `type: pairs` dict — `env.K=V env.A=B` →
+  `{"env": {"K": "V", "A": "B"}}`.
 - Tokens after `--` are passed through as `extra` argv.
+- `--timeout=<seconds>` and `--cwd=<dir>` (placed before `--`) map to the
+  matching `Tool.run` parameters.
 - `--json` prints `result.parsed` as JSON; without it the CLI prints the tool's
   stdout exactly as produced. A parser failure is printed to stderr as
   `parse error: …`; under `--json` it also makes the command exit non-zero.

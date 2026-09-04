@@ -230,8 +230,11 @@ def test_cli_run_with_kwargs_still_runs(monkeypatch: pytest.MonkeyPatch) -> None
         self: Tool,
         *,
         extra: str | list[str] | None = None,
+        timeout: float | None = None,
+        cwd: str | None = None,
         **kwargs: Any,
     ) -> ToolResult:
+        del timeout, cwd
         calls.append((self.id, {"extra": extra, **kwargs}))
         return ToolResult(
             tool=self.id or "",
@@ -259,8 +262,11 @@ def test_cli_run_help_after_extra_separator_does_not_short_circuit(
         self: Tool,
         *,
         extra: str | list[str] | None = None,
+        timeout: float | None = None,
+        cwd: str | None = None,
         **kwargs: Any,
     ) -> ToolResult:
+        del timeout, cwd
         calls.append({"extra": extra, **kwargs})
         return ToolResult(
             tool=self.id or "",
@@ -402,6 +408,38 @@ def test_cli_run_dry_run_prints_argv_and_skips_execution() -> None:
     assert dry.exit_code == 0, dry.stdout + dry.stderr
     # argv[0] is the bare cli name (a real run resolves it to the cached binary).
     assert dry.stdout.strip() == "jq -r .name"
+
+
+def test_cli_run_timeout_and_cwd_opts(tmp_path: Any) -> None:
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "sleep.yaml",
+        {
+            "cli": "sleep",
+            "install": {"backend": "path"},
+            "args": {"s": {"positional": True, "type": "string", "required": True}},
+        },
+    )
+    maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root]))
+    result = runner.invoke(app, ["run", "sleep", "--timeout=0.2", "s=10"])
+    assert result.exit_code == 1
+    assert "timed out" in (result.stdout + result.stderr).lower()
+
+
+def test_cli_run_dotted_pairs_token(tmp_path: Any) -> None:
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "dkr.yaml",
+        {
+            "cli": "echo",
+            "install": {"backend": "path"},
+            "args": {"env": {"flag": "-e", "type": "pairs", "joiner": "="}},
+        },
+    )
+    maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root]))
+    dry = runner.invoke(app, ["run", "dkr", "--dry-run", "env.K=V", "env.A=B"])
+    assert dry.exit_code == 0, dry.stdout + dry.stderr
+    assert dry.stdout.strip() == "echo -e K=V -e A=B"
 
 
 def test_cli_run_maina_flag_before_tool_id() -> None:

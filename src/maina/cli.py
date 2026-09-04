@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shlex
 import sys
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
@@ -208,27 +209,31 @@ def run(
         raise typer.Exit(0)
     # Only the head (before `--`) is maina's; `--json` after `--` is the tool's.
     head, tail = split_at_dashdash(tokens)
-    maina_flags = {t for t in head if t in RunInvocation.MAINA_FLAGS}
-    head = [t for t in head if t not in maina_flags]
+    opts, head = RunInvocation.split_maina_opts(head)
     tokens = head if tail is None else [*head, "--", *tail]
-    dispatch_run(
-        resolved_id,
-        tokens,
-        as_json=RunInvocation.JSON_FLAG in maina_flags,
-        dry_run=RunInvocation.DRY_RUN_FLAG in maina_flags,
-    )
+    dispatch_run(resolved_id, tokens, opts)
 
 
-def dispatch_run(resolved_id: str, tokens: list[str], *, as_json: bool, dry_run: bool) -> None:
+@dataclass(frozen=True, slots=True)
+class RunOpts:
+    """maina-side options for ``maina run`` (not tool kwargs)."""
+
+    as_json: bool = False
+    dry_run: bool = False
+    timeout: float | None = None
+    cwd: str | None = None
+
+
+def dispatch_run(resolved_id: str, tokens: list[str], opts: RunOpts) -> None:
     """Print the argv (``--dry-run``) or run the tool and emit its result."""
-    if dry_run:
+    if opts.dry_run:
         typer.echo(shlex.join(dry_run_argv(resolved_id, tokens)))
         return
-    result = run_tool_tokens(resolved_id, tokens)
-    emit_result(result, as_json=as_json)
+    result = run_tool_tokens(resolved_id, tokens, timeout=opts.timeout, cwd=opts.cwd)
+    emit_result(result, as_json=opts.as_json)
     if result.parse_error:
         echo_stderr(f"parse error: {result.parse_error}")
-    elif as_json and result.parsed is None:
+    elif opts.as_json and result.parsed is None:
         echo_stderr("note: --json output is null (no parser: configured, or it returned None)")
     if not result.ok:
         echo_stderr(result.stderr)
@@ -236,7 +241,7 @@ def dispatch_run(resolved_id: str, tokens: list[str], *, as_json: bool, dry_run:
         raise typer.Exit(1)
     # A parse failure under --json (the caller asked for parsed output and got
     # none) is itself a failure.
-    if as_json and result.parsed is None and result.parse_error:
+    if opts.as_json and result.parsed is None and result.parse_error:
         raise typer.Exit(1)
 
 
@@ -255,12 +260,14 @@ def flag_names_for(tool: Tool) -> frozenset[str]:
     return frozenset(name for name, spec in tool.args.items() if spec.type == "flag")
 
 
-def run_tool_tokens(resolved_id: str, tokens: list[str]) -> ToolResult:
+def run_tool_tokens(
+    resolved_id: str, tokens: list[str], *, timeout: float | None = None, cwd: str | None = None
+) -> ToolResult:
     """Build argv from CLI tokens and run the tool, mapping errors to exit codes."""
     try:
         tool = Tool(resolved_id)
         kwargs, extra = RunArgParser.parse(tokens, flag_names=flag_names_for(tool))
-        return tool.run(extra=extra, **kwargs)
+        return tool.run(extra=extra, timeout=timeout, cwd=cwd, **kwargs)
     except (ManifestError, AbstractToolError, ArgError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(2) from exc
@@ -329,6 +336,36 @@ class RunInvocation:
     JSON_FLAG = "--json"
     DRY_RUN_FLAG = "--dry-run"
     MAINA_FLAGS = frozenset({JSON_FLAG, DRY_RUN_FLAG})
+    TIMEOUT_OPT = "--timeout="
+    CWD_OPT = "--cwd="
+
+    @classmethod
+    def split_maina_opts(cls, head: list[str]) -> tuple[RunOpts, list[str]]:
+        """Pull the maina-side options (``--json``, ``--dry-run``, ``--timeout=``,
+        ``--cwd=``) out of *head*; the rest are the tool's ``key=value`` tokens."""
+        rest: list[str] = []
+        as_json = dry_run = False
+        timeout: float | None = None
+        cwd: str | None = None
+        for tok in head:
+            if tok == cls.JSON_FLAG:
+                as_json = True
+            elif tok == cls.DRY_RUN_FLAG:
+                dry_run = True
+            elif tok.startswith(cls.TIMEOUT_OPT):
+                timeout = cls._opt_float(tok)
+            elif tok.startswith(cls.CWD_OPT):
+                cwd = tok.removeprefix(cls.CWD_OPT)
+            else:
+                rest.append(tok)
+        return RunOpts(as_json=as_json, dry_run=dry_run, timeout=timeout, cwd=cwd), rest
+
+    @classmethod
+    def _opt_float(cls, tok: str) -> float:
+        try:
+            return float(tok.removeprefix(cls.TIMEOUT_OPT))
+        except ValueError as exc:
+            raise typer.BadParameter(f"{tok!r}: --timeout needs a number of seconds") from exc
 
     @classmethod
     def _lift_lead_flag(
@@ -423,6 +460,11 @@ class RunArgParser:
         if "=" in token:
             key, _, value = token.partition("=")
             cls._require_key(token, key)
+            if "." in key:  # arg.subkey=value -> a pairs dict
+                arg, _, sub = key.partition(".")
+                cls._require_key(token, arg)
+                kwargs.setdefault(arg, {})[sub] = value
+                return
             cls._assign(kwargs, key, value=cls._coerce(value) if key in flag_names else value)
             return
         if token not in flag_names:
