@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 import typer
 
@@ -28,6 +28,8 @@ class RunOpts:
     dry_run: bool = False
     timeout: float | None = None
     cwd: str | None = None
+    stdin: bool = False
+    env_allow: tuple[str, ...] | None = None
 
 
 class RawArgv:
@@ -73,39 +75,61 @@ class RunInvocation:
         raw_after = RAW_ARGV.after_command("run")
         return cls.parse_raw(raw_after) if raw_after is not None else cls.parse(tool_id, ctx_args)
 
-    JSON_FLAG = "--json"
-    DRY_RUN_FLAG = "--dry-run"
-    MAINA_FLAGS = frozenset({JSON_FLAG, DRY_RUN_FLAG})
-    TIMEOUT_OPT = "--timeout="
-    CWD_OPT = "--cwd="
+    # Bare maina-side flags, by the ``RunOpts`` field each one sets.
+    BOOL_OPTS: ClassVar[dict[str, str]] = {
+        "--json": "as_json",
+        "--dry-run": "dry_run",
+        "--stdin": "stdin",
+    }
+    MAINA_FLAGS = frozenset(BOOL_OPTS)
+    # ``--name=value`` maina-side options, by the ``RunOpts`` field each one sets.
+    VALUE_OPTS: ClassVar[dict[str, str]] = {
+        "--timeout=": "timeout",
+        "--cwd=": "cwd",
+        "--env-allow=": "env_allow",
+    }
 
     @classmethod
     def split_maina_opts(cls, head: list[str]) -> tuple[RunOpts, list[str]]:
-        """Pull the maina-side options (``--json``, ``--dry-run``, ``--timeout=``,
-        ``--cwd=``) out of *head*; the rest are the tool's ``key=value`` tokens."""
-        rest: list[str] = []
-        as_json = dry_run = False
-        timeout: float | None = None
-        cwd: str | None = None
-        for tok in head:
-            if tok == cls.JSON_FLAG:
-                as_json = True
-            elif tok == cls.DRY_RUN_FLAG:
-                dry_run = True
-            elif tok.startswith(cls.TIMEOUT_OPT):
-                timeout = cls._opt_float(tok)
-            elif tok.startswith(cls.CWD_OPT):
-                cwd = tok.removeprefix(cls.CWD_OPT)
-            else:
-                rest.append(tok)
-        return RunOpts(as_json=as_json, dry_run=dry_run, timeout=timeout, cwd=cwd), rest
+        """Pull the maina-side options out of *head*; the rest are the tool's
+        ``key=value`` tokens.
+
+        These are maina's own knobs (``--json``, ``--dry-run``, ``--stdin``,
+        ``--timeout=``, ``--cwd=``, ``--env-allow=``), never the tool's — the
+        tool's own options go after ``--``.
+        """
+        found: dict[str, Any] = {}
+        rest = [tok for tok in head if not cls._take_opt(found, tok)]
+        return RunOpts(**found), rest
 
     @classmethod
-    def _opt_float(cls, tok: str) -> float:
+    def _take_opt(cls, found: dict[str, Any], tok: str) -> bool:
+        """Fold one maina-side option into *found*; False when it is a tool token."""
+        if field := cls.BOOL_OPTS.get(tok):
+            found[field] = True
+            return True
+        for prefix, name in cls.VALUE_OPTS.items():
+            if tok.startswith(prefix):
+                found[name] = cls._opt_value(name, tok.removeprefix(prefix), found)
+                return True
+        return False
+
+    @classmethod
+    def _opt_value(cls, field: str, text: str, found: dict[str, Any]) -> Any:
+        """Parse one ``--name=value`` option; ``--env-allow`` accumulates."""
+        if field == "timeout":
+            return cls._opt_float(text)
+        if field != "env_allow":
+            return text
+        names = tuple(part for part in text.split(",") if part)
+        return (*(found.get("env_allow") or ()), *names)
+
+    @staticmethod
+    def _opt_float(text: str) -> float:
         try:
-            return float(tok.removeprefix(cls.TIMEOUT_OPT))
+            return float(text)
         except ValueError as exc:
-            raise typer.BadParameter(f"{tok!r}: --timeout needs a number of seconds") from exc
+            raise typer.BadParameter(f"{text!r}: --timeout needs a number of seconds") from exc
 
     @classmethod
     def _lift_lead_flag(
@@ -224,11 +248,21 @@ class RunArgParser:
 
     @staticmethod
     def _assign(kwargs: dict[str, Any], key: str, *, value: Any) -> None:
-        """Set or append a kwarg; repeated keys become lists."""
+        """Set or append a kwarg; repeated keys become lists.
+
+        A key already built up from ``key.sub=value`` pairs rejects a later plain
+        ``key=value`` — the mirror of the error the opposite order already gives,
+        rather than a ``[dict, "plain"]`` list the arg parser can only complain
+        about in terms that never mention the conflicting tokens.
+        """
         if key not in kwargs:
             kwargs[key] = value
             return
         existing = kwargs[key]
+        if isinstance(existing, dict):
+            raise typer.BadParameter(
+                f"{key!r} was already given {key}.key=value pairs; drop the plain {key}=... token"
+            )
         if isinstance(existing, list):
             existing.append(value)
         else:

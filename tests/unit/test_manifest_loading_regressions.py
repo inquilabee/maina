@@ -323,3 +323,51 @@ def test_cli_run_coercion_is_type_aware(tmp_path: Path) -> None:
     flags = frozenset(name for name, spec in schema.items() if spec.type == "flag")
     kwargs, _ = RunArgParser.parse(["count=1", "silent=1"], flag_names=flags)
     assert kwargs == {"count": "1", "silent": True}
+
+
+def test_a_manifest_error_names_the_file_it_came_from(tmp_path: Path) -> None:
+    registry = make_reg(tmp_path, {"solo.yaml": {"cli": "echo", "timeout": -1}})
+    with pytest.raises(ManifestError) as excinfo:
+        registry.load("solo")
+    assert "(in " in str(excinfo.value)
+    assert str(tmp_path / "reg" / "solo.yaml") in str(excinfo.value)
+    assert excinfo.value.files == (str(tmp_path / "reg" / "solo.yaml"),)
+
+
+def test_an_inherited_defect_names_the_parent_that_declared_it(tmp_path: Path) -> None:
+    """One typo in a shared ``base.yaml`` reports once per child; every message
+    must name the file to open, not just the child id it was derived for."""
+    registry = make_reg(
+        tmp_path,
+        {
+            "base.yaml": {
+                "abstract": True,
+                "args": {"color": {"flag": "--color", "type": "strng"}},
+            },
+            "alpha.yaml": {"cli": "echo"},
+        },
+    )
+    with pytest.raises(ManifestError) as excinfo:
+        registry.load("alpha")
+    message = str(excinfo.value)
+    assert "args.color type 'strng'" in message
+    assert str(tmp_path / "reg" / "alpha.yaml") in message
+    assert "which extends" in message
+    assert str(tmp_path / "reg" / "base.yaml") in message
+
+
+def test_a_nested_id_names_its_own_path_not_just_the_hyphen_id(tmp_path: Path) -> None:
+    registry = make_reg(tmp_path, {"kubectl/get.yaml": {"cli": "kubectl", "timeout": 0}})
+    with pytest.raises(ManifestError) as excinfo:
+        registry.load("kubectl-get")
+    assert str(tmp_path / "reg" / "kubectl" / "get.yaml") in str(excinfo.value)
+
+
+def test_a_yaml_syntax_error_is_not_relocated(tmp_path: Path) -> None:
+    """It already names its own path; the chain suffix must not double it up."""
+    root = tmp_path / "reg"
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "broken.yaml").write_text("cli: [unclosed\n", encoding="utf-8")
+    with pytest.raises(ManifestError) as excinfo:
+        Registry([root]).load("broken")
+    assert str(excinfo.value).count(str(root / "broken.yaml")) == 1

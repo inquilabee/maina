@@ -82,11 +82,14 @@ Node on its own. Pin runtimes where you need them:
 - `requires: null` on a child clears every inherited pin;
   `requires: { node: null }` drops just one
 
-**Quote every string-valued field** in YAML — `version`, `cli`, `install.tag`,
-`install.binary`, `install.assets.*`, and `env:` values. YAML 1.1 turns `3.10`
-into the float `3.1` and `yes` / `on` into booleans; maina rejects a bare
-`bool` / `float` in these fields at load rather than downloading the wrong
-release.
+**Quote any string field YAML 1.1 could reinterpret** — `version: "3.10"`
+(unquoted it is the float `3.1`), `cli: "yes"` / `install.tag: "on"` (unquoted
+they are booleans), and likewise for `install.binary`, `install.assets.*`, and
+`env:` values. maina rejects a bare `bool` / `float` in these fields at load
+rather than downloading the wrong release, so the mistake is loud either way —
+quoting just moves it earlier. A value with no such second reading (`cli: jq`,
+`version: 1.7.1`) needs no quotes, and a strict YAML linter will object if you
+add them anyway.
 
 A manifest may declare `platforms: [linux, macos]`. On any other host `resolve`
 raises `UnsupportedPlatformError` up front, and `maina prepare` (no ids) skips

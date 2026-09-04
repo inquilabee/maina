@@ -160,7 +160,9 @@
         "assets": {
           "type": "object",
           "propertyNames": {
-            "enum": [
+            "type": "string",
+            "pattern": "^(linux|macos|windows)-([a-z0-9_]+)$",
+            "examples": [
               "linux-arm64",
               "linux-x86_64",
               "macos-arm64",
@@ -200,7 +202,9 @@
         "sha256": {
           "type": "object",
           "propertyNames": {
-            "enum": [
+            "type": "string",
+            "pattern": "^(linux|macos|windows)-([a-z0-9_]+)$",
+            "examples": [
               "linux-arm64",
               "linux-x86_64",
               "macos-arm64",
@@ -231,6 +235,9 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "allow_stale_report": {
+          "type": "boolean"
+        },
         "format": {
           "type": "string"
         },

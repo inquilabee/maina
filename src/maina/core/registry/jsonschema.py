@@ -15,9 +15,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from maina.core.platform import KNOWN_PLATFORM_KEYS
+from maina.core.platform import KNOWN_PLATFORM_KEYS, PLATFORM_KEY_RE
 
-from .specs import (
+from .keys import (
     ARG_KEYS,
     ARG_TYPES,
     CURRENT_SCHEMA,
@@ -38,12 +38,22 @@ SCHEMA_ID = (
 # forces an update here.
 BUILTIN_BACKENDS = ("github", "npm", "path")
 
+# ``{os}-{arch}`` by shape, not by enum: a host maina has no arch alias for
+# (armv7l, ppc64le, s390x, riscv64) reaches the installer with exactly that key,
+# so the schema must accept it. The alias rule that also rejects ``linux-amd64``
+# is a cross-field check and stays in the loader, like every other one here.
+PLATFORM_KEY_NAMES: dict[str, Any] = {
+    "type": "string",
+    "pattern": PLATFORM_KEY_RE.pattern,
+    "examples": sorted(KNOWN_PLATFORM_KEYS),
+}
+
 # Every ``<key>: null`` in these maps is the null-drop idiom (drop that
 # inherited entry down `extends`) that args / requires / env / install.assets
 # all share — the schema must accept it, not just the loader.
 PLATFORM_MAP: dict[str, Any] = {
     "type": "object",
-    "propertyNames": {"enum": sorted(KNOWN_PLATFORM_KEYS)},
+    "propertyNames": PLATFORM_KEY_NAMES,
     "additionalProperties": {"type": ["string", "null"]},
 }
 
@@ -100,7 +110,7 @@ INSTALL_PROPERTIES: dict[str, dict[str, Any]] = {
     "package": {"type": "string", "minLength": 1},
     "sha256": {
         "type": "object",
-        "propertyNames": {"enum": sorted(KNOWN_PLATFORM_KEYS)},
+        "propertyNames": PLATFORM_KEY_NAMES,
         "additionalProperties": {
             "anyOf": [{"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}, {"type": "null"}]
         },
@@ -113,6 +123,7 @@ OUTPUT_PROPERTIES: dict[str, dict[str, Any]] = {
     "format": {"type": "string"},
     "success_codes": {"type": "array", "items": {"type": "integer"}},
     "from_file": {"type": "string", "minLength": 1},
+    "allow_stale_report": {"type": "boolean"},
 }
 
 

@@ -104,16 +104,24 @@ class MiseRuntime:
 
     def is_present(self, runtime: str, version: str) -> bool:
         """True when ``runtime@version`` already resolves — no install, no bootstrap."""
+        return self.present_bin_dir(runtime, version) is not None
+
+    def present_bin_dir(self, runtime: str, version: str) -> Path | None:
+        """``runtime@version``'s bin directory when it is *already* installed.
+
+        No install and no bootstrap, so a readiness check (``prepare --check``)
+        can compose the PATH a real run would see without provisioning anything.
+        ``None`` means "not installed here", never "installing it failed".
+        """
         cached = (self.cache_root / "mise" / "bin" / "mise").is_file()
         if not shutil.which("mise") and not cached:
-            return False
+            return None
         env = os.environ.copy()
         env["MISE_DATA_DIR"] = str(self.data_dir)
         try:
-            spec = f"{runtime}@{version}"
-            return self._mise_which(self.mise_bin(), spec, runtime, env) is not None
+            return self._mise_which(self.mise_bin(), f"{runtime}@{version}", runtime, env)
         except RuntimeProvisionError:
-            return False
+            return None
 
     @staticmethod
     def _bootstrap_mise(target: Path, base_env: dict[str, str] | None = None) -> Path:

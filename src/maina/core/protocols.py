@@ -58,6 +58,11 @@ class InstallContext:
 
     cache_root: Path
     language: LanguageRuntimeProvider
+    probe_path: str | None = None
+    """PATH a side-effect-free ``probe`` should search, with the bin dirs of the
+    manifest's already-installed ``requires:`` runtimes prepended. ``None`` (the
+    default, and what ``resolve`` gets) means the ambient ``PATH``.
+    """
 
     def tool_bin_dir(self, name: str, version: str = "default") -> Path:
         """Per-tool versioned bin directory under the cache."""

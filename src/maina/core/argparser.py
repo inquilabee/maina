@@ -142,17 +142,20 @@ class ArgParser:
             )
 
     @staticmethod
-    def _scalar_token(name: str, value: Any) -> str:
+    def _scalar_token(name: str, value: Any, *, what: str = "value") -> str:
         """Stringify one argv-bound value, rejecting ``bool`` and non-scalars.
 
         ``bool`` is a Python ``int`` subclass, so an unguarded ``str()`` turns a
         caller's ``False`` into the literal token ``"False"``; a dict/list/other
         object turns into its ``repr()``. Neither is a value a downstream CLI can
         use — a caller who wants a boolean flag wants ``type: flag``.
+
+        Every value that reaches argv goes through here, ``type: pairs`` keys and
+        values included (*what* names which half for the error message).
         """
         if isinstance(value, bool) or not isinstance(value, (str, int, float)):
             raise ArgParser._arg_error(
-                name, f"value must be a string or number, not {type(value).__name__}"
+                name, f"{what} must be a string or number, not {type(value).__name__}"
             )
         return str(value)
 
@@ -191,25 +194,35 @@ class ArgParser:
         Default is three tokens ``--flag key value`` (``jq --arg name val``).
         With ``joiner:`` set it is two — ``--flag key<joiner>value`` — for
         ``docker -e K=V`` (``joiner: "="``) and the like.
+
+        Both halves of a pair are scalar-checked like every other argv token:
+        ``env={"DEBUG": False}`` must not emit ``-e DEBUG=False``, which most
+        CLIs read as *set and truthy*.
         """
         if not flag:
             raise ArgParser._arg_error(name, "type: pairs needs a flag")
         items = value.items() if isinstance(value, dict) else value
         out: list[str] = []
         for pair in items:
-            if isinstance(pair, (str, bytes)) or not isinstance(pair, (tuple, list)):
-                raise ArgParser._arg_error(
-                    name, "pairs expects a dict or a list of [key, value] pairs"
-                )
-            try:
-                key, val = pair
-            except ValueError as exc:
-                raise ArgParser._arg_error(name, "each pair must be exactly [key, value]") from exc
+            key, val = ArgParser._pair_parts(name, pair)
+            key_token = ArgParser._scalar_token(name, key, what="pairs key")
+            val_token = ArgParser._scalar_token(name, val, what="pairs value")
             if joiner is None:
-                out.extend([flag, str(key), str(val)])
+                out.extend([flag, key_token, val_token])
             else:
-                out.extend([flag, f"{key}{joiner}{val}"])
+                out.extend([flag, f"{key_token}{joiner}{val_token}"])
         return out
+
+    @staticmethod
+    def _pair_parts(name: str, pair: Any) -> tuple[Any, Any]:
+        """Unpack one ``type: pairs`` entry into ``(key, value)``."""
+        if isinstance(pair, (str, bytes)) or not isinstance(pair, (tuple, list)):
+            raise ArgParser._arg_error(name, "pairs expects a dict or a list of [key, value] pairs")
+        try:
+            key, val = pair
+        except ValueError as exc:
+            raise ArgParser._arg_error(name, "each pair must be exactly [key, value]") from exc
+        return key, val
 
     @staticmethod
     def _emit_flag(name: str, flag: str | None, value: Any) -> list[str]:

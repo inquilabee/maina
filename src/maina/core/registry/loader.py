@@ -13,23 +13,19 @@ from maina.core.errors import ManifestError
 
 from . import ids as registry_ids
 from .common import MANIFEST_PREFIX, manifest_error, scalar_str, unknown_keys
-from .requires import RequiresSpec
-from .specs import (
+from .keys import (
     BASE_TOOL_ID,
     CURRENT_SCHEMA,
     IGNORED_MANIFEST_KEYS,
     TOP_LEVEL_KEYS,
     VALID_PLATFORMS,
-    InstallSpec,
-    Manifest,
-    OutputSpec,
-    parse_args_map,
 )
+from .merge import ManifestMerge
+from .requires import RequiresSpec
+from .specs import InstallSpec, Manifest, OutputSpec, parse_args_map
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-
-MAP_KEYS = frozenset({"args", "install", "env", "output", "requires"})
 
 
 class Registry:
@@ -55,6 +51,11 @@ class Registry:
         # cleared on append_roots.
         self._id_paths: dict[Path, list[tuple[str, Path]]] = {}
         self._scan_index: dict[Path, dict[str, Path]] = {}
+        # Parsed YAML per (path, mtime_ns, size) — `Tool(id)` otherwise re-parses
+        # every layer of the extends chain on every construction, and
+        # `list_commands` parses the whole catalog to filter abstracts. Keyed on
+        # the file's own stamp, so an edited manifest re-parses on its own.
+        self._raw_yaml: dict[tuple[str, int, int], dict[str, Any]] = {}
 
     @property
     def root(self) -> Path:
@@ -74,19 +75,58 @@ class Registry:
             if path.resolve() not in seen:
                 self.roots.append(path)
                 seen.add(path.resolve())
+        self.refresh()
+
+    def refresh(self) -> None:
+        """Forget which manifest files each root holds, so ones added since the
+        last lookup are seen.
+
+        A ``Registry`` scans each root once and reuses that index for every id
+        lookup, ``iter_ids``, and ``list_commands``. In a long-lived process (a
+        service, a notebook, a watch loop, a test that writes manifests into an
+        already-registered root) a file added afterwards is otherwise invisible
+        to listing — and, for an id only the tree scan can resolve, unloadable.
+        Call this after writing manifests into a registered root. Adding a root
+        refreshes on its own.
+        """
         self._base_present.clear()
         self._id_paths.clear()
         self._scan_index.clear()
+        self._raw_yaml.clear()
 
     def load(self, tool_id: str) -> Manifest:
-        """Load and merge a tool manifest by registry id."""
+        """Load and merge a tool manifest by registry id.
+
+        A problem found while merging or validating is re-raised naming the
+        file(s) it came from: the id is derived from a path, and for a defect
+        inherited from a shared parent it points at the wrong manifest entirely.
+        """
         tid = self.normalize_id(tool_id)
         chain = self._load_chain(tid, [])
+        try:
+            return self._build(tid, chain)
+        except ManifestError as exc:
+            raise self._located(exc, chain) from exc
+
+    @staticmethod
+    def _located(
+        exc: ManifestError, chain: list[tuple[str, Path, Path, dict[str, Any]]]
+    ) -> ManifestError:
+        """*exc* with the chain's manifest files appended (leaf first)."""
+        if exc.files:
+            return exc
+        paths = [str(path) for _cid, path, _root, _data in reversed(chain)]
+        leaf, parents = paths[0], paths[1:]
+        where = f"{leaf}, which extends {', '.join(parents)}" if parents else leaf
+        return ManifestError(f"{exc} (in {where})", files=tuple(paths))
+
+    def _build(self, tid: str, chain: list[tuple[str, Path, Path, dict[str, Any]]]) -> Manifest:
+        """Merge a loaded ``extends`` chain root→leaf into one ``Manifest``."""
         merged: dict[str, Any] = {}
         subcommands: list[str] = []
         leaf_path = chain[-1][1]
         for index, (cid, _path, _root, data) in enumerate(chain):
-            layer = deepcopy(data)
+            layer = deepcopy(data)  # the raw layer is memoized and shared; never mutate it
             # ``abstract`` is never inherited: a surface is abstract only when its
             # own leaf manifest declares it (like ``extends`` / ``subcommand``).
             if index != len(chain) - 1:
@@ -96,7 +136,7 @@ class Registry:
                 layer["requires"] = RequiresSpec.layer_for_merge(layer["requires"], tool_id=cid)
             if (seg := layer.get("subcommand")) is not None and str(seg) != "":
                 subcommands.append(str(seg))
-            merged = self.merge_maps(merged, layer) if merged else layer
+            merged = ManifestMerge.merge_maps(merged, layer) if merged else layer
             merged.pop("extends", None)
             merged.pop("subcommand", None)
 
@@ -181,7 +221,11 @@ class Registry:
             raise manifest_error(tid, f"separator {sep!r} must be a non-empty string")
         if not isinstance(args, dict):
             return
-        if ordered := [n for n, a in args.items() if isinstance(a, dict) and "order" in a]:
+        # `order: null` is the null-drop idiom clearing an inherited order, not a
+        # declaration of one — it must not trip the conflict it just resolved.
+        if ordered := [
+            n for n, a in args.items() if isinstance(a, dict) and a.get("order") is not None
+        ]:
             raise manifest_error(
                 tid,
                 "separator and args.order are two ways to lay out argv — pick one "
@@ -416,9 +460,24 @@ class Registry:
     # a mistake or an alias-expansion ("billion laughs") attempt.
     MAX_YAML_ANCHORS = 64
 
+    def _load_raw_yaml(self, path: Path) -> dict[str, Any]:
+        """Load a single YAML manifest file, memoized on its own mtime + size.
+
+        The returned mapping is shared with every other loader of the same file;
+        callers deep-copy before merging (see :meth:`_build`).
+        """
+        try:
+            stat = path.stat()
+        except OSError as exc:
+            raise ManifestError(f"cannot read {path}: {exc}") from exc
+        key = (str(path), stat.st_mtime_ns, stat.st_size)
+        if key not in self._raw_yaml:
+            self._raw_yaml[key] = self._parse_yaml(path)
+        return self._raw_yaml[key]
+
     @classmethod
-    def _load_raw_yaml(cls, path: Path) -> dict[str, Any]:
-        """Load a single YAML manifest file."""
+    def _parse_yaml(cls, path: Path) -> dict[str, Any]:
+        """Read and parse one YAML manifest file."""
         try:
             text = path.read_text(encoding="utf-8")
         except OSError as exc:
@@ -434,87 +493,3 @@ class Registry:
         if not isinstance(raw, dict):
             raise ManifestError(f"{MANIFEST_PREFIX}{path} must be a mapping")
         return raw
-
-    @staticmethod
-    def merge_maps(parent: dict[str, Any], child: dict[str, Any]) -> dict[str, Any]:
-        """Deep-merge child onto parent using registry inheritance rules.
-
-        ``requires: null`` replaces inherited pins. Within a requires map,
-        ``runtime: null`` drops that pin; other map keys still shallow-merge.
-        """
-        out = deepcopy(parent)
-        for key, value in child.items():
-            if key in {"subcommand", "extends"}:
-                continue
-            if key == "requires":
-                out[key] = Registry._merge_requires(out.get(key), value)
-                continue
-            if key in MAP_KEYS and isinstance(value, dict) and isinstance(out.get(key), dict):
-                out[key] = Registry._merge_map_key(key, out[key], value)
-                continue
-            out[key] = deepcopy(value)
-        return out
-
-    # install sub-maps that deep-merge per platform key (a child that overrides
-    # one platform's asset must not drop the others).
-    _INSTALL_DEEP_KEYS = ("assets", "sha256")
-
-    @classmethod
-    def _merge_map_key(
-        cls, key: str, parent: dict[str, Any], child: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Merge a MAP_KEYS block. ``args`` merges per-arg-name then per-field;
-        ``env`` merges per-key with ``<var>: null`` dropping an inherited one
-        (mirrors ``requires``); ``install`` shallow-merges but deep-merges
-        ``assets`` / ``sha256`` the same way."""
-        out = deepcopy(parent)
-        if key == "args":
-            return cls._merge_args(out, child)
-        if key == "env":
-            return cls._merge_null_dropping(parent, child)
-        out |= deepcopy(child)
-        deep_subs = cls._INSTALL_DEEP_KEYS if key == "install" else ()
-        for sub in deep_subs:
-            if isinstance(parent.get(sub), dict) and isinstance(child.get(sub), dict):
-                out[sub] = cls._merge_null_dropping(parent[sub], child[sub])
-        return out
-
-    @staticmethod
-    def _merge_null_dropping(parent: dict[str, Any], child: dict[str, Any]) -> dict[str, Any]:
-        """``{**parent, **child}``, except a ``null`` value in the child drops
-        that inherited key — the null-drop idiom ``args`` and ``requires`` use,
-        applied to ``env`` and to ``install``'s ``assets`` / ``sha256`` maps (so
-        a version-bump child can shed a parent's stale asset name or digest, and
-        a child can turn off an inherited env var)."""
-        merged = deepcopy(parent)
-        for key, value in child.items():
-            if value is None:
-                merged.pop(key, None)
-            else:
-                merged[key] = deepcopy(value)
-        return merged
-
-    @staticmethod
-    def _merge_args(out: dict[str, Any], child: dict[str, Any]) -> dict[str, Any]:
-        for arg_name, child_spec in child.items():
-            if child_spec is None:
-                out.pop(arg_name, None)
-                continue
-            mergeable = isinstance(child_spec, dict) and isinstance(out.get(arg_name), dict)
-            out[arg_name] = {**out[arg_name], **child_spec} if mergeable else deepcopy(child_spec)
-        return out
-
-    @staticmethod
-    def _merge_requires(parent: Any, child: Any) -> Any:
-        """Merge requires maps; ``None`` child clears; null pin values drop keys."""
-        if child is None:
-            return None
-        if not isinstance(child, dict):
-            return deepcopy(child)
-        merged: dict[str, Any] = deepcopy(parent) if isinstance(parent, dict) else {}
-        for name, version in child.items():
-            if version is None:
-                merged.pop(name, None)
-            else:
-                merged[name] = deepcopy(version)
-        return merged

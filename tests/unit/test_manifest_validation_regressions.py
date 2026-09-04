@@ -22,7 +22,7 @@ def make_reg(tmp_path: Path, files: dict[str, dict[str, Any]]) -> Registry:
     return Registry(root)
 
 
-# --- review D: install identity + manifest validation --------------------------
+# --- install identity hashing + manifest field validation ----------------------
 
 
 def test_cache_version_covers_requires_for_npm(tmp_path: Path) -> None:
@@ -377,3 +377,93 @@ def test_child_can_drop_an_inherited_asset_with_null(tmp_path: Path) -> None:
     )
     assets = reg.load("v2").install.assets
     assert assets == {"linux-x86_64": "t-2-linux.tgz"}
+
+
+# --- arg field combinations argv can only half-honour ---------------------------
+
+
+def test_join_csv_and_repeat_are_rejected_together(tmp_path: Path) -> None:
+    registry = make_reg(
+        tmp_path,
+        {"t.yaml": {"cli": "echo", "args": {"a": {"flag": "--a", "join": "csv", "repeat": True}}}},
+    )
+    with pytest.raises(ManifestError, match="two different list layouts"):
+        registry.load("t")
+
+
+def test_joiner_and_repeat_false_are_rejected_together(tmp_path: Path) -> None:
+    """``joiner`` silently beat ``repeat: false``: the author wrote "one flag,
+    then every item" and got a joined flag per item."""
+    registry = make_reg(
+        tmp_path,
+        {"t.yaml": {"cli": "echo", "args": {"e": {"flag": "--e", "repeat": False, "joiner": "="}}}},
+    )
+    with pytest.raises(ManifestError, match=r"joiner and repeat: false conflict"):
+        registry.load("t")
+
+
+def test_joiner_is_rejected_where_argv_never_emits_it(tmp_path: Path) -> None:
+    for name, spec in (
+        ("flagged", {"flag": "--b", "type": "flag", "joiner": "="}),
+        ("place", {"positional": True, "joiner": "="}),
+    ):
+        registry = make_reg(tmp_path / name, {"t.yaml": {"cli": "echo", "args": {"c": spec}}})
+        with pytest.raises(ManifestError, match="joiner is never emitted"):
+            registry.load("t")
+
+
+def test_a_pairs_arg_may_still_carry_a_joiner(tmp_path: Path) -> None:
+    """``docker -e K=V`` is the reason ``joiner`` exists on a pairs arg."""
+    registry = make_reg(
+        tmp_path,
+        {
+            "t.yaml": {
+                "cli": "docker",
+                "args": {"e": {"flag": "-e", "type": "pairs", "joiner": "="}},
+            }
+        },
+    )
+    assert registry.load("t").args["e"].joiner == "="
+
+
+def test_clearing_an_inherited_order_does_not_trip_the_separator_conflict(
+    tmp_path: Path,
+) -> None:
+    """``order: null`` is the null-drop idiom resolving the conflict, not
+    declaring one."""
+    registry = make_reg(
+        tmp_path,
+        {
+            "base.yaml": {"abstract": True, "args": {"p": {"positional": True, "order": 5}}},
+            "kid.yaml": {"cli": "echo", "separator": "--", "args": {"p": {"order": None}}},
+        },
+    )
+    manifest = registry.load("kid")
+    assert manifest.separator == "--"
+    assert manifest.args["p"].order is None
+
+
+def test_a_real_inherited_order_still_conflicts_with_a_separator(tmp_path: Path) -> None:
+    registry = make_reg(
+        tmp_path,
+        {
+            "base.yaml": {"abstract": True, "args": {"p": {"positional": True, "order": 5}}},
+            "kid.yaml": {"cli": "echo", "separator": "--"},
+        },
+    )
+    with pytest.raises(ManifestError, match=r"separator and args\.order"):
+        registry.load("kid")
+
+
+def test_output_allow_stale_report_is_a_declared_boolean(tmp_path: Path) -> None:
+    registry = make_reg(
+        tmp_path,
+        {"t.yaml": {"cli": "echo", "output": {"from_file": "r.json", "allow_stale_report": True}}},
+    )
+    assert registry.load("t").output.allow_stale_report is True
+    bad = make_reg(
+        tmp_path / "bad",
+        {"t.yaml": {"cli": "echo", "output": {"from_file": "r.json", "allow_stale_report": "yes"}}},
+    )
+    with pytest.raises(ManifestError, match="allow_stale_report must be true or false"):
+        bad.load("t")

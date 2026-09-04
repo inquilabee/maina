@@ -183,3 +183,28 @@ def test_build_argv_pairs_rejects_string_item() -> None:
     schema = {"arg": {"flag": "--arg", "type": "pairs"}}
     with pytest.raises(ArgError, match="dict or a list of"):
         ArgParser(schema).build("t", [], {"arg": ["ab", "cd"]})
+
+
+def test_pairs_values_go_through_the_same_scalar_guard_as_every_other_token() -> None:
+    """``env={"DEBUG": False}`` must not emit ``-e DEBUG=False``.
+
+    Most CLIs read a set-but-"False" variable as set and truthy, so stringifying
+    a bool here is the silent-wrong-command the guard exists to prevent.
+    """
+    parser = ArgParser({"env": {"flag": "-e", "type": "pairs", "joiner": "="}})
+    for bad in (False, True, None, ["a", "b"], {"y": 1}):
+        with pytest.raises(ArgError, match="pairs value must be a string or number"):
+            parser.build("docker", [], {"env": {"DEBUG": bad}})
+    assert parser.build("docker", [], {"env": {"K": "V", "N": 3}}) == [
+        "docker",
+        "-e",
+        "K=V",
+        "-e",
+        "N=3",
+    ]
+
+
+def test_pairs_keys_go_through_the_scalar_guard_too() -> None:
+    parser = ArgParser({"arg": {"flag": "--arg", "type": "pairs"}})
+    with pytest.raises(ArgError, match="pairs key must be a string or number"):
+        parser.build("jq", [], {"arg": [(True, "v")]})

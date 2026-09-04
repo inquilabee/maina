@@ -26,7 +26,7 @@ from maina.core.errors import (
     MainaError,
     ManifestError,
 )
-from maina.core.platform import KNOWN_PLATFORM_KEYS
+from maina.core.platform import platform_key_problem
 from maina.core.registry import BASE_TOOL_ID, RESERVED_RUN_PARAMS, build_manifest_schema
 from maina.runtime import runtime
 from maina.tool import Tool
@@ -189,8 +189,18 @@ def validate_one(rt: Any, tid: str) -> str | None:
         return str(exc)
     if not manifest.has_cli:
         inheritance_only = manifest.abstract or manifest.id == BASE_TOOL_ID
-        return None if inheritance_only else NO_CLI_PROBLEM
-    return concrete_problem(manifest, rt)
+        return None if inheritance_only else located(NO_CLI_PROBLEM, manifest)
+    return located(concrete_problem(manifest, rt), manifest)
+
+
+def located(problem: str | None, manifest: Any) -> str | None:
+    """A static problem with the manifest file it was found in appended.
+
+    A load error already names its own files; these checks run on the merged
+    manifest, where the id alone is a derived name and not something to open.
+    """
+    unlocatable = problem is None or manifest.path is None
+    return problem if unlocatable else f"{problem} (in {manifest.path})"
 
 
 def concrete_problem(manifest: Any, rt: Any) -> str | None:
@@ -207,20 +217,27 @@ def install_problem(manifest: Any, rt: Any) -> str | None:
         return f"install backend {install.backend!r} is not registered (known: {known})"
     if install.backend == "github" and not (install.repo and install.assets):
         return "install.backend: github needs both repo: and assets:"
-    if bad := sorted((set(install.assets) | set(install.sha256)) - KNOWN_PLATFORM_KEYS):
-        return f"install.assets/sha256 platform keys not recognised: {', '.join(bad)}"
+    keys = sorted(set(install.assets) | set(install.sha256))
+    if bad := [problem for key in keys if (problem := platform_key_problem(key))]:
+        return f"install.assets/sha256 platform keys: {'; '.join(bad)}"
     return None
 
 
 def from_file_problem(manifest: Any) -> str | None:
-    """An ``output.from_file`` template naming something that is not an arg, or ``None``."""
+    """An ``output.from_file`` template that can never resolve, or ``None``."""
     template = manifest.output.from_file
     if not template:
         return None
-    allowed = {"cwd", *manifest.args}
     fields = {field for _lit, field, _spec, _conv in Formatter().parse(template) if field}
-    if undeclared := sorted(fields - allowed):
+    if undeclared := sorted(fields - {"cwd", *manifest.args}):
         return f"output.from_file names non-arg placeholder(s): {', '.join(undeclared)}"
+    # The runner only interpolates scalars, so a flag never substitutes — the
+    # template is statically unresolvable, not merely unresolved on some runs.
+    if flags := sorted(f for f in fields if f in manifest.args and manifest.args[f].type == "flag"):
+        return (
+            "output.from_file placeholder(s) name a type: flag arg, which never "
+            f"interpolates: {', '.join(flags)}"
+        )
     return None
 
 
@@ -391,14 +408,16 @@ def dispatch_run(resolved_id: str, tokens: list[str], opts: RunOpts) -> None:
     if opts.dry_run:
         typer.echo(shlex.join(dry_run_argv(resolved_id, tokens)))
         return
-    result = run_tool_tokens(resolved_id, tokens, timeout=opts.timeout, cwd=opts.cwd)
+    result = run_tool_tokens(resolved_id, tokens, opts=opts)
     emit_result(result, as_json=opts.as_json)
+    # The tool's stderr belongs to whoever ran it, on success too: a linter's
+    # warnings and a deprecation notice are the reason it was written there.
+    echo_stderr(result.stderr)
     if result.parse_error:
         echo_stderr(f"parse error: {result.parse_error}")
     elif opts.as_json and result.parsed is None:
         echo_stderr("note: --json output is null (no parser: configured, or it returned None)")
     if not result.ok:
-        echo_stderr(result.stderr)
         # Docs contract: exit 1 = tool ran and failed; 2 = bad usage / unknown id.
         raise typer.Exit(1)
     # A parse failure under --json (the caller asked for parsed output and got
@@ -434,14 +453,19 @@ def reserved_safe_kwargs(kwargs: dict[str, Any], **extra_params: Any) -> dict[st
     return {**extra_params, **plain, **({"args": reserved} if reserved else {})}
 
 
-def run_tool_tokens(
-    resolved_id: str, tokens: list[str], *, timeout: float | None = None, cwd: str | None = None
-) -> ToolResult:
+def run_tool_tokens(resolved_id: str, tokens: list[str], *, opts: RunOpts) -> ToolResult:
     """Build argv from CLI tokens and run the tool, mapping errors to exit codes."""
     try:
         tool = Tool(resolved_id)
         kwargs, extra = RunArgParser.parse(tokens, flag_names=flag_names_for(tool))
-        call_kwargs = reserved_safe_kwargs(kwargs, extra=extra, timeout=timeout, cwd=cwd)
+        call_kwargs = reserved_safe_kwargs(
+            kwargs,
+            extra=extra,
+            timeout=opts.timeout,
+            cwd=opts.cwd,
+            stdin=sys.stdin.read() if opts.stdin else None,
+            env_allow=opts.env_allow,
+        )
         return tool.run(**call_kwargs)
     except (ManifestError, AbstractToolError, ArgError) as exc:
         typer.echo(str(exc), err=True)

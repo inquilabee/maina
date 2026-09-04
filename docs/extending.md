@@ -42,6 +42,30 @@ maina.Tool("mytool", runtime=rt).run(...)
 `register(rt, registry_dirs=[...], replace=True)` clears the catalog first;
 duplicate roots are ignored.
 
+## Catalogs that change while the process runs
+
+A `Registry` scans each root once and reuses that index for every id lookup,
+`list_commands`, and `iter_ids`. Adding a root refreshes it; writing a *file*
+into an already-registered root does not, so call `refresh()` after doing so:
+
+```python
+(root / "newtool.yaml").write_text(...)
+rt.registry.refresh()          # otherwise `newtool` is invisible to `list`
+```
+
+Editing an existing manifest needs no refresh — parsed YAML is memoized against
+each file's own mtime and size, so an edit in place is picked up on the next
+load. Only the *set of files under a root* is cached.
+
+That memo also means `Tool(id)` is cheap to construct repeatedly, but not free:
+it still re-merges the `extends` chain every time. Hoist it out of a loop.
+
+```python
+tool = maina.Tool("shellcheck", runtime=rt)   # once
+for path in paths:
+    tool.run(path=[str(path)])
+```
+
 ## Introspection
 
 Build your own help, form UI, or CLI from a tool's schema without parsing
@@ -124,7 +148,11 @@ class MyBackend:
 `ctx` is an `InstallContext` (cache root, language provider,
 `tool_bin_dir(...)`, `prepend_path(...)`). Optionally add a side-effect-free
 `probe(self, manifest, *, version, ctx) -> bool` so `maina prepare --check` can
-report your backend's tools.
+report your backend's tools. A probe that searches `PATH` should search
+`ctx.probe_path` (the ambient `PATH` plus the bin dirs of the manifest's
+already-installed `requires:` runtimes, or `None` when there are no pins), so a
+tool provided by a pinned runtime is not reported `missing` by a check that a
+real `resolve` would pass. A probe must never install anything.
 
 ## Custom language provider
 

@@ -17,76 +17,11 @@ from .common import (
     scalar_str,
     unknown_keys,
 )
+from .keys import ARG_KEYS, ARG_TYPES, INSTALL_KEYS, JOIN_VALUES, OUTPUT_KEYS
 from .requires import RequiresSpec
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-# Dropped from the merged manifest before use (pure catalog decoration).
-# ``platforms`` is kept and enforced at resolve time (see ``Manifest.platforms``).
-IGNORED_MANIFEST_KEYS = frozenset({"name"})
-BASE_TOOL_ID = "base"
-CURRENT_SCHEMA = 1
-
-# Every key a merged manifest may carry. Validated at load so a typo
-# (``outputs:``, ``platform:``, ``timeoutt:``) fails closed like the nested
-# blocks, instead of loading silently and being ignored.
-TOP_LEVEL_KEYS = frozenset(
-    {
-        "schema",
-        "cli",
-        "version",
-        "subcommand",
-        "extends",
-        "abstract",
-        "platforms",
-        "timeout",
-        "separator",
-        "parser",
-        "env",
-        "args",
-        "install",
-        "requires",
-        "output",
-        "name",
-    }
-)
-
-ARG_KEYS = frozenset(
-    {
-        "type",
-        "flag",
-        "joiner",
-        "positional",
-        "required",
-        "repeat",
-        "join",
-        "order",
-        "default",
-        "description",
-        "help",
-        "choices",
-    }
-)
-ARG_TYPES = frozenset({"string", "flag", "path", "pairs"})
-JOIN_VALUES = frozenset({"csv"})
-VALID_PLATFORMS = frozenset({"linux", "macos", "windows"})
-INSTALL_KEYS = frozenset(
-    {
-        "backend",
-        "repo",
-        "assets",
-        "binary",
-        "tag",
-        "package",
-        "sha256",
-        "allow_scripts",
-        "allow_any_executable",
-    }
-)
-
-
-OUTPUT_KEYS = frozenset({"format", "success_codes", "from_file"})
 
 
 @dataclass(slots=True, frozen=True)
@@ -124,8 +59,19 @@ class ArgSpec:
         )
         flag = cls._opt_scalar(raw, "flag", name=name, tool_id=tool_id)
         join = None if raw.get("join") is None else str(raw["join"])
+        joiner = cls._opt_scalar(raw, "joiner", name=name, tool_id=tool_id)
+        repeat = require_optional_bool(
+            raw.get("repeat"), field_name=f"args.{name}.repeat", tool_id=tool_id
+        )
         cls._check_shape(
-            name, arg_type, positional=positional, flag=flag, join=join, tool_id=tool_id
+            name,
+            arg_type,
+            positional=positional,
+            flag=flag,
+            join=join,
+            joiner=joiner,
+            repeat=repeat,
+            tool_id=tool_id,
         )
         default = cls._scalar_default(raw, arg_type, name=name, tool_id=tool_id)
         choices = cls._parse_choices(raw, arg_type, name=name, tool_id=tool_id)
@@ -136,14 +82,12 @@ class ArgSpec:
         return cls(
             type=arg_type,
             flag=flag,
-            joiner=cls._opt_scalar(raw, "joiner", name=name, tool_id=tool_id),
+            joiner=joiner,
             positional=positional,
             required=require_bool(
                 raw.get("required"), field_name=f"args.{name}.required", tool_id=tool_id
             ),
-            repeat=require_optional_bool(
-                raw.get("repeat"), field_name=f"args.{name}.repeat", tool_id=tool_id
-            ),
+            repeat=repeat,
             join=join,
             order=cls._parse_order(raw.get("order"), name=name, tool_id=tool_id),
             default=default,
@@ -222,13 +166,51 @@ class ArgSpec:
         return order
 
     @staticmethod
+    def _check_emit_conflicts(
+        name: str,
+        arg_type: str,
+        *,
+        positional: bool,
+        join: str | None,
+        joiner: str | None,
+        repeat: bool | None,
+        tool_id: str,
+    ) -> None:
+        """Reject field pairs argv can only half-honour.
+
+        Each of these loads clean today and then silently picks a winner:
+        ``join: csv`` beats ``repeat``, ``joiner`` beats ``repeat: false`` (the
+        one that bites — the author wrote "one flag, then every item" and gets a
+        joined flag *per* item), and a ``flag`` / positional arg drops ``joiner``
+        on the floor. An author who wrote both meant one of them.
+        """
+        if join == "csv" and repeat is not None:
+            raise manifest_error(
+                tool_id,
+                f"args.{name} join: csv and repeat are two different list layouts — csv joins "
+                "every item into one token, repeat emits the flag per item; pick one",
+            )
+        if joiner is not None and repeat is False:
+            raise manifest_error(
+                tool_id,
+                f"args.{name} joiner and repeat: false conflict — a joiner emits "
+                "flag<joiner>item once per item, never a single flag; drop one",
+            )
+        if joiner is not None and (positional or arg_type == "flag"):
+            what = "positional" if positional else "type: flag"
+            raise manifest_error(tool_id, f"args.{name} joiner is never emitted for a {what} arg")
+
+    @classmethod
     def _check_shape(
+        cls,
         name: str,
         arg_type: str,
         *,
         positional: bool,
         flag: str | None,
         join: str | None,
+        joiner: str | None,
+        repeat: bool | None,
         tool_id: str,
     ) -> None:
         if arg_type not in ARG_TYPES:
@@ -247,6 +229,15 @@ class ArgSpec:
             raise manifest_error(tool_id, f"args.{name} join {join!r} not in {{csv}}")
         if arg_type == "pairs" and flag is None:
             raise manifest_error(tool_id, f"args.{name} type: pairs needs a flag")
+        cls._check_emit_conflicts(
+            name,
+            arg_type,
+            positional=positional,
+            join=join,
+            joiner=joiner,
+            repeat=repeat,
+            tool_id=tool_id,
+        )
 
 
 @dataclass(slots=True, frozen=True)
@@ -381,6 +372,13 @@ class OutputSpec:
     """When set, the parse input is this file's contents, not stdout. The
     template interpolates ``{cwd}`` and string kwargs (``"{output}/report.json"``).
     """
+    allow_stale_report: bool = False
+    """Accept an ``output.from_file`` report older than the run that should have
+    written it. Off by default so a tool that failed to rewrite its report can
+    never be parsed as this run's output; turn it on for an incremental tool
+    that deliberately leaves an unchanged report alone, or on a filesystem whose
+    mtime clock is offset from the host's (NFS, some container bind mounts).
+    """
 
     @classmethod
     def from_mapping(cls, raw: Any, *, tool_id: str) -> OutputSpec:
@@ -395,6 +393,11 @@ class OutputSpec:
             format=optional_str(raw.get("format")),
             success_codes=cls._parse_success_codes(raw.get("success_codes", [0]), tool_id=tool_id),
             from_file=cls._parse_from_file(raw.get("from_file"), tool_id=tool_id),
+            allow_stale_report=require_bool(
+                raw.get("allow_stale_report"),
+                field_name="output.allow_stale_report",
+                tool_id=tool_id,
+            ),
         )
 
     @staticmethod
@@ -494,14 +497,6 @@ class Manifest:
             str(key): scalar_str(value, field_name=f"env.{key}", tool_id=self.id)
             for key, value in raw.items()
         }
-
-
-# Names ``Tool.run`` / ``__call__`` bind as their own parameters — a manifest
-# arg with one of these names is still valid, but the caller must pass it via
-# ``run(args={"env": ...})`` rather than ``run(env=...)``.
-RESERVED_RUN_PARAMS = frozenset(
-    {"extra", "parser", "cwd", "timeout", "env_allow", "env", "stdin", "text", "args"}
-)
 
 
 def parse_args_map(raw: Any, *, tool_id: str) -> dict[str, ArgSpec]:

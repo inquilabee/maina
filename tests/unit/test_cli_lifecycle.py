@@ -38,7 +38,7 @@ def test_cli_validate_reports_each_error_and_exits_nonzero(tmp_path: Any) -> Non
     assert "error: bad:" in result.stderr
     assert "error: badparser:" in result.stderr
     assert "backend 'gihtub' is not registered" in result.stderr
-    assert "platform keys not recognised: linux-amd64" in result.stderr
+    assert "'linux-amd64' should be linux-x86_64" in result.stderr
 
 
 def test_cli_validate_catches_static_manifest_bugs(tmp_path: Any) -> None:
@@ -201,3 +201,80 @@ def test_cli_clean_removes_cache(tmp_path: Any) -> None:
     assert "cleaned: toolx/1" in result.stdout
     assert not (cache / "tools" / "toolx").exists()
     assert "nothing to clean" in runner.invoke(app, ["clean"]).stdout
+
+
+def test_validate_accepts_a_platform_key_the_installer_would_actually_use(
+    tmp_path: Any,
+) -> None:
+    """``current_arch()`` returns the raw ``platform.machine()`` when it has no
+    alias, so a 32-bit Pi asks for exactly ``linux-armv7l``. A catalog that
+    carries such an asset installs fine and must lint clean too."""
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "pi.yaml",
+        {
+            "cli": "mytool",
+            "install": {
+                "backend": "github",
+                "repo": "a/b",
+                "assets": {
+                    "linux-x86_64": "mytool-x86_64.tar.gz",
+                    "linux-armv7l": "mytool-armv7l.tar.gz",
+                    "linux-ppc64le": "mytool-ppc64le.tar.gz",
+                },
+            },
+        },
+    )
+    maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root], use_env=False))
+    result = runner.invoke(app, ["validate"])
+    assert result.exit_code == 0
+    assert "ok: pi" in result.stdout
+
+
+def test_validate_rejects_an_unnormalised_or_unknown_platform_key(tmp_path: Any) -> None:
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "typo.yaml",
+        {
+            "cli": "x",
+            "install": {
+                "backend": "github",
+                "repo": "a/b",
+                "assets": {"linux-amd64": "x.tar.gz", "darwin-arm64": "y.tar.gz"},
+            },
+        },
+    )
+    maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root], use_env=False))
+    result = runner.invoke(app, ["validate"])
+    assert result.exit_code == 1
+    assert "'linux-amd64' should be linux-x86_64" in result.stderr
+    assert "'darwin-arm64' is not a '<os>-<arch>' key" in result.stderr
+
+
+def test_validate_rejects_a_from_file_placeholder_that_can_never_resolve(
+    tmp_path: Any,
+) -> None:
+    """The runner only interpolates scalars, so a ``type: flag`` placeholder is
+    statically unresolvable — ``validate`` must not bless it."""
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "rep.yaml",
+        {
+            "cli": "echo",
+            "args": {"verbose": {"flag": "-v", "type": "flag"}},
+            "output": {"from_file": "{verbose}/r.json"},
+        },
+    )
+    maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root], use_env=False))
+    result = runner.invoke(app, ["validate"])
+    assert result.exit_code == 1
+    assert "never interpolates: verbose" in result.stderr
+
+
+def test_validate_problems_name_the_manifest_file(tmp_path: Any) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "nocli.yaml", {"install": {"backend": "path"}})
+    maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root], use_env=False))
+    result = runner.invoke(app, ["validate"])
+    assert result.exit_code == 1
+    assert str(root / "nocli.yaml") in result.stderr

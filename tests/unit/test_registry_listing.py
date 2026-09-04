@@ -129,3 +129,36 @@ def test_list_commands_skips_broken_manifest_with_warning(tmp_path: Path) -> Non
     with pytest.warns(RuntimeWarning, match="broken"):
         ids = Registry(root).list_commands()
     assert ids == ["good"]
+
+
+def test_refresh_sees_manifests_added_to_an_already_scanned_root(tmp_path: Path) -> None:
+    """A root is scanned once and the index reused; ``refresh()`` drops it.
+
+    Without this a long-lived process (a service, a notebook, a watch loop)
+    shows a permanently stale catalog, and an id only the tree scan can resolve
+    is not merely unlisted but unloadable.
+    """
+    root = tmp_path / "reg"
+    write_yaml(root / "first.yaml", {"cli": "echo"})
+    registry = Registry([root])
+    assert registry.list_commands(None) == ["first"]
+
+    write_yaml(root / "second.yaml", {"cli": "echo"})
+    write_yaml(root / "fam" / "my-tool.yaml", {"cli": "echo"})
+    assert registry.list_commands(None) == ["first"]
+
+    registry.refresh()
+    assert registry.list_commands(None) == ["fam-my-tool", "first", "second"]
+    # `fam-my-tool` splits on every hyphen, so only the tree scan resolves it.
+    assert registry.load("fam-my-tool").cli == "echo"
+
+
+def test_a_manifest_edited_in_place_is_reparsed(tmp_path: Path) -> None:
+    """The raw-YAML memo is keyed on the file's own mtime + size, so an edit is
+    picked up without a ``refresh()`` — only the *set of files* is cached."""
+    root = tmp_path / "reg"
+    path = write_yaml(root / "t.yaml", {"cli": "echo"})
+    registry = Registry([root])
+    assert registry.load("t").cli == "echo"
+    write_yaml(path, {"cli": "printf"})
+    assert registry.load("t").cli == "printf"

@@ -161,7 +161,8 @@ output:
 | --- | --- |
 | `format` | Free-form hint (`json` / `text` / ...); not enforced. |
 | `success_codes` | Exit codes counted as `ok`. Default `[0]`. |
-| `from_file` | When set, the parser reads **this file** instead of stdout — for tools that write a report file. `result.raw` still holds the tool's stdout; the file contents go on `result.report` and `result.meta["parsed_from"]` records the path. The template interpolates `{cwd}` and any string- or number-valued arg by name (including one that only has a manifest `default:`); list / bool args are not substituted. Placeholders are bare names only — `{cwd.parent}` / `{a[0]}` and a conversion / format spec (`{out!r}` / `{out:>10}`) are rejected. It is resolved relative to `cwd`, a relative path only — absolute paths and `..` are rejected at load. The file is read up to 64 MiB. Any failure (unresolved placeholder, a path that escapes the run directory, a missing or over-cap file) lands on `result.parse_error`; there is no silent fall back to stdout. |
+| `from_file` | When set, the parser reads **this file** instead of stdout — for tools that write a report file. `result.raw` still holds the tool's stdout; the file contents go on `result.report` and `result.meta["parsed_from"]` records the path. The template interpolates `{cwd}` and any string- or number-valued arg by name (including one that only has a manifest `default:`); list / bool args are not substituted. Placeholders are bare names only — `{cwd.parent}` / `{a[0]}` and a conversion / format spec (`{out!r}` / `{out:>10}`) are rejected. It is resolved relative to `cwd`, a relative path only — absolute paths and `..` are rejected at load. The file is read up to 64 MiB. Any failure (unresolved placeholder, a path that escapes the run directory, a missing or over-cap file) lands on `result.parse_error`; there is no silent fall back to stdout. A report whose mtime predates the run by more than 2 s is rejected as a leftover from a previous run (see `allow_stale_report`). A placeholder naming a `type: flag` arg is rejected by `maina validate` — a flag is never substituted, so the template could never resolve. |
+| `allow_stale_report` | `true` accepts an `output.from_file` report older than the run that should have written it. Default `false`, so a tool that failed to rewrite its report is never parsed as this run's output. Turn it on for an incremental or content-hashing tool that deliberately leaves an unchanged report alone, or on a filesystem whose mtime clock is offset from the host's (NFS, some container bind mounts). |
 
 ## install
 
@@ -183,8 +184,8 @@ install:
 | `backend` | all | `path` (default), `github`, `npm`, or a registered custom name. |
 | `repo` | `github` | `owner/name` GitHub repository (validated at load). |
 | `assets` | `github` | Platform key (`linux-x86_64`, `macos-arm64`, ...) to release asset name (each a single safe path segment). |
-| `binary` | `github` | Executable name inside the asset. Defaults to `cli`. |
-| `tag` | `github` | Release tag (a single safe path segment). Defaults to `version`; `latest` uses the latest release. |
+| `binary` | `github` | Executable name inside the asset. Defaults to `cli`. `npm` ignores it and always links `node_modules/.bin/<cli>`, so for an npm package whose bin name differs from the package name, `cli:` must be the **bin** name and `package:` the package name. |
+| `tag` | `github` | Release tag (a single safe path segment). Defaults to `version`. `latest` resolves the newest release **once**: the download is cached under that tag, so later runs keep using it until `maina clean <id>`. Pin a real tag for a reproducible catalog. |
 | `sha256` | `github` | Optional platform key to hex digest. A mismatch aborts before `chmod +x`. |
 | `package` | `npm` | npm package name — validated at load (`@scope/name` allowed). Defaults to `cli`. |
 | `allow_scripts` | `npm` | `true` lets `npm install` run the package's lifecycle scripts. Default `false` (`--ignore-scripts`). |
@@ -195,9 +196,12 @@ handled. Archive members that escape the destination are rejected.
 
 The `github` / `npm` cache directory is keyed by `cli` + `version` **and** a
 hash of `repo` / `tag` / `assets` / `sha256` / `package` / `binary` /
-`allow_scripts`, so two manifests that share `cli` + `version` but fetch or
-unpack different things never collide and a changed digest pin forces a fresh
-download.
+`allow_scripts` / `allow_any_executable` **and the `requires:` runtime pins**,
+so two manifests that share `cli` + `version` but fetch or unpack different
+things never collide and a changed digest pin forces a fresh download. The
+runtime pins are part of the key because an npm package is built against the
+Node that installed it — the cost is that bumping an unrelated pin also forces
+a re-download for a `github` tool.
 
 ## requires
 
@@ -238,6 +242,32 @@ that basis; give it `abstract: true` to make the intent explicit. Merge rules:
 - Every other key is replaced by the child's value.
 - `subcommand` segments accumulate down the chain into `Manifest.subcommands`.
 - A cycle in `extends` raises `ManifestError`.
+
+## Escape hatches and limits
+
+The argv model covers options, positionals, csv joins, repeat-vs-single lists,
+`joiner`, `pairs`, `order:` interleaving, `separator`, and `extra=` passthrough.
+Read this before writing a manifest for an awkward CLI — it is the five-minute
+answer to "does my tool fit".
+
+What a manifest **cannot** express, and the way out of each:
+
+| Not expressible | Do this instead |
+| --- | --- |
+| Mutually exclusive or co-required args (`--a` xor `--b`) | Let the tool reject the combination, or wrap the call in your own function. |
+| Conditional emission (emit `--b` only when `a` is set) | Two manifests via `extends`, or pick the kwargs in Python. |
+| Counted flags (`-vvv`) | `extra=["-vvv"]`. |
+| A subcommand chosen at run time | One manifest per subcommand (`kubectl/get.yaml`, `kubectl/apply.yaml`) — they share a parent, so the duplication is one line each. |
+| Interpolating an arg into `env:` (a secret via the environment) | `run(env={"TOKEN": ...})` — `env:` in YAML is static by design, so a manifest cannot exfiltrate a caller's value into a variable. |
+| An npm bin whose name differs from the package | `cli:` is the bin name, `package:` the package name (see [install](#install)). |
+
+Two hatches worth knowing:
+
+- **`extra=`** appends raw argv tokens, so anything the schema cannot say is
+  still one call away: `run(path="src", extra=["--unstable-flag"])`.
+- **`args={...}`** passes a manifest arg whose name collides with one of
+  `run()`'s own parameters (`timeout`, `cwd`, `env`, `parser`, `stdin`, `text`,
+  `extra`, `env_allow`, `args`) — see [reserved names](#args).
 
 ## ToolResult
 

@@ -56,5 +56,29 @@ def test_run_argparser_colon_eq_after_eq_is_a_value() -> None:
 
 
 def test_run_argparser_pairs_then_plain_collision_is_bad_parameter() -> None:
-    with pytest.raises(typer.BadParameter, match="already given a plain value"):
+    with pytest.raises(typer.BadParameter, match=r"already given a plain value"):
         RunArgParser.parse(["env=oops", "env.K=V"])
+
+
+def test_split_maina_opts_reads_stdin_and_env_allow() -> None:
+    opts, rest = RunInvocation.split_maina_opts(
+        ["--stdin", "--env-allow=FOO", "--env-allow=BAR,BAZ", "--timeout=5", "path=x"]
+    )
+    assert opts.stdin is True
+    assert opts.env_allow == ("FOO", "BAR", "BAZ")
+    assert opts.timeout == pytest.approx(5.0)
+    assert rest == ["path=x"]
+
+
+def test_split_maina_opts_defaults_leave_stdin_and_env_alone() -> None:
+    opts, rest = RunInvocation.split_maina_opts(["path=x"])
+    assert opts.stdin is False
+    assert opts.env_allow is None
+    assert rest == ["path=x"]
+
+
+def test_mixing_pairs_and_plain_tokens_errors_in_either_order() -> None:
+    with pytest.raises(typer.BadParameter, match=r"already given a plain value"):
+        RunArgParser.parse(["env=plain", "env.K=V"])
+    with pytest.raises(typer.BadParameter, match=r"already given env\.key=value pairs"):
+        RunArgParser.parse(["env.K=V", "env=plain"])

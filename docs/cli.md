@@ -48,6 +48,15 @@ Call `Tool(tool_id).run(**kwargs)`.
 - `--json` prints `result.parsed` as JSON; without it the CLI prints the tool's
   stdout exactly as produced. A parser failure is printed to stderr as
   `parse error: …`; under `--json` it also makes the command exit non-zero.
+- The tool's **stderr is passed through on stderr**, on success as well as
+  failure — a linter's warnings and a deprecation notice are not maina's to
+  swallow.
+- `--stdin` feeds this process's stdin to the tool, so `maina run` can be piped
+  into. Without it the tool gets `/dev/null`, so one that reads stdin never
+  blocks on your terminal.
+- `--env-allow=NAME[,NAME...]` (repeatable) trims the environment the tool
+  sees to the essentials plus these names — the CLI spelling of `run`'s
+  `env_allow=`, see [security](security.md).
 - `--dry-run` prints the argv that would run (argv[0] is the bare `cli` name; a
   real run resolves it to the cached executable) and exits without running it.
 
@@ -56,6 +65,8 @@ maina run jq filter=".items[].name" path=data.json raw
 maina run rg pattern=TODO path=src path=tests glob='*.py'
 maina run jscpd path=src -- --silent
 maina run kubectl-get resource=pods --json
+cat data.json | maina run jq --stdin filter=.items
+maina run curl --env-allow=NETRC url=https://example.com
 ```
 
 `maina run <tool_id>` with no tokens, or `maina run <tool_id> --help`, prints
@@ -142,8 +153,18 @@ install / run time:
   give it `abstract: true`);
 - `install.backend` is registered, and a `github` backend has both `repo:`
   and `assets:`;
-- `install.assets` / `sha256` keys are real `{os}-{arch}` platform keys;
-- every `output.from_file` placeholder names a declared arg (or `cwd`).
+- `install.assets` / `sha256` keys are well-formed `{os}-{arch}` platform keys.
+  Any architecture is accepted, not just the six with an alias — an armv7l /
+  ppc64le / s390x / riscv64 host asks the installer for exactly that key. What
+  is rejected is an unnormalised spelling (`linux-amd64`, which no host ever
+  asks for) and an OS maina never emits (`darwin-arm64`);
+- every `output.from_file` placeholder names a declared arg (or `cwd`), and is
+  not a `type: flag` arg — a flag is never interpolated, so such a template
+  could never resolve at run time.
+
+Each problem names the manifest **file** it was found in, so a defect inherited
+from a shared `base.yaml` points at `base.yaml` rather than at each innocent
+child that merged it.
 
 ```bash
 maina validate                 # CI: "is every manifest well-formed?"

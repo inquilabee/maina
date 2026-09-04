@@ -46,7 +46,7 @@ def path_installer(tmp_path: Path, reg: Registry) -> Installer:
     return Installer(cache_root=tmp_path / "cache", registry=reg, backends=[PathBackend()])
 
 
-# --- review C: install-path security (B1, B2, B3) -------------------------------
+# --- install-path security: cache escape, digest pinning, link targets ----------
 
 
 def test_install_asset_name_traversal_rejected(tmp_path: Path) -> None:
@@ -210,7 +210,7 @@ def test_npm_install_uses_ignore_scripts_by_default(
     assert "--ignore-scripts" not in calls[0]
 
 
-# --- review C: expressiveness + output.from_file + validation (U5, B7, B11-B13) ---
+# --- argv expressiveness, output.from_file, and load-time validation ------------
 
 
 def test_pairs_type_emits_flag_key_value() -> None:
@@ -361,7 +361,41 @@ def test_from_file_stale_report_is_surfaced(tmp_path: Path) -> None:
     assert result.parsed is None
     assert result.parse_error is not None
     assert "stale" in result.parse_error
+    assert "allow_stale_report" in result.parse_error
     assert result.meta.get("parsed_from_mtime") == old
+
+
+def test_from_file_allow_stale_report_opts_out_of_the_mtime_check(tmp_path: Path) -> None:
+    """The window fires on correct manifests too — an incremental tool that skips
+    rewriting an unchanged report, or a filesystem whose mtime clock is offset
+    from the host's (NFS, some container bind mounts). It must be turnable off.
+    """
+    reg = make_reg(
+        tmp_path,
+        {
+            "j.yaml": {
+                "cli": "echo",
+                "install": {"backend": "path"},
+                "parser": "json",
+                "args": {"out": {"flag": "--out", "type": "string", "default": "report"}},
+                "output": {"from_file": "{out}/r.json", "allow_stale_report": True},
+            }
+        },
+    )
+    work = tmp_path / "w"
+    (work / "report").mkdir(parents=True)
+    report = work / "report" / "r.json"
+    report.write_text('{"clones": 1}', encoding="utf-8")
+    old = report.stat().st_mtime - 3600
+    os.utime(report, (old, old))
+    runner = ToolRunner(
+        reg.load("j"),
+        installer=path_installer(tmp_path, reg),
+        parsers=ParserResolver(generals=builtin_generals()),
+    )
+    result = runner.run({}, cwd=str(work))
+    assert result.parse_error is None
+    assert result.parsed == {"clones": 1}
 
 
 def test_cli_json_split_keeps_dashdash_tail() -> None:
@@ -372,7 +406,7 @@ def test_cli_json_split_keeps_dashdash_tail() -> None:
     assert tail == ["--json"]
 
 
-# --- review C: robustness P2s (B4, B8, B9, B10) -------------------------------
+# --- runner robustness: timeouts, binary output, env composition ---------------
 
 
 def test_locate_binary_needs_the_named_member(tmp_path: Path) -> None:
@@ -459,7 +493,7 @@ def test_run_without_stdin_does_not_block(tmp_path: Path) -> None:
     assert result.raw == ""
 
 
-# --- review C: introspection & adaptability (A1, A7, A8) --------------------
+# --- introspection: describe(), argv(), and overlay adaptability ---------------
 
 
 def test_tool_describe_is_json_safe(tmp_path: Path) -> None:
@@ -532,7 +566,7 @@ def test_register_replace_resets_catalog(tmp_path: Path) -> None:
     assert rt.registry.iter_ids() == ["two"]
 
 
-# --- review C: entry-point discovery (A2) + npm version regression -----------
+# --- entry-point catalog discovery + npm version resolution --------------------
 
 
 def test_npm_pkg_spec_uses_manifest_version_not_cache_key(

@@ -37,6 +37,11 @@ class PathBackend:
         return found, env
 
     def probe(self, manifest: Manifest, *, version: str, ctx: InstallContext) -> bool:
-        """True when the CLI already resolves on PATH (no side effects)."""
-        del version, ctx
-        return self._which(manifest.cli) is not None
+        """True when the CLI already resolves on PATH (no side effects).
+
+        Searches ``ctx.probe_path`` — the ambient PATH plus the bin dirs of any
+        already-installed ``requires:`` runtimes — so a tool provided by a pinned
+        runtime is not reported ``missing`` by a check that ``resolve`` passes.
+        """
+        del version
+        return self._which(manifest.cli, path=ctx.probe_path) is not None

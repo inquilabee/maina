@@ -34,6 +34,14 @@ __all__ = ["ESSENTIAL_ENV", "Executor", "ToolRunner"]
 class ToolRunner:
     """Instance-scoped owner of install → argv → subprocess → parse."""
 
+    # How far an ``output.from_file`` report's mtime may predate the run that
+    # should have written it before it is rejected as a leftover from a previous
+    # run. Slack, not precision: filesystem mtime granularity and clock offsets
+    # (NFS, some container bind mounts) make an exact comparison unusable.
+    # A manifest whose tool legitimately leaves a report alone sets
+    # ``output.allow_stale_report: true``.
+    REPORT_MTIME_SLACK = 2.0
+
     def __init__(
         self,
         manifest: Manifest,
@@ -73,11 +81,7 @@ class ToolRunner:
         neither the parser nor ``output.from_file`` runs — for a tool that emits
         an archive, image, or other binary on stdout.
         """
-        if env is not None and not isinstance(env, Mapping):
-            raise ArgError(
-                f"{self.manifest.id}: env= must be a mapping of NAME: value, not "
-                f"{type(env).__name__} (a manifest arg named env belongs in args={{'env': ...}})"
-            )
+        self._check_env(env)
         # Materialise env_allow once — it is consumed twice (install-phase and
         # tool subprocess), so a one-shot generator would apply differently.
         env_allow = None if env_allow is None else frozenset(env_allow)
@@ -119,6 +123,29 @@ class ToolRunner:
             override=parser,
         )
         return resolver.apply(result)
+
+    def _check_env(self, env: Any) -> None:
+        """``env=`` must be a mapping of ``str`` to ``str``.
+
+        ``subprocess`` rejects anything else with a bare ``TypeError`` raised
+        from inside ``Popen`` — not a ``MainaError``, and with no mention of
+        which variable. A port number or a timeout as an env value is a natural
+        mistake; say so here instead.
+        """
+        if env is None:
+            return
+        if not isinstance(env, Mapping):
+            raise ArgError(
+                f"{self.manifest.id}: env= must be a mapping of NAME: value, not "
+                f"{type(env).__name__} (a manifest arg named env belongs in args={{'env': ...}})"
+            )
+        for key, value in env.items():
+            if not isinstance(key, str) or not isinstance(value, str):
+                raise ArgError(
+                    f"{self.manifest.id}: env[{key!r}] must be a string name and value, not "
+                    f"{type(key).__name__} -> {type(value).__name__} "
+                    "(the environment is text; stringify it at the call site)"
+                )
 
     def _build_result(
         self,
@@ -228,8 +255,12 @@ class ToolRunner:
             return
         stat = path.stat()
         result.meta |= {"parsed_from": str(path), "parsed_from_mtime": stat.st_mtime}
-        if stat.st_mtime < started_wall - 2.0:
-            result.parse_error = f"output.from_file {path} was not written by this run (stale)"
+        stale = stat.st_mtime < started_wall - self.REPORT_MTIME_SLACK
+        if stale and not self.manifest.output.allow_stale_report:
+            result.parse_error = (
+                f"output.from_file {path} was not written by this run (stale) — set "
+                "output.allow_stale_report: true if the tool leaves an unchanged report alone"
+            )
             return
         if stat.st_size > REPORT_MAX_BYTES:
             result.parse_error = (

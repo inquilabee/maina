@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import pytest
@@ -162,9 +163,11 @@ def test_cli_run_with_kwargs_still_runs(monkeypatch: pytest.MonkeyPatch) -> None
         extra: str | list[str] | None = None,
         timeout: float | None = None,
         cwd: str | None = None,
+        stdin: str | None = None,
+        env_allow: tuple[str, ...] | None = None,
         **kwargs: Any,
     ) -> ToolResult:
-        del timeout, cwd
+        del timeout, cwd, stdin, env_allow
         calls.append((self.id, {"extra": extra, **kwargs}))
         return ToolResult(
             tool=self.id or "",
@@ -230,9 +233,11 @@ def test_cli_run_help_after_extra_separator_does_not_short_circuit(
         extra: str | list[str] | None = None,
         timeout: float | None = None,
         cwd: str | None = None,
+        stdin: str | None = None,
+        env_allow: tuple[str, ...] | None = None,
         **kwargs: Any,
     ) -> ToolResult:
-        del timeout, cwd
+        del timeout, cwd, stdin, env_allow
         calls.append({"extra": extra, **kwargs})
         return ToolResult(
             tool=self.id or "",
@@ -381,3 +386,49 @@ def test_cli_run_no_arg_tool_with_dashdash(tmp_path: Any) -> None:
     assert "Arguments:" in runner.invoke(app, ["run", "noargs"]).stdout
     result = runner.invoke(app, ["run", "noargs", "--"])
     assert result.exit_code == 0, result.stdout + result.stderr
+
+
+def test_cli_run_passes_the_tools_stderr_through_on_success(tmp_path: Any) -> None:
+    """A linter's warnings and a deprecation notice are the reason a tool writes
+    to stderr; a successful exit is no reason for maina to swallow them."""
+    root = tmp_path / "reg"
+    write_yaml(root / "sh.yaml", {"cli": "sh", "args": {"c": {"flag": "-c", "required": True}}})
+    maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root], use_env=False))
+    result = runner.invoke(app, ["run", "sh", "c=echo OUT; echo ERRLINE >&2"])
+    assert result.exit_code == 0
+    assert "OUT" in result.stdout
+    assert "ERRLINE" in result.stderr
+
+
+def test_cli_run_reads_this_process_stdin_only_with_the_flag(tmp_path: Any) -> None:
+    """``maina run`` looks like a general-purpose runner, so piping into it must
+    work — but only on request, so a tool that reads stdin never blocks on a
+    terminal by default."""
+    root = tmp_path / "reg"
+    write_yaml(root / "catt.yaml", {"cli": "cat"})
+    maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root], use_env=False))
+
+    piped = runner.invoke(app, ["run", "catt", "--stdin", "--"], input="hello-from-pipe\n")
+    assert piped.exit_code == 0
+    assert "hello-from-pipe" in piped.stdout
+
+    ignored = runner.invoke(app, ["run", "catt", "--"], input="hello-from-pipe\n")
+    assert ignored.exit_code == 0
+    assert "hello-from-pipe" not in ignored.stdout
+
+
+def test_cli_run_env_allow_reaches_the_tool(tmp_path: Any) -> None:
+    """``docs/security.md`` presents ``env_allow`` as the way to keep secrets out
+    of a third-party binary; it must have a CLI spelling."""
+    root = tmp_path / "reg"
+    write_yaml(root / "sh.yaml", {"cli": "sh", "args": {"c": {"flag": "-c", "required": True}}})
+    maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root], use_env=False))
+    os.environ["MAINA_TEST_TRIMMED"] = "leaked"
+    os.environ["MAINA_TEST_KEEP"] = "kept"
+    try:
+        script = "echo ${MAINA_TEST_TRIMMED:-gone} $MAINA_TEST_KEEP"
+        trimmed = runner.invoke(app, ["run", "sh", "--env-allow=MAINA_TEST_KEEP", f"c={script}"])
+        assert trimmed.exit_code == 0
+        assert "gone kept" in trimmed.stdout
+    finally:
+        del os.environ["MAINA_TEST_TRIMMED"], os.environ["MAINA_TEST_KEEP"]

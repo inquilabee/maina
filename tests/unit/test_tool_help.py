@@ -101,3 +101,22 @@ def test_run_rejects_a_non_mapping_env_with_arg_error(tmp_path: Path) -> None:
     bad_env: Any = "production"  # a manifest bug (or a caller typo), not a real mapping
     with pytest.raises(ArgError, match="env= must be a mapping"):
         Tool("t", runtime=rt).run(env=bad_env)
+
+
+def test_run_rejects_non_string_env_names_and_values(tmp_path: Path) -> None:
+    """``subprocess`` would raise a bare ``TypeError`` from inside ``Popen``,
+    naming neither maina nor the variable. A port or timeout as an env value is
+    a natural mistake."""
+    from typing import Any
+
+    from maina.core.errors import ArgError
+
+    root = tmp_path / "reg"
+    write_yaml(root / "t.yaml", {"cli": "echo", "install": {"backend": "path"}})
+    rt = Runtime(cache_root=tmp_path / "cache")
+    register(rt, registry_dirs=[root])
+    tool = Tool("t", runtime=rt)
+    for bad in ({"PORT": 8080}, {"K": None}, {1: "v"}):
+        env: Any = bad
+        with pytest.raises(ArgError, match="must be a string name and value"):
+            tool.run(env=env)

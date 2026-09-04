@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from maina.core.registry import build_manifest_schema
 from maina.core.registry.jsonschema import BUILTIN_BACKENDS
-from maina.core.registry.specs import ARG_KEYS, INSTALL_KEYS, OUTPUT_KEYS, TOP_LEVEL_KEYS
+from maina.core.registry.keys import ARG_KEYS, INSTALL_KEYS, OUTPUT_KEYS, TOP_LEVEL_KEYS
 from maina.runtime import Runtime
 
 SCHEMA_FILE = Path(__file__).parents[2] / "docs" / "maina-manifest.schema.json"
@@ -65,3 +66,18 @@ def test_builtin_backend_hint_matches_the_shipped_backends() -> None:
     # the builtins are only a hint.
     assert backend_schema["type"] == "string"
     assert backend_schema["examples"] == list(BUILTIN_BACKENDS)
+
+
+def test_schema_accepts_a_platform_key_the_installer_would_use() -> None:
+    """The generated schema must not reject an asset key the loader accepts —
+    an armv7l / ppc64le catalog is valid, so the shape check says so."""
+    names = build_manifest_schema()["$defs"]["install"]["properties"]["assets"]["propertyNames"]
+    assert re.match(names["pattern"], "linux-armv7l")
+    assert re.match(names["pattern"], "linux-ppc64le")
+    assert not re.match(names["pattern"], "darwin-arm64")
+    assert "linux-x86_64" in names["examples"]
+
+
+def test_schema_covers_every_output_key_the_loader_accepts() -> None:
+    props = build_manifest_schema()["$defs"]["output"]["properties"]
+    assert props["allow_stale_report"] == {"type": "boolean"}

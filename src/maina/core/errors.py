@@ -8,7 +8,17 @@ class MainaError(Exception):
 
 
 class ManifestError(MainaError):
-    """Invalid or missing registry manifest."""
+    """Invalid or missing registry manifest.
+
+    ``files`` records the manifest file(s) the message came from, leaf first.
+    A tool id is derived from a path and says nothing about which file in an
+    ``extends`` chain is actually wrong — one typo in a shared ``base.yaml``
+    would otherwise report once per child and name none of them.
+    """
+
+    def __init__(self, message: str, *, files: tuple[str, ...] = ()) -> None:
+        super().__init__(message)
+        self.files = files
 
 
 class AbstractToolError(MainaError):

@@ -12,10 +12,40 @@ is pulled through [mise](https://mise.jdx.dev/) only for `requires:` pins and th
 `npm` backend; if `mise` is not on `PATH`, set `MAINA_ALLOW_MISE_BOOTSTRAP=1` to
 let maina run the `mise.run` installer (`curl | sh`) or install mise yourself.
 
+## Write a manifest
+
+maina ships no tool manifests — the catalog is yours, and it is the whole
+interface. One file per tool, named after its id. `my_tools/shellcheck.yaml`:
+
+```yaml
+cli: shellcheck
+version: 0.10.0
+install:
+  backend: github
+  repo: koalaman/shellcheck
+  tag: v0.10.0
+  assets:
+    linux-x86_64: shellcheck-v0.10.0.linux.x86_64.tar.xz
+    macos-arm64: shellcheck-v0.10.0.darwin.aarch64.tar.xz
+parser: json
+args:
+  path: {positional: true, required: true, repeat: true, type: path}
+  format: {flag: -f, default: json}
+output:
+  success_codes: [0, 1]   # 1 = findings; still a successful run
+```
+
+That is the whole contract: `cli` is the executable, `install` says where it
+comes from (`backend: path`, the default, uses whatever is already on `PATH` and
+downloads nothing), `args` maps kwargs to argv, and `parser` turns stdout into
+data. The [manifest reference](manifests.md) has every key; `maina schema`
+emits a JSON Schema your editor can check the file against as you type, and
+`maina validate` lints the whole catalog.
+
 ## Register a catalog
 
-maina ships no tool manifests. Point a `Runtime` at a directory of manifest
-YAML ([layout](manifests.md#file-layout-and-ids)):
+Point a `Runtime` at the directory
+([layout](manifests.md#file-layout-and-ids)):
 
 ```python
 from pathlib import Path

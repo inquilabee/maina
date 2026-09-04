@@ -201,7 +201,8 @@ class Installer:
             return True
         if manifest.platforms and current_platform() not in manifest.platforms:
             return True
-        if not self._requires_present(manifest.requires):
+        runtime_dirs = self._present_runtime_dirs(manifest.requires)
+        if runtime_dirs is None:
             return False
         if manifest.install.backend not in self._backends:
             raise InstallError(
@@ -211,19 +212,47 @@ class Installer:
         probe = getattr(backend, "probe", None)
         if probe is None:
             return False
-        ctx = InstallContext(cache_root=self.cache_root, language=self.language)
+        ctx = InstallContext(
+            cache_root=self.cache_root,
+            language=self.language,
+            probe_path=self._probe_path(runtime_dirs),
+        )
         satisfied: bool = probe(manifest, version=self._cache_version(manifest), ctx=ctx)
         return satisfied
 
-    def _requires_present(self, requires: RequiresSpec) -> bool:
-        """True when every pinned runtime is already resolvable (no install).
+    def _present_runtime_dirs(self, requires: RequiresSpec) -> list[str] | None:
+        """Bin dirs of every pinned runtime, or ``None`` when one is missing.
 
-        Uses the language provider's optional ``is_present`` probe; a provider
-        without one is trusted (returns True) rather than forcing a re-install.
+        Side-effect free: uses the language provider's optional
+        ``present_bin_dir`` / ``is_present`` probes and installs nothing. A
+        provider offering neither is trusted (an empty list) rather than forcing
+        a re-install.
         """
-        probe = getattr(self.language, "is_present", None)
-        return probe is None or all(
-            probe(runtime, version) for runtime, version in requires.runtimes.items()
+        bin_dir = getattr(self.language, "present_bin_dir", None)
+        present = getattr(self.language, "is_present", None)
+        dirs: list[str] = []
+        for runtime, version in requires.runtimes.items():
+            if bin_dir is not None:
+                if (found := bin_dir(runtime, version)) is None:
+                    return None
+                dirs.append(str(found))
+            elif present is not None and not present(runtime, version):
+                return None
+        return dirs
+
+    @staticmethod
+    def _probe_path(runtime_dirs: list[str]) -> str | None:
+        """The PATH a probe should search: pinned runtime bins, then the host's.
+
+        Without this a ``path``-backed tool provided by a ``requires:`` runtime
+        reads as ``missing`` in ``prepare --check`` (and fails CI) while ``run``
+        resolves it fine, because ``resolve`` searches the composed PATH and the
+        probe searched only the ambient one.
+        """
+        # Nothing pinned — the ambient PATH is already the answer, so say so with
+        # None rather than rebuilding it.
+        return (
+            os.pathsep.join([*runtime_dirs, os.environ.get("PATH", "")]) if runtime_dirs else None
         )
 
     ABSTRACT_PREPARE_HINT = "prepare a concrete child id or omit abstracts from prepare"

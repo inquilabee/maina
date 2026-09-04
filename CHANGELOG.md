@@ -77,6 +77,25 @@
 - `maina run <id> <bare-token>` where the token is not a `type: flag` arg is a
   usage error (`… is not a flag; pass it as token=<value>`) instead of silently
   sending `--token True`.
+- `type: pairs` values and keys now go through the same scalar guard as every
+  other argv token: `run(env={"DEBUG": False})` raises instead of emitting
+  `-e DEBUG=False`, which most CLIs read as *set and truthy*. A dict, list, or
+  `None` on either side of a pair is rejected rather than stringified to its
+  `repr()`.
+- Arg field combinations argv could only half-honour are rejected at load
+  instead of silently picking a winner: `join: csv` with `repeat`, `joiner`
+  with `repeat: false` (the joiner used to win, so "one flag then all items"
+  became a joined flag per item), and `joiner` on a `type: flag` or positional
+  arg (never emitted).
+- `run(env=...)` validates that names and values are strings, so a port number
+  or a `None` is an `ArgError` naming the variable instead of a bare
+  `TypeError` raised from inside `subprocess.Popen`.
+- A `ManifestError` now names the manifest **file** it came from, and for an
+  inherited defect the parents it merged (`… (in .../alpha.yaml, which extends .../base.yaml)`). One typo in a shared `base.yaml` used to report once per
+  child and name none of the files. `ManifestError.files` carries the paths.
+- `separator:` no longer conflicts with an `args.<name>.order: null` that is
+  *clearing* an inherited order — the null-drop idiom resolves the conflict
+  rather than causing one.
 
 ### CLI
 
@@ -87,6 +106,26 @@
   literal string value.
 - `maina run <id> --dry-run key=value …` prints the argv that would run
   (argv[0] is the bare `cli` name) and exits without executing.
+- `maina run` passes the tool's **stderr through on success** too — a linter's
+  warnings and a deprecation notice were previously dropped with no way to get
+  them back.
+- `maina run --stdin` feeds the process's stdin to the tool, so the CLI can be
+  piped into (`cat x.json | maina run jq --stdin filter=.`). Without it the tool
+  still gets `/dev/null`, so one that reads stdin never blocks on a terminal.
+- `maina run --env-allow=NAME[,NAME...]` (repeatable) — the CLI spelling of
+  `run(env_allow=...)`, which `docs/security.md` recommends and which had no CLI
+  surface at all.
+- `maina run e env.K=V env=plain` now raises the mirror of the error the
+  opposite token order already gave, instead of a confusing complaint about the
+  pairs shape that never mentioned the conflicting tokens.
+- `maina validate` accepts any well-formed `{os}-{arch}` asset key, not only the
+  six with an arch alias: an armv7l / ppc64le / s390x / riscv64 catalog could not
+  pass its own lint even though the download would succeed. An unnormalised
+  spelling (`linux-amd64`) and an OS maina never emits (`darwin-arm64`) are still
+  rejected, now with a message saying which to use.
+- `maina validate` rejects an `output.from_file` placeholder naming a
+  `type: flag` arg — flags are never interpolated, so the template could never
+  resolve — and every problem it reports names the manifest file.
 - `maina validate [TOOLS...]` loads every manifest (or the named ids) and
   reports each error without aborting — a catalog lint step.
 - `maina describe <id> [--json]` prints a tool's manifest as data
@@ -130,6 +169,22 @@
   (a manifest bug) instead of reporting it "missing".
 - `run(text=False, stdin="…")` encodes the string rather than raising a bare
   `TypeError`.
+- `prepare --check` for a `path`-backed tool provided by a `requires:` runtime
+  now searches the PATH a real run would compose (the pinned runtime's bin dir
+  plus the ambient PATH), instead of reporting `missing` for a tool `run`
+  resolves fine. Still side-effect free: the bin dir comes from a lookup that
+  installs nothing (`InstallContext.probe_path`, `MiseRuntime.present_bin_dir`).
+- `Registry.refresh()` drops the per-root scan index, so a manifest written into
+  an already-registered root becomes visible to `list` / `validate` / `prepare`
+  in a long-lived process — and loadable, which for an id only the tree scan can
+  resolve (`fam/my-tool.yaml`) it previously was not.
+- Parsed manifest YAML is memoized per file against its own mtime and size, so
+  repeated `Tool(id)` construction and `maina list` over a large catalog stop
+  re-parsing every layer. An edit in place is still picked up with no refresh.
+- `output.allow_stale_report: true` opts out of the report-mtime check for an
+  incremental tool that leaves an unchanged report alone, or a filesystem whose
+  mtime clock is offset from the host's. The 2 s window (previously documented
+  only here) is now in the `output` reference, and the error text names the key.
 
 ### API
 
