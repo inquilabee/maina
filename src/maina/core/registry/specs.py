@@ -11,6 +11,7 @@ from .common import (
     is_unsafe_segment,
     manifest_error,
     optional_str,
+    require_bool,
     safe_segment,
     scalar_str,
     unknown_keys,
@@ -115,7 +116,9 @@ class ArgSpec:
         if bad := unknown_keys(raw, ARG_KEYS):
             raise manifest_error(tool_id, f"args.{name} unknown keys: {', '.join(bad)}")
         arg_type = str(raw.get("type", "string"))
-        positional = raw.get("positional", False) is True
+        positional = require_bool(
+            raw.get("positional"), field_name=f"args.{name}.positional", tool_id=tool_id
+        )
         flag = None if raw.get("flag") is None else str(raw["flag"])
         join = None if raw.get("join") is None else str(raw["join"])
         cls._check_shape(
@@ -126,7 +129,9 @@ class ArgSpec:
             flag=flag,
             joiner=None if raw.get("joiner") is None else str(raw["joiner"]),
             positional=positional,
-            required=raw.get("required", False) is True,
+            required=require_bool(
+                raw.get("required"), field_name=f"args.{name}.required", tool_id=tool_id
+            ),
             repeat=raw.get("repeat"),
             join=join,
             order=cls._parse_order(raw.get("order"), name=name, tool_id=tool_id),
@@ -199,8 +204,14 @@ class InstallSpec:
             ),
             package=cls._parse_package(raw.get("package"), tool_id=tool_id),
             sha256=cls._parse_sha256(raw.get("sha256"), tool_id=tool_id),
-            allow_scripts=raw.get("allow_scripts", False) is True,
-            allow_any_executable=raw.get("allow_any_executable", False) is True,
+            allow_scripts=require_bool(
+                raw.get("allow_scripts"), field_name="install.allow_scripts", tool_id=tool_id
+            ),
+            allow_any_executable=require_bool(
+                raw.get("allow_any_executable"),
+                field_name="install.allow_any_executable",
+                tool_id=tool_id,
+            ),
         )
 
     def identity_key(self, *, extra: tuple[Any, ...] = ()) -> str:
@@ -343,7 +354,7 @@ class Manifest:
 
     @property
     def abstract(self) -> bool:
-        return self.data.get("abstract") is True
+        return require_bool(self.data.get("abstract"), field_name="abstract", tool_id=self.id)
 
     @property
     def cli(self) -> str:

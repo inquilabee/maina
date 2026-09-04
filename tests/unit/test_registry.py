@@ -310,6 +310,27 @@ def test_unquoted_yaml_scalar_rejected(tmp_path: Path, field: str, yaml: str) ->
         Registry(root).load("t")
 
 
+@pytest.mark.parametrize(
+    "yaml",
+    [
+        'cli: t\nabstract: "true"\ninstall: {backend: path}\n',
+        "cli: t\ninstall: {backend: path}\nargs: {p: {positional: 1}}\n",
+        'cli: t\ninstall: {backend: path, package: p, allow_scripts: "yes"}\n',
+    ],
+)
+def test_string_valued_boolean_field_rejected(tmp_path: Path, yaml: str) -> None:
+    root = tmp_path / "reg"
+    root.mkdir()
+    (root / "t.yaml").write_text(yaml, encoding="utf-8")
+
+    def load_and_touch() -> None:
+        m = Registry(root).load("t")
+        _ = (m.abstract, m.args, m.install)  # some checks fire lazily on access
+
+    with pytest.raises(ManifestError, match="true or false"):
+        load_and_touch()
+
+
 @pytest.mark.parametrize("bad", ["-rf", "*", "a?b", "x[0]"])
 def test_cli_name_rejects_flag_and_glob_chars(tmp_path: Path, bad: str) -> None:
     root = tmp_path / "reg"

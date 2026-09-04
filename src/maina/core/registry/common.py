@@ -24,6 +24,21 @@ def optional_str(value: Any) -> str | None:
     return None if value is None else str(value)
 
 
+def require_bool(value: Any, *, field_name: str, tool_id: str) -> bool:
+    """A boolean-or-absent field; ``"true"`` / ``1`` are rejected, not coerced.
+
+    ``abstract: "true"`` must not silently yield a *concrete* tool, and
+    ``required: 1`` must not silently mean ``False``.
+    """
+    if value is None:
+        return False
+    if not isinstance(value, bool):
+        raise manifest_error(
+            tool_id, f"{field_name} must be true or false (a YAML boolean), not {value!r}"
+        )
+    return value
+
+
 def scalar_str(value: Any, *, field_name: str, tool_id: str) -> str:
     """Coerce a YAML scalar to ``str``, rejecting ``bool`` and ``float``.
 

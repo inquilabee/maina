@@ -150,10 +150,17 @@ def test_cli_validate_reports_each_error_and_exits_nonzero(tmp_path: Any) -> Non
     root = tmp_path / "reg"
     write_yaml(root / "good.yaml", {"cli": "echo", "install": {"backend": "path"}})
     (root / "bad.yaml").write_text("cli: bad\noutputs: {}\n", encoding="utf-8")
-    # a manifest whose parser: name is unknown — used to fail only after a run
     write_yaml(
         root / "badparser.yaml",
         {"cli": "echo", "install": {"backend": "path"}, "parser": "jsonn"},
+    )
+    write_yaml(root / "badbackend.yaml", {"cli": "x", "install": {"backend": "gihtub"}})
+    write_yaml(
+        root / "badkey.yaml",
+        {
+            "cli": "x",
+            "install": {"backend": "github", "repo": "a/b", "assets": {"linux-amd64": "x"}},
+        },
     )
     maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root]))
     result = runner.invoke(app, ["validate"])
@@ -161,6 +168,8 @@ def test_cli_validate_reports_each_error_and_exits_nonzero(tmp_path: Any) -> Non
     assert "ok: good" in result.stdout
     assert "error: bad:" in result.stderr
     assert "error: badparser:" in result.stderr
+    assert "backend 'gihtub' is not registered" in result.stderr
+    assert "platform keys not recognised: linux-amd64" in result.stderr
 
 
 def test_cli_list_children() -> None:

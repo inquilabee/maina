@@ -18,6 +18,11 @@ ARCH_ALIASES: dict[str, str] = {
     "arm64": "arm64",
 }
 
+# Canonical ``install.assets`` / ``install.sha256`` platform keys.
+KNOWN_PLATFORM_KEYS = frozenset(
+    f"{os_}-{arch}" for os_ in ("linux", "macos", "windows") for arch in ("x86_64", "arm64")
+)
+
 
 def current_platform() -> str:
     """Return linux|macos|windows (or the raw ``sys.platform`` if unknown)."""

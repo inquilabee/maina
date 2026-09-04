@@ -147,6 +147,14 @@
   `default: null` — it still raises `ArgError`.
 - `install.assets` / `install.sha256` deep-merge across `extends` per platform
   key (a child overriding one platform no longer drops the others).
+- `abstract` / `args.<n>.required` / `args.<n>.positional` /
+  `install.allow_scripts` / `install.allow_any_executable` must be a real YAML
+  boolean — a quoted `"true"` or `1` is rejected, not silently coerced (an
+  `abstract: "true"` no longer yields a runnable tool).
+- `maina validate` also checks that `install.backend` is registered and that
+  `install.assets` / `sha256` keys are real `{os}-{arch}` platform keys.
+- `cli.py` split — the `maina run` token machinery moved to
+  `maina/clitokens.py`.
 - A relative `MAINA_CACHE` / `cache_root` is resolved to an absolute path (a
   relative `argv[0]` broke a run with an explicit `cwd`).
 - A failed `subprocess` start (bad `cwd`, missing exe) raises `ToolExecError`,
