@@ -335,7 +335,7 @@ def test_installer_copies_env_before_backend_mutation(tmp_path: Path) -> None:
         {
             "cli": "demo",
             "install": {"backend": "mock"},
-            "requires": {"runtime": "node", "version": "20"},
+            "requires": {"node": "20"},
         },
     )
     manifest = Registry(root).load("demo")

@@ -91,9 +91,6 @@ def safe_segment(value: Any, *, field_name: str, tool_id: str, allow_none: bool 
     return text
 
 
-# Legacy singular form only — freeform pins use runtime names as keys.
-LEGACY_REQUIRES_KEYS = frozenset({"runtime", "version"})
-REQUIRES_KEYS = LEGACY_REQUIRES_KEYS  # back-compat alias for importers
 OUTPUT_KEYS = frozenset({"format", "success_codes", "from_file"})
 
 
@@ -288,10 +285,10 @@ class InstallSpec:
 
 @dataclass(slots=True, frozen=True)
 class RequiresSpec:
-    """Typed ``requires:`` map (runtime→version). Legacy ``runtime``+``version`` supported.
+    """Typed ``requires:`` map — runtime name → version string.
 
     Inheritance: child pins merge onto parents; ``requires: null`` replaces (clears)
-    inherited pins; a freeform ``runtime: null`` drops that pin from the merge.
+    inherited pins; a ``<runtime>: null`` drops that one pin from the merge.
     """
 
     runtimes: dict[str, str] = field(default_factory=dict)
@@ -302,33 +299,23 @@ class RequiresSpec:
 
     @classmethod
     def from_mapping(cls, raw: Any, *, tool_id: str) -> RequiresSpec:
-        """Parse requires map; fail closed on non-maps and mixed forms.
+        """Parse a ``requires`` map (runtime → version); fail closed on non-maps.
 
         ``None`` means no pins (used after ``requires: null`` clears inheritance).
         """
-        mapping = cls._require_map(raw, tool_id=tool_id)
-        legacy = cls._legacy_keys(mapping, tool_id=tool_id)
-        return (
-            cls._from_legacy(mapping, tool_id=tool_id)
-            if legacy
-            else cls._from_pins(mapping, tool_id=tool_id)
-        )
+        return cls._from_pins(cls._require_map(raw, tool_id=tool_id), tool_id=tool_id)
 
     @classmethod
     def layer_for_merge(cls, raw: Any, *, tool_id: str) -> dict[str, str | None] | None:
         """Normalize a layer's ``requires`` for inheritance merge.
 
         Returns ``None`` when the layer sets ``requires: null`` (replace/clear).
-        Freeform ``runtime: null`` values are preserved as drop markers.
+        A ``<runtime>: null`` value is preserved as a drop marker.
         """
-        if raw is None:
-            return None
-        mapping = cls._require_map(raw, tool_id=tool_id)
-        legacy = cls._legacy_keys(mapping, tool_id=tool_id)
         return (
-            dict(cls._from_legacy(mapping, tool_id=tool_id).runtimes)
-            if legacy
-            else cls._pins_for_merge(mapping, tool_id=tool_id)
+            None
+            if raw is None
+            else cls._pins_for_merge(cls._require_map(raw, tool_id=tool_id), tool_id=tool_id)
         )
 
     @staticmethod
@@ -338,33 +325,6 @@ class RequiresSpec:
         if not isinstance(raw, dict):
             raise manifest_error(tool_id, "requires must be a map")
         return raw
-
-    @staticmethod
-    def _legacy_keys(raw: dict[str, Any], *, tool_id: str) -> set[str]:
-        keys = set(raw)
-        legacy, freeform = keys & LEGACY_REQUIRES_KEYS, keys - LEGACY_REQUIRES_KEYS
-        if legacy and freeform:
-            mixed = ", ".join(sorted(str(key) for key in freeform))
-            raise manifest_error(
-                tool_id,
-                f"requires cannot mix legacy runtime/version with freeform pins ({mixed})",
-            )
-        return legacy
-
-    @classmethod
-    def _from_legacy(cls, raw: dict[str, Any], *, tool_id: str) -> RequiresSpec:
-        """Parse legacy singular ``runtime`` / ``version`` form."""
-        if bad := unknown_keys(raw, LEGACY_REQUIRES_KEYS):
-            joined = ", ".join(bad)
-            raise manifest_error(tool_id, f"requires unknown keys: {joined}")
-        runtime = optional_str(raw.get("runtime"))
-        version_raw = raw.get("version")
-        version = (
-            None
-            if version_raw is None
-            else cls._version_scalar(version_raw, tool_id=tool_id, key="version")
-        )
-        return cls() if runtime is None else cls(runtimes={runtime: version or "lts"})
 
     @classmethod
     def _from_pins(cls, raw: dict[str, Any], *, tool_id: str) -> RequiresSpec:

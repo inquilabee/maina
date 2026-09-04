@@ -260,52 +260,6 @@ def test_requires_map_override_merges(tmp_path: Path) -> None:
     assert manifest.requires.get("python") == "3.14"
 
 
-def test_requires_legacy_form(tmp_path: Path) -> None:
-    root = tmp_path / "registry"
-    write_yaml(
-        root / "demo.yaml",
-        {
-            "cli": "demo",
-            "requires": {"runtime": "node", "version": "20"},
-            "install": {"backend": "path"},
-        },
-    )
-    manifest = Registry(root).load("demo")
-    assert manifest.requires.runtimes == {"node": "20"}
-
-
-def test_requires_legacy_merges_with_base(tmp_path: Path) -> None:
-    root = tmp_path / "registry"
-    write_yaml(
-        root / "base.yaml",
-        {"abstract": True, "requires": {"python": "3.14", "node": "latest"}},
-    )
-    write_yaml(
-        root / "demo.yaml",
-        {
-            "cli": "demo",
-            "requires": {"runtime": "node", "version": "20"},
-            "install": {"backend": "path"},
-        },
-    )
-    manifest = Registry(root).load("demo")
-    assert manifest.requires.runtimes == {"python": "3.14", "node": "20"}
-
-
-def test_requires_rejects_mixed_legacy_and_pins(tmp_path: Path) -> None:
-    root = tmp_path / "registry"
-    write_yaml(
-        root / "demo.yaml",
-        {
-            "cli": "demo",
-            "requires": {"runtime": "node", "python": "3.14"},
-            "install": {"backend": "path"},
-        },
-    )
-    with pytest.raises(ManifestError, match="cannot mix"):
-        Registry(root).load("demo")
-
-
 def test_shipped_tools_carry_no_surprise_runtime_pins() -> None:
     # Shipped base.yaml has no runtime pins: a static binary must not drag mise.
     registry = fixture_registry()

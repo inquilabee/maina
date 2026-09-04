@@ -168,8 +168,6 @@ requires:
 - Keys are runtime names — `[A-Za-z0-9_.+-]+`, validated at load. Values are
   version strings. **Quote pins** — unquoted `3.10` is a YAML float and is
   rejected.
-- The legacy singular form `requires: { runtime: node, version: "20" }` is still
-  accepted, but not mixed with freeform keys.
 - Inheritance: child pins merge onto the parent's. `requires: null` on a child
   clears every inherited pin; `requires: { node: null }` drops just that one.
 
