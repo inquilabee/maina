@@ -77,6 +77,18 @@ maina prepare shellcheck hadolint
 maina prepare --check          # CI: "is the toolchain ready?"
 ```
 
+## `maina validate [TOOLS...]`
+
+Load every manifest under the registry roots (or just the named ids) and
+report each error without stopping at the first. Prints `ok: <id>` /
+`error: <id>: <message>` and exits non-zero if any manifest failed to load —
+a lint step for a catalog.
+
+```bash
+maina validate                 # CI: "is every manifest well-formed?"
+maina validate kubectl-get
+```
+
 ## `maina` / `maina help`
 
 Print package help.

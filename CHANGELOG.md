@@ -84,6 +84,8 @@
   literal string value.
 - `maina run <id> --dry-run key=value …` prints the argv that would run
   (argv[0] is the bare `cli` name) and exits without executing.
+- `maina validate [TOOLS...]` loads every manifest (or the named ids) and
+  reports each error without aborting — a catalog lint step.
 
 ### API
 

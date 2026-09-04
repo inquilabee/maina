@@ -109,6 +109,37 @@ def list_cmd(
 
 
 @app.command()
+def validate(
+    tools: Annotated[
+        list[str] | None,
+        typer.Argument(help="Tool ids to validate (default: every manifest under the roots)"),
+    ] = None,
+) -> None:
+    """Load every manifest (or the named ids) and report each error without aborting.
+
+    Prints ``ok: <id>`` / ``error: <id>: <message>`` per manifest and exits
+    non-zero if any manifest failed to load.
+    """
+    registry = runtime().registry
+    ids = tools or registry.iter_ids()
+    if not ids:
+        typer.echo("no manifests registered")
+        return
+    failed = 0
+    for tid in sorted(ids):
+        try:
+            registry.load(tid)
+        except MainaError as exc:
+            failed += 1
+            typer.echo(f"error: {tid}: {exc}", err=True)
+        else:
+            typer.echo(f"ok: {tid}")
+    if failed:
+        typer.echo(f"{failed} manifest(s) failed", err=True)
+        raise typer.Exit(1)
+
+
+@app.command()
 def prepare(
     tools: Annotated[
         list[str] | None,

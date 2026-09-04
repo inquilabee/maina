@@ -146,6 +146,17 @@ def test_cli_list_top_level() -> None:
     assert "Top-level tools:" not in result.stdout
 
 
+def test_cli_validate_reports_each_error_and_exits_nonzero(tmp_path: Any) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "good.yaml", {"cli": "echo", "install": {"backend": "path"}})
+    (root / "bad.yaml").write_text("cli: bad\noutputs: {}\n", encoding="utf-8")
+    maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root]))
+    result = runner.invoke(app, ["validate"])
+    assert result.exit_code == 1
+    assert "ok: good" in result.stdout
+    assert "error: bad:" in result.stderr
+
+
 def test_cli_list_children() -> None:
     result = runner.invoke(app, ["list", "kubectl"])
     assert result.exit_code == 0
