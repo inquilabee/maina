@@ -1,0 +1,4 @@
+extends: git-remote
+subcommand: remove
+args:
+  name: {positional: true, required: true}

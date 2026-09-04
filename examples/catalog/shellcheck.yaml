@@ -1,0 +1,20 @@
+# GitHub .tar.xz asset: the binary is found inside the extracted tree.
+cli: shellcheck
+version: 0.10.0
+install:
+  backend: github
+  repo: koalaman/shellcheck
+  tag: v0.10.0
+  binary: shellcheck
+  assets:
+    linux-x86_64: shellcheck-v0.10.0.linux.x86_64.tar.xz
+    macos-arm64: shellcheck-v0.10.0.darwin.aarch64.tar.xz
+parser: json
+args:
+  path: {positional: true, required: true, repeat: true, type: path}
+  # force machine output by default; pass format=tty to override
+  format: {flag: -f, default: json}
+  shell: {flag: -s}
+output:
+  # 1 = findings; still a successful run
+  success_codes: [0, 1]

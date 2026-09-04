@@ -1,0 +1,15 @@
+# npm install into the cache (runs with --ignore-scripts by default).
+cli: prettier
+version: 3.3.3
+requires: {node: "22"}
+install:
+  backend: npm
+  package: prettier
+args:
+  path: {positional: true, required: true, type: path}
+  write: {flag: --write, type: flag}
+  # `parser` collides with run(parser=): pass it as run(args={"parser": "babel"}).
+  parser: {flag: --parser}
+output:
+  success_codes: [0]
+parser: text

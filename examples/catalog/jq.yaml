@@ -1,0 +1,25 @@
+# GitHub release-asset install: one binary per platform.
+# Add an optional install.sha256 map (platform -> 64 hex) to pin digests;
+# a mismatch aborts before chmod +x.
+cli: jq
+version: 1.7.1
+platforms: [linux, macos]
+install:
+  backend: github
+  repo: jqlang/jq
+  tag: jq-1.7.1
+  binary: jq
+  assets:
+    linux-x86_64: jq-linux-amd64
+    linux-arm64: jq-linux-arm64
+    macos-x86_64: jq-macos-amd64
+    macos-arm64: jq-macos-arm64
+parser: json
+args:
+  # jq '<filter>' [file.json]
+  filter: {positional: true, required: true}
+  path: {positional: true, type: path}
+  raw: {flag: -r, type: flag}
+  compact: {flag: -c, type: flag}
+output:
+  success_codes: [0]

@@ -1,0 +1,4 @@
+# Family root: shared cli + install for every git-* surface.
+abstract: true
+cli: git
+install: {backend: path}

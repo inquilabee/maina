@@ -91,6 +91,9 @@
   (`env.K=V env.A=B`).
 - `maina clean [TOOLS...]` deletes cached installs; `maina prepare --force`
   wipes a tool's cache before re-preparing it. `Installer.clean_ids()`.
+- `examples/catalog/` — a worked catalog covering the `github` and `npm`
+  backends, `output.from_file`, and a subcommand family, with an offline
+  `demo.py`.
 
 ### API
 

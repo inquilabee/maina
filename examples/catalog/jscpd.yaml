@@ -1,0 +1,16 @@
+# A tool that writes its report to a file rather than stdout.
+cli: jscpd
+version: 4.0.5
+requires: {node: "22"}
+install:
+  backend: npm
+  package: jscpd
+args:
+  path: {positional: true, required: true, type: path}
+  reporters: {flag: --reporters, default: json}
+  output: {flag: --output, default: .jscpd}
+parser: json
+output:
+  success_codes: [0, 1]
+  # parsed from this file, not stdout
+  from_file: "{output}/jscpd-report.json"

@@ -1,0 +1,7 @@
+# Subcommand family: git/remote/add.yaml -> id "git-remote-add".
+# Inherits cli + install from git.yaml through git-remote.
+extends: git-remote
+subcommand: add
+args:
+  name: {positional: true, required: true}
+  url: {positional: true, required: true}

@@ -1,0 +1,3 @@
+# Intermediate surface: `git remote` with no args lists remotes.
+extends: git
+subcommand: remote

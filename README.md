@@ -112,8 +112,9 @@ A download whose SHA-256 does not match is rejected before `chmod +x`.
   manifest's top-level `output:` block.
 - An intermediate family surface can be callable with empty args on purpose
   (`git remote` lists remotes).
-- See `examples/local_tool/` (overlay registry) and `examples/parsers_dirs/`
-  (custom parser via `parsers_dirs`).
+- See `examples/catalog/` for a worked catalog (`github`, `npm`,
+  `output.from_file`, a subcommand family), `examples/local_tool/` for an
+  overlay registry, and `examples/parsers_dirs/` for a custom parser.
 
 ## Setup
 
@@ -121,6 +122,7 @@ A download whose SHA-256 does not match is rejected before `chmod +x`.
 uv sync
 uv run python examples/demo.py
 uv run python examples/parsers_dirs/demo.py
+uv run python examples/catalog/demo.py    # worked catalog: github + npm + from_file + family
 ```
 
 Tool cache: `~/.cache/maina` (override with `MAINA_CACHE`).

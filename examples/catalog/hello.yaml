@@ -1,0 +1,9 @@
+# A path-backed tool: resolve an on-PATH binary, install nothing.
+# The demo runs this one; the others are offline schema illustrations.
+cli: echo
+install: {backend: path}
+parser: text
+args:
+  words: {positional: true, required: true, repeat: true}
+  no_newline: {flag: -n, type: flag}
+output: {success_codes: [0]}
