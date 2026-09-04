@@ -118,6 +118,29 @@ def test_build_argv_separator_omitted_when_no_positionals() -> None:
     assert argv == ["t", "-n", "3"]
 
 
+def test_build_argv_extra_lands_before_the_separator() -> None:
+    schema = {"paths": {"positional": True, "repeat": True, "type": "path"}}
+    argv = ArgParser(schema).build(
+        "git", ["log"], {"paths": ["a"]}, extra=["--stat"], separator="--"
+    )
+    assert argv == ["git", "log", "--stat", "--", "a"]
+
+
+def test_build_argv_extra_stays_last_without_a_separator() -> None:
+    schema = {"paths": {"positional": True, "repeat": True, "type": "path"}}
+    argv = ArgParser(schema).build("git", ["log"], {"paths": ["a"]}, extra=["--stat"])
+    assert argv == ["git", "log", "a", "--stat"]
+
+
+def test_build_argv_errors_name_the_tool_and_known_args() -> None:
+    parser = ArgParser({"filter": {"positional": True}}, tool_id="jq")
+    with pytest.raises(ArgError, match=r"jq: unknown arguments: nope \(known: filter\)"):
+        parser.build("jq", [], {"nope": 1})
+    strict = ArgParser({"name": {"positional": True, "required": True}}, tool_id="jq")
+    with pytest.raises(ArgError, match=r"jq: missing required argument: name \(known: name\)"):
+        strict.build("jq", [], {})
+
+
 def test_build_argv_order_puts_option_after_positional() -> None:
     schema = {
         "name": {"flag": "-name", "type": "string", "order": 2},

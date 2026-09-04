@@ -215,8 +215,10 @@ class Registry:
         found_any = False
         parts = tid.split("-")
         for root in self.roots:
-            base = root.joinpath(*parts)
-            if base.is_dir():
+            base = next(
+                (d for d in registry_ids.id_dir_candidates(root, parts) if d.is_dir()), None
+            )
+            if base is not None:
                 found_any = True
                 for child_id in registry_ids.list_child_ids(base, tid):
                     by_id[child_id] = None
@@ -243,8 +245,12 @@ class Registry:
         return out
 
     def iter_ids(self) -> list[str]:
-        """Collect all registry ids across roots (later root wins duplicates)."""
-        # Later roots overwrite earlier ids via comprehension insertion order.
+        """Collect the distinct registry ids across every root.
+
+        This is a *set* of ids for catalog listing — it says nothing about which
+        root wins a duplicate id (that precedence lives in ``_manifest_lookup``,
+        which scans ``reversed(self.roots)``).
+        """
         seen: dict[str, None] = {
             tid: None for root in self.roots for tid in registry_ids.iter_yaml_ids(root)
         }

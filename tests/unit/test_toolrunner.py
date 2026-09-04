@@ -409,3 +409,55 @@ def test_from_file_template_rejects_attribute_access(tmp_path: Path) -> None:
     result = runner.run({})
     assert result.parse_error is not None
     assert "attribute or item access" in result.parse_error
+
+
+def test_from_file_template_rejects_format_spec(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "t.yaml",
+        {
+            "cli": "echo",
+            "install": {"backend": "path"},
+            "parser": "json",
+            "output": {"success_codes": [0], "from_file": "{cwd:>999999999}/r.json"},
+        },
+    )
+    registry = Registry(root)
+    runner = ToolRunner(
+        registry.load("t"),
+        installer=path_installer(tmp_path, registry),
+        parsers=ParserResolver(generals=builtin_generals()),
+    )
+    result = runner.run({})
+    assert result.parse_error is not None
+    assert "conversion or format spec" in result.parse_error
+
+
+def test_from_file_report_over_the_size_cap_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import maina.runner as runner_mod
+
+    monkeypatch.setattr(runner_mod, "REPORT_MAX_BYTES", 16)
+    work = tmp_path / "cwd"
+    work.mkdir()
+    (work / "r.json").write_text('{"padding": "well over sixteen bytes"}', encoding="utf-8")
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "t.yaml",
+        {
+            "cli": "echo",
+            "install": {"backend": "path"},
+            "parser": "json",
+            "output": {"success_codes": [0], "from_file": "{cwd}/r.json"},
+        },
+    )
+    registry = Registry(root)
+    runner = ToolRunner(
+        registry.load("t"),
+        installer=path_installer(tmp_path, registry),
+        parsers=ParserResolver(generals=builtin_generals()),
+    )
+    result = runner.run({}, cwd=str(work))
+    assert result.parse_error is not None
+    assert "over the 16 cap" in result.parse_error

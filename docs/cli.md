@@ -74,6 +74,9 @@ Ensure mise runtimes and tool installs.
 - `--check`: install nothing. Print `satisfied: <id>` or `missing: <id>` for
   each tool and exit non-zero if anything is missing. Side-effect free — no
   download, no mise call.
+- `--force`: delete the named tools' cached installs before preparing. It needs
+  explicit ids and cannot be combined with `--check`. To wipe the whole tool
+  cache, use `maina clean`.
 
 ```bash
 maina prepare

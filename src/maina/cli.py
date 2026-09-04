@@ -197,8 +197,13 @@ def prepare(
     ``kubectl``) fail with a non-zero exit instead of a silent skip. With
     ``--check`` nothing is installed: each id prints ``satisfied`` or
     ``missing`` and the command exits non-zero if anything is missing.
-    ``--force`` wipes the cached install for each named tool before preparing.
+    ``--force`` wipes the cached install for each named tool before preparing;
+    it needs explicit ids and cannot be combined with ``--check``.
     """
+    if force and check:
+        raise typer.BadParameter("--force cannot be combined with --check (which installs nothing)")
+    if force and not tools:
+        raise typer.BadParameter("--force needs explicit tool ids ('maina clean' wipes the cache)")
     installer = runtime().installer
     try:
         if check:

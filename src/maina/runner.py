@@ -22,6 +22,10 @@ if TYPE_CHECKING:
 # Test-only injectable; not a public pluggable runner API.
 Executor = Callable[..., subprocess.CompletedProcess[Any]]
 
+# Cap on an ``output.from_file`` report slurped into memory — every other input
+# path in maina is bounded (download / extract caps); this is the last one.
+REPORT_MAX_BYTES = 64 * 1024 * 1024
+
 __all__ = ["ESSENTIAL_ENV", "Executor", "ToolRunner"]
 
 
@@ -72,7 +76,7 @@ class ToolRunner:
         env_allow = None if env_allow is None else frozenset(env_allow)
         # Build argv first so a bad kwarg raises ArgError *before* any install
         # work (a typo'd argument should not pay for a download).
-        argv = ArgParser(self.manifest.args).build(
+        argv = ArgParser(self.manifest.args, tool_id=self.manifest.id).build(
             self.manifest.cli,
             self.manifest.subcommands,
             kwargs,
@@ -215,10 +219,15 @@ class ToolRunner:
             result.parse_error = f"output.from_file not found: {path}"
             result.meta["parsed_from_missing"] = str(path)
             return
-        mtime = path.stat().st_mtime
-        result.meta |= {"parsed_from": str(path), "parsed_from_mtime": mtime}
-        if mtime < started_wall - 2.0:
+        stat = path.stat()
+        result.meta |= {"parsed_from": str(path), "parsed_from_mtime": stat.st_mtime}
+        if stat.st_mtime < started_wall - 2.0:
             result.parse_error = f"output.from_file {path} was not written by this run (stale)"
+            return
+        if stat.st_size > REPORT_MAX_BYTES:
+            result.parse_error = (
+                f"output.from_file {path} is {stat.st_size} bytes, over the {REPORT_MAX_BYTES} cap"
+            )
             return
         result.report = path.read_text(encoding="utf-8", errors="replace")
 
@@ -226,9 +235,10 @@ class ToolRunner:
         self, template: str, base: Path, kwargs: dict[str, Any]
     ) -> tuple[Path | None, str | None]:
         """Interpolate ``output.from_file`` to a path under *base* (``(path, error)``)."""
+        resolved = ArgParser(self.manifest.args, tool_id=self.manifest.id).resolved_values(kwargs)
         subs = {
             key: value
-            for key, value in ArgParser(self.manifest.args).resolved_values(kwargs).items()
+            for key, value in resolved.items()
             if key != "cwd" and isinstance(value, (str, int, float)) and not isinstance(value, bool)
         }
         try:
@@ -248,11 +258,17 @@ class ToolRunner:
         """Reject an ``output.from_file`` placeholder that reaches past a bare name.
 
         ``{cwd}`` and ``{argname}`` are fine; ``{cwd.__class__…}`` / ``{a[0]}``
-        are not — the template only names a directory and args.
+        are not — the template only names a directory and args. A conversion or
+        format spec (``{out!r}``, ``{out:>1000000000}``) is rejected too: it can
+        drive a huge allocation inside ``str.format`` and buys nothing here.
         """
-        for _literal, field, _spec, _conv in string.Formatter().parse(template):
-            if field and set("[.") & set(field):
+        for _literal, field, spec, conv in string.Formatter().parse(template):
+            if field is None:
+                continue
+            if set("[.") & set(field):
                 raise ValueError(f"placeholder {field!r} may not use attribute or item access")
+            if spec or conv:
+                raise ValueError(f"placeholder {field!r} may not carry a conversion or format spec")
 
     def _resolve_timeout(self, timeout: float | None) -> float | None:
         """Prefer explicit kwarg, then top-level manifest ``timeout``.

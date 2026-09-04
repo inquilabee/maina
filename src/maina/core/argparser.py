@@ -25,15 +25,22 @@ class ArgParser:
         """An ``ArgError`` for one named argument, with a consistent prefix."""
         return ArgError(f"argument {name!r} {detail}")
 
-    def __init__(self, schema: Mapping[str, ArgSpec | Mapping[str, Any]]) -> None:
+    def __init__(
+        self, schema: Mapping[str, ArgSpec | Mapping[str, Any]], *, tool_id: str = "<tool>"
+    ) -> None:
+        self.tool_id = tool_id
         self.schema = {
             name: (
                 spec
                 if isinstance(spec, ArgSpec)
-                else ArgSpec.from_mapping(name, dict(spec), tool_id="<schema>")
+                else ArgSpec.from_mapping(name, dict(spec), tool_id=tool_id)
             )
             for name, spec in schema.items()
         }
+
+    def _known_args(self) -> str:
+        """``'a, b, c'`` of declared arg names, or ``'(none)'`` — for error text."""
+        return ", ".join(self.schema) or "(none)"
 
     def build(
         self,
@@ -54,20 +61,29 @@ class ArgParser:
         ``separator`` (the manifest's top-level ``separator:``, typically ``--``)
         is emitted once before the first positional in the final order, so a
         caller value beginning with ``-`` cannot be read as an option.
+
+        ``extra`` passthrough tokens land just *before* that separator (they are
+        caller-supplied options, not operands); with no separator, or none
+        emitted, they go at the end as before.
         """
         argv = [cli, *subcommands]
         if unknown := set(kwargs) - set(self.schema):
             names = ", ".join(sorted(unknown))
-            raise ArgError(f"unknown arguments: {names}")
+            raise ArgError(
+                f"{self.tool_id}: unknown arguments: {names} (known: {self._known_args()})"
+            )
 
         emitted = self._emit_all(kwargs)
+        extra_tokens = self.normalize_extra(extra)
         sep_pending = separator is not None
         for _rank, _idx, is_positional, tokens in emitted:
             if is_positional and sep_pending:
+                argv.extend(extra_tokens)
                 argv.append(separator)  # type: ignore[arg-type]
                 sep_pending = False
             argv.extend(tokens)
-        argv.extend(self.normalize_extra(extra))
+        if sep_pending or separator is None:
+            argv.extend(extra_tokens)
         return argv
 
     def _emit_all(self, kwargs: dict[str, Any]) -> list[tuple[float, int, bool, list[str]]]:
@@ -99,8 +115,7 @@ class ArgParser:
                 out[name] = value
         return out
 
-    @staticmethod
-    def _resolve_value(name: str, spec: ArgSpec, kwargs: dict[str, Any]) -> Any:
+    def _resolve_value(self, name: str, spec: ArgSpec, kwargs: dict[str, Any]) -> Any:
         """Resolve one kwarg, applying defaults and the required check.
 
         ``required: true`` is not satisfied by ``None`` — whether that ``None``
@@ -109,7 +124,9 @@ class ArgParser:
         fallback = spec.default if spec.has_default else None
         value = kwargs.get(name, fallback)
         if value is None and spec.required:
-            raise ArgError(f"missing required argument: {name}")
+            raise ArgError(
+                f"{self.tool_id}: missing required argument: {name} (known: {self._known_args()})"
+            )
         return value
 
     @staticmethod

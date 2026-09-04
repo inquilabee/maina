@@ -123,6 +123,10 @@ args:
 # run(paths=["-x"]) -> git log -- -x
 ```
 
+`extra=` passthrough tokens are emitted just *before* that separator (they are
+caller-supplied options, not operands) — `run(paths=["a"], extra=["--stat"])`
+with `separator: "--"` yields `git log --stat -- a`, not `git log -- a --stat`.
+
 ## output
 
 ```yaml
@@ -136,7 +140,7 @@ output:
 | --- | --- |
 | `format` | Free-form hint (`json` / `text` / ...); not enforced. |
 | `success_codes` | Exit codes counted as `ok`. Default `[0]`. |
-| `from_file` | When set, the parser reads **this file** instead of stdout — for tools that write a report file. `result.raw` still holds the tool's stdout; the file contents go on `result.report` and `result.meta["parsed_from"]` records the path. The template interpolates `{cwd}` and any string- or number-valued arg by name (including one that only has a manifest `default:`); list / bool args are not substituted. Placeholders are bare names only — `{cwd.parent}` / `{a[0]}` are rejected. It is resolved relative to `cwd`, a relative path only — absolute paths and `..` are rejected at load. Any failure (unresolved placeholder, a path that escapes the run directory, a missing file) lands on `result.parse_error`; there is no silent fall back to stdout. |
+| `from_file` | When set, the parser reads **this file** instead of stdout — for tools that write a report file. `result.raw` still holds the tool's stdout; the file contents go on `result.report` and `result.meta["parsed_from"]` records the path. The template interpolates `{cwd}` and any string- or number-valued arg by name (including one that only has a manifest `default:`); list / bool args are not substituted. Placeholders are bare names only — `{cwd.parent}` / `{a[0]}` and a conversion / format spec (`{out!r}` / `{out:>10}`) are rejected. It is resolved relative to `cwd`, a relative path only — absolute paths and `..` are rejected at load. The file is read up to 64 MiB. Any failure (unresolved placeholder, a path that escapes the run directory, a missing or over-cap file) lands on `result.parse_error`; there is no silent fall back to stdout. |
 
 ## install
 

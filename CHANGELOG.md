@@ -60,8 +60,11 @@
   `LD_LIBRARY_PATH` / `DYLD_*`, `SSL_CERT_FILE` / `SSL_CERT_DIR` /
   `REQUESTS_CA_BUNDLE`, `HTTP(S)_PROXY` / `NO_PROXY`, and `COMSPEC` / `PATHEXT`.
 - `output.from_file` templates may only use bare `{name}` placeholders — a
-  `{cwd.__class__…}` / `{a[0]}` placeholder is rejected (surfaces on
-  `parse_error`).
+  `{cwd.__class__…}` / `{a[0]}` placeholder is rejected, and so is a conversion
+  or format spec (`{out!r}` / `{out:>1000000000}`, which can drive a huge
+  `str.format` allocation). Failures surface on `parse_error`.
+- `output.from_file` reports over 64 MiB are refused (`parse_error`) instead of
+  read into memory — the last uncapped input path in maina.
 - `timeout: 0` or a negative timeout is rejected at manifest load (it used to
   mean "expire immediately"); a non-positive `run(timeout=)` now means "no
   limit".
@@ -93,6 +96,8 @@
   (`env.K=V env.A=B`).
 - `maina clean [TOOLS...]` deletes cached installs; `maina prepare --force`
   wipes a tool's cache before re-preparing it. `Installer.clean_ids()`.
+  `--force` now needs explicit ids (a bare `prepare --force` no longer wipes the
+  whole tool cache) and is rejected alongside `--check`.
 - `examples/catalog/` — a worked catalog covering the `github` and `npm`
   backends, `output.from_file`, and a subcommand family, with an offline
   `demo.py`.
@@ -147,6 +152,18 @@
   no longer applies to the install subprocesses but not the tool.
 - `required: true` is not satisfied by `None` — from `run(x=None)` or
   `default: null` — it still raises `ArgError`.
+- `ArgError` for an unknown or missing argument now names the tool id and lists
+  the known argument names.
+- `maina list <parent>` finds children when the parent lives in a single
+  hyphenated directory (`my-tool/` holding `my-tool.yaml` + `sub.yaml`), not
+  only when every hyphen is a directory boundary.
+- `extra=` passthrough tokens land just before a `separator:` block (they are
+  caller options, not operands) — with `separator: "--"` set, an extra `--stat`
+  is no longer forced past the `--` into pathspec position.
+- `Runtime.preferred(discover=True)` warns (`RuntimeWarning`) on a
+  `maina.registries` entry point that fails to import or does not resolve to a
+  directory, instead of dropping it silently; a broken third-party catalog
+  module can no longer escape discovery as an arbitrary exception.
 - `install.assets` / `install.sha256` deep-merge across `extends` per platform
   key (a child overriding one platform no longer drops the others).
 - `abstract` / `args.<n>.required` / `args.<n>.positional` /

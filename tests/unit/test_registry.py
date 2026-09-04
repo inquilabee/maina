@@ -113,6 +113,17 @@ def test_list_commands_excludes_abstract(tmp_path: Path) -> None:
     assert registry.list_commands("family") == ["family-child"]
 
 
+def test_list_commands_finds_children_under_a_hyphenated_directory(tmp_path: Path) -> None:
+    root = tmp_path / "registry"
+    write_yaml(root / "my-tool" / "my-tool.yaml", {"cli": "my-tool", "abstract": True})
+    write_yaml(
+        root / "my-tool" / "sub.yaml",
+        {"cli": "my-tool", "subcommand": "sub", "install": {"backend": "path"}},
+    )
+    registry = Registry(root)
+    assert registry.list_commands("my-tool") == ["my-tool-sub"]
+
+
 def test_tool_id_rejects_dotdot_traversal(tmp_path: Path) -> None:
     root = tmp_path / "reg"
     write_yaml(root / "ok.yaml", {"cli": "true", "install": {"backend": "path"}})

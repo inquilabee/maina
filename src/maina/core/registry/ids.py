@@ -82,6 +82,36 @@ def id_candidate_paths(root: Path, tool_id: str, parts: list[str]) -> Iterator[P
         yield root.joinpath(*parts, parts[-1]).with_suffix(suffix)
 
 
+# A hyphen id whose every gap is enumerated as "separator or literal" is
+# 2**(n-1) guesses; past this segment count we only try the two extremes
+# (fully split, fully joined) and let ``scan_for_id`` cover the rest.
+MAX_ENUMERATED_ID_PARTS = 6
+
+
+def id_dir_candidates(root: Path, parts: list[str]) -> Iterator[Path]:
+    """Directory-surface guesses for a hyphen id under *root*.
+
+    Each hyphen may be a path separator or a literal character in a directory
+    name, so ``my-tool`` could live at ``my/tool/`` or ``my-tool/``. Fully-split
+    is yielded first (the common layout); combinations follow.
+    """
+    if len(parts) == 1:
+        yield root / parts[0]
+        return
+    if len(parts) > MAX_ENUMERATED_ID_PARTS:
+        yield root.joinpath(*parts)
+        yield root / "-".join(parts)
+        return
+    for mask in range(2 ** (len(parts) - 1)):
+        segments = [parts[0]]
+        for index in range(1, len(parts)):
+            if mask & (1 << (index - 1)):
+                segments[-1] = f"{segments[-1]}-{parts[index]}"
+            else:
+                segments.append(parts[index])
+        yield root.joinpath(*segments)
+
+
 def scan_for_id(root: Path, tool_id: str) -> Path | None:
     """Walk *root* for the manifest whose derived id equals *tool_id*."""
     if not root.is_dir():

@@ -188,7 +188,7 @@ class Tool:
         manifest = self.manifest
         if manifest.abstract:
             raise AbstractToolError(f"{manifest.id!r} is abstract; call a concrete child surface")
-        return ArgParser(manifest.args).build(
+        return ArgParser(manifest.args, tool_id=manifest.id).build(
             manifest.cli,
             manifest.subcommands,
             {**kwargs, **(dict(args) if args else {})},

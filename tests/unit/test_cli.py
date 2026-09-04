@@ -313,6 +313,22 @@ def test_cli_prepare_path_tool(tmp_path: Any) -> None:
     assert "prepared: trueish" in result.stdout
 
 
+def test_cli_prepare_force_needs_ids_and_rejects_check(tmp_path: Any) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "trueish.yaml", {"cli": "true", "install": {"backend": "path"}})
+    rt = Runtime(cache_root=tmp_path / "cache")
+    maina.register(rt, registry_dirs=[root], installers=[PathBackend()])
+    maina.use(rt)
+
+    bare = runner.invoke(app, ["prepare", "--force"])
+    assert bare.exit_code != 0
+    assert "needs explicit tool ids" in (bare.stdout + bare.stderr)
+
+    combo = runner.invoke(app, ["prepare", "trueish", "--force", "--check"])
+    assert combo.exit_code != 0
+    assert "cannot be combined with --check" in (combo.stdout + combo.stderr)
+
+
 def test_cli_prepare_check_reports_state(tmp_path: Any) -> None:
     root = tmp_path / "reg"
     # `true` is on PATH → satisfied; a bogus cli → missing.

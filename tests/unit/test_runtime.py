@@ -84,6 +84,30 @@ def test_module_register_appends_overlay(tmp_path: Path) -> None:
     assert "cli: jq-overlay" in text
 
 
+def test_discover_warns_on_a_broken_entry_point(monkeypatch: pytest.MonkeyPatch) -> None:
+    import importlib.metadata as md
+
+    class _Broken:
+        name = "busted"
+
+        def load(self) -> object:
+            raise RuntimeError("catalog import blew up")
+
+    class _NotADir:
+        name = "ghost"
+
+        def load(self) -> str:
+            return "/no/such/registry/dir"
+
+    monkeypatch.setattr(md, "entry_points", lambda **_kw: [_Broken(), _NotADir()])
+    with pytest.warns(RuntimeWarning) as caught:
+        dirs = Runtime._discovered_registry_dirs()
+    assert dirs == []
+    messages = " ".join(str(w.message) for w in caught)
+    assert "busted" in messages
+    assert "ghost" in messages
+
+
 def test_resolve_cache_root_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MAINA_CACHE", str(tmp_path / "env-cache"))
     root = resolve_cache_root(None)

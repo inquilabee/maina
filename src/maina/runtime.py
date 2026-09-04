@@ -168,16 +168,37 @@ class Runtime:
         from importlib.metadata import entry_points
 
         eps = entry_points(group="maina.registries")
-        resolved = (cls._load_registry_entry_point(ep) for ep in eps)
-        return [path for path in resolved if path is not None and path.is_dir()]
+        out: list[Path] = []
+        for ep in eps:
+            path = cls._load_registry_entry_point(ep)
+            if path is None:
+                continue
+            if path.is_dir():
+                out.append(path)
+            else:
+                warnings.warn(
+                    f"maina.registries entry {ep.name!r} is not a directory, ignoring: {path}",
+                    RuntimeWarning,
+                    stacklevel=3,
+                )
+        return out
 
     @staticmethod
     def _load_registry_entry_point(ep: EntryPoint) -> Path | None:
-        """Resolve one entry point to a directory Path; None if it is broken."""
+        """Resolve one entry point to a Path; warn and return None if it is broken.
+
+        A published catalog is third-party code, so ``ep.load()`` can raise
+        anything on import — isolate it rather than let it escape ``discover``.
+        """
         try:
             value = ep.load()
             return Path(str(value() if callable(value) else value))
-        except (ImportError, AttributeError, TypeError, OSError):
+        except Exception as exc:  # ruff:ignore[blind-except] - untrusted plugin import
+            warnings.warn(
+                f"maina.registries entry {ep.name!r} failed to load, ignoring: {exc}",
+                RuntimeWarning,
+                stacklevel=3,
+            )
             return None
 
     @classmethod
