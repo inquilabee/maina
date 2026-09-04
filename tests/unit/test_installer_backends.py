@@ -267,9 +267,8 @@ def test_prepare_ids_rejects_explicit_abstract(tmp_path: Path) -> None:
         installer.prepare_ids(["base"])
     with pytest.raises(InstallError, match="cannot prepare abstract"):
         installer.prepare_ids(["family"])
-    prepared = installer.prepare_ids(None)
-    assert prepared == ["child"]
-    assert installer.prepare_ids(["child"]) == ["child"]
+    assert installer.prepare_ids(None) == (["child"], {})
+    assert installer.prepare_ids(["child"]) == (["child"], {})
 
 
 def test_prepare_ids_skips_broken_manifest_but_explicit_raises(tmp_path: Path) -> None:
@@ -305,8 +304,8 @@ def test_prepare_ids_rejects_catalog_abstract() -> None:
 def test_clean_ids_removes_cached_installs(tmp_path: Path) -> None:
     cache = tmp_path / "cache"
     root = tmp_path / "reg"
-    write_yaml(root / "a.yaml", {"cli": "aaa", "install": {"backend": "path"}})
-    write_yaml(root / "b.yaml", {"cli": "bbb", "install": {"backend": "path"}})
+    write_yaml(root / "a.yaml", {"cli": "aaa", "version": "1", "install": {"backend": "path"}})
+    write_yaml(root / "b.yaml", {"cli": "bbb", "version": "1", "install": {"backend": "path"}})
     (cache / "tools" / "aaa" / "1").mkdir(parents=True)
     (cache / "tools" / "bbb" / "1").mkdir(parents=True)
     installer = Installer(
@@ -315,11 +314,47 @@ def test_clean_ids_removes_cached_installs(tmp_path: Path) -> None:
         registry=Registry(root),
         backends=[PathBackend()],
     )
-    assert installer.clean_ids(["a"]) == ["aaa"]
+    # A named id deletes only its own <cli>/<version>, and prunes the emptied cli dir.
+    assert installer.clean_ids(["a"]) == ["aaa/1"]
     assert not (cache / "tools" / "aaa").exists()
-    assert (cache / "tools" / "bbb").exists()
-    assert installer.clean_ids() == ["bbb"]  # the rest
+    assert (cache / "tools" / "bbb" / "1").exists()
+    assert installer.clean_ids() == ["bbb"]  # no ids -> whole tree, per cli
     assert installer.clean_ids() == []
+
+
+def test_clean_ids_keeps_a_sibling_version(tmp_path: Path) -> None:
+    cache = tmp_path / "cache"
+    root = tmp_path / "reg"
+    write_yaml(root / "v1.yaml", {"cli": "tool", "version": "1", "install": {"backend": "path"}})
+    write_yaml(root / "v2.yaml", {"cli": "tool", "version": "2", "install": {"backend": "path"}})
+    (cache / "tools" / "tool" / "1").mkdir(parents=True)
+    (cache / "tools" / "tool" / "2").mkdir(parents=True)
+    installer = Installer(
+        cache_root=cache,
+        language=FakeLanguage(cache),
+        registry=Registry(root),
+        backends=[PathBackend()],
+    )
+    assert installer.clean_ids(["v1"]) == ["tool/1"]
+    assert not (cache / "tools" / "tool" / "1").exists()
+    assert (cache / "tools" / "tool" / "2").exists()  # sibling version untouched
+
+
+def test_clean_ids_rejects_abstract_id(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "base.yaml", {"abstract": True})
+    write_yaml(
+        root / "leaf.yaml",
+        {"cli": "leaf", "extends": "base", "install": {"backend": "path"}},
+    )
+    installer = Installer(
+        cache_root=tmp_path / "cache",
+        language=FakeLanguage(tmp_path / "cache"),
+        registry=Registry(root),
+        backends=[PathBackend()],
+    )
+    with pytest.raises(InstallError, match="cannot clean 'base'"):
+        installer.clean_ids(["base"])
 
 
 def test_check_ids_reports_satisfied_and_missing(tmp_path: Path) -> None:
@@ -448,7 +483,8 @@ def test_resolve_rejects_unsupported_platform(
     with pytest.raises(UnsupportedPlatformError, match="not supported on windows"):
         installer.resolve(registry.load("maconly"))
     # Implicit prepare_ids skips it instead of raising.
-    assert installer.prepare_ids(None) == []
-    # Explicit prepare_ids surfaces the error.
-    with pytest.raises(UnsupportedPlatformError):
-        installer.prepare_ids(["maconly"])
+    assert installer.prepare_ids(None) == ([], {})
+    # Explicit prepare_ids collects it as a failure rather than aborting.
+    prepared, failures = installer.prepare_ids(["maconly"])
+    assert prepared == []
+    assert list(failures) == ["maconly"]

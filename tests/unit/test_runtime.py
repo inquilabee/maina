@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 
 def test_bootstrap_has_parsers_and_no_catalog() -> None:
-    preferred = Runtime.preferred()
+    preferred = Runtime.preferred(use_env=False)
     # maina ships no tool catalog.
     assert preferred.registry.iter_ids() == []
     assert preferred.parsers.is_general("json")

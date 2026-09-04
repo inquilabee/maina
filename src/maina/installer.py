@@ -266,6 +266,13 @@ class Installer:
             if explicit:
                 raise self._abstract_error(tid)
             return None
+        if not manifest.has_cli:
+            if explicit:
+                raise InstallError(
+                    f"{tid!r} has no cli: — it is an inheritance-only manifest. "
+                    "Add cli:, or abstract: true to hide it from prepare / list."
+                )
+            return None
         wrong_host = (
             not explicit and manifest.platforms and current_platform() not in manifest.platforms
         )
@@ -288,41 +295,68 @@ class Installer:
             raise self._abstract_error(manifest.id)
         self.resolve(manifest)
 
-    def prepare_ids(self, tool_ids: list[str] | None = None) -> list[str]:
+    def prepare_ids(self, tool_ids: list[str] | None = None) -> tuple[list[str], dict[str, str]]:
         """Prepare installs for given ids or all non-abstract manifests.
 
-        When *tool_ids* is omitted, abstract surfaces and tools unsupported on
-        this host are skipped. When the caller names ids explicitly, an abstract
-        id raises :class:`InstallError`, an unknown id raises
-        :class:`~maina.core.errors.ManifestError` (from the registry load), and
-        an unsupported host raises :class:`UnsupportedPlatformError` — never a
-        silent no-op.
+        Returns ``(prepared, failures)`` where *failures* maps a failed id to its
+        message — one tool that fails to install does not abort the rest, and the
+        record of what *did* install is never lost (mirrors ``check_ids``).
+
+        Selection still fails fast: when the caller names ids explicitly an
+        abstract id raises :class:`InstallError` and an unknown id raises
+        :class:`~maina.core.errors.ManifestError`; when *tool_ids* is omitted,
+        abstract / ``cli``-less / wrong-host manifests are skipped.
         """
         prepared: list[str] = []
+        failures: dict[str, str] = {}
         for tid, manifest in self._selected_manifests(tool_ids):
-            self.prepare(manifest)
-            prepared.append(tid)
-        return prepared
+            try:
+                self.prepare(manifest)
+            except InstallError as exc:  # covers RuntimeProvision / UnsupportedPlatform
+                failures[tid] = str(exc)
+            else:
+                prepared.append(tid)
+        return prepared, failures
 
     def clean_ids(self, tool_ids: list[str] | None = None) -> list[str]:
         """Delete cached installs — for the named tools, or the whole tool cache.
 
-        Returns the ``cli`` directory names removed. A ``path``-backed tool has
-        nothing cached, so it is silently a no-op.
+        With no ids the whole ``<cache>/tools/`` tree goes. Named ids delete only
+        that id's own ``<cli>/<cache_version>`` directory, so a sibling manifest
+        sharing the ``cli`` (a different ``version:``, or a distinct identity
+        hash) is left alone. A ``path``-backed tool caches nothing — a no-op.
+        Returns the cache paths removed (relative to ``tools/``).
         """
         tools_dir = self.cache_root / "tools"
-        if not tools_dir.is_dir():
-            return []
-        clis = (
-            sorted(p.name for p in tools_dir.iterdir() if p.is_dir())
-            if tool_ids is None
-            else sorted({self.registry.load(tid).cli for tid in tool_ids})
-        )
+        # Resolve named ids first — an abstract / cli-less id is an error even
+        # when nothing is cached yet.
+        if tool_ids is not None:
+            targets: list[str] = [self._clean_target(tid) for tid in tool_ids]
+        else:
+            targets = (
+                [p.name for p in tools_dir.iterdir() if p.is_dir()] if tools_dir.is_dir() else []
+            )
+        return self._rmtree_targets(tools_dir, targets) if tools_dir.is_dir() else []
+
+    @staticmethod
+    def _rmtree_targets(tools_dir: Path, targets: list[str]) -> list[str]:
         removed: list[str] = []
         root = tools_dir.resolve()
-        for cli in clis:
-            target = tools_dir / cli
-            if target.is_dir() and target.resolve().is_relative_to(root):
-                shutil.rmtree(target)
-                removed.append(cli)
+        for rel in sorted(set(targets)):
+            target = tools_dir / rel
+            if not (target.is_dir() and target.resolve().is_relative_to(root)):
+                continue
+            shutil.rmtree(target)
+            removed.append(rel)
+            parent = target.parent
+            if parent != tools_dir and parent.is_dir() and not any(parent.iterdir()):
+                parent.rmdir()  # drop an emptied <cli>/ after the last version left
         return removed
+
+    def _clean_target(self, tid: str) -> str:
+        """``<cli>/<cache_version>`` for one id; reject an abstract / cli-less id."""
+        manifest = self.registry.load(tid)
+        if manifest.abstract or not manifest.has_cli:
+            what = "abstract" if manifest.abstract else "cli-less (inheritance-only)"
+            raise InstallError(f"cannot clean {tid!r}: it is {what} — clean a concrete child id")
+        return f"{manifest.cli}/{self._cache_version(manifest)}"

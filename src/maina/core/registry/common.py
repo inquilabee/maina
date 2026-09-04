@@ -39,6 +39,15 @@ def require_bool(value: Any, *, field_name: str, tool_id: str) -> bool:
     return value
 
 
+def require_optional_bool(value: Any, *, field_name: str, tool_id: str) -> bool | None:
+    """Like :func:`require_bool` but keeps "unset" distinct from ``False``.
+
+    For a tri-state field (``repeat``) where absent means "engine default",
+    not "off" — but ``"no"`` / ``0`` are still rejected, not coerced.
+    """
+    return None if value is None else require_bool(value, field_name=field_name, tool_id=tool_id)
+
+
 def scalar_str(value: Any, *, field_name: str, tool_id: str) -> str:
     """Coerce a YAML scalar to ``str``, rejecting ``bool`` and ``float``.
 

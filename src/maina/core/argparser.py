@@ -146,6 +146,10 @@ class ArgParser:
                 positional=spec.positional,
                 joiner=spec.joiner,
             )
+        if not isinstance(value, (str, int, float)):
+            raise ArgParser._arg_error(
+                name, f"value must be a string or number, not {type(value).__name__}"
+            )
         token = str(value)
         if spec.positional:
             return [token]

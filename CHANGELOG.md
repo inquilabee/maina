@@ -101,7 +101,25 @@
 - `maina clean [TOOLS...]` deletes cached installs; `maina prepare --force`
   wipes a tool's cache before re-preparing it. `Installer.clean_ids()`.
   `--force` now needs explicit ids (a bare `prepare --force` no longer wipes the
-  whole tool cache) and is rejected alongside `--check`.
+  whole tool cache) and is rejected alongside `--check`. A named `maina clean`
+  / `--force` deletes only that id's `<cli>/<version>` dir, not every version
+  and identity under the `cli`; an abstract / `cli`-less id is rejected.
+- `maina validate` goes past "does it load": a concrete manifest must have a
+  `cli:` (a `cli`-less one is inheritance-only — mark it `abstract: true`); a
+  `github` backend must carry `repo` + `assets`; every `output.from_file`
+  placeholder must name a declared arg. These used to surface only at install
+  / run time.
+- `maina prepare` (no ids, or several) is batch-resilient: one tool that fails
+  to install no longer aborts the rest or discards the record of what already
+  installed. It prints `prepared: <id>` / `failed: <id>: <message>` and exits
+  non-zero if anything failed. `Installer.prepare_ids()` returns
+  `(prepared, failures)`.
+- `maina run <id>` with no arguments, for a tool that needs none, prints a
+  hint to run it as `maina run <id> --`.
+- A `base.yaml` with no `cli:` is inheritance-only: `maina list` no longer
+  shows a phantom `base`, `maina prepare` skips it instead of dying with
+  `manifest 'base' missing cli`, and `maina validate` reports it `ok`.
+  `Manifest.has_cli`.
 - `examples/catalog/` — a worked catalog covering the `github` and `npm`
   backends, `output.from_file`, and a subcommand family, with an offline
   `demo.py`.
@@ -158,6 +176,19 @@
   `default: null` — it still raises `ArgError`.
 - `ArgError` for an unknown or missing argument now names the tool id and lists
   the known argument names.
+- `args.<n>.default` / `.flag` / `.joiner` reject a bare YAML `bool` / `float`
+  the way `cli` / `version` / `install.*` already do — `default: no` no longer
+  becomes the argv token `"False"`. `args.<n>.repeat` must be a real YAML
+  boolean (`repeat: "no"` / `repeat: 0` are rejected, not silently "repeat").
+- `install.assets` / `install.sha256` honour `<platform>: null` in a child as a
+  drop marker (like `args` / `requires`), so a version-bump child can shed a
+  parent's stale asset name or digest.
+- A non-scalar argument value (a dict, set, or arbitrary object) is rejected
+  with an `ArgError` instead of being `str()`-formatted into argv.
+- The unit suite is hermetic against `$MAINA_REGISTRY` / `$MAINA_CACHE`:
+  `fixture_runtime()` builds its Runtime with `use_env=False` and a throwaway
+  cache root, so an ambient registry can no longer shadow a fixture id and the
+  run never touches `~/.cache/maina`.
 - `maina list <parent>` finds children when the parent lives in a single
   hyphenated directory (`my-tool/` holding `my-tool.yaml` + `sub.yaml`), not
   only when every hyphen is a directory boundary.

@@ -15,7 +15,7 @@ def test_package_ships_no_registry() -> None:
 
 
 def test_preferred_has_empty_catalog() -> None:
-    assert Runtime.preferred().registry.iter_ids() == []
+    assert Runtime.preferred(use_env=False).registry.iter_ids() == []
 
 
 def test_caller_catalog_loads_a_manifest() -> None:

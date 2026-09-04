@@ -162,7 +162,7 @@ def test_cli_validate_reports_each_error_and_exits_nonzero(tmp_path: Any) -> Non
             "install": {"backend": "github", "repo": "a/b", "assets": {"linux-amd64": "x"}},
         },
     )
-    maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root]))
+    maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root], use_env=False))
     result = runner.invoke(app, ["validate"])
     assert result.exit_code == 1
     assert "ok: good" in result.stdout
@@ -170,6 +170,63 @@ def test_cli_validate_reports_each_error_and_exits_nonzero(tmp_path: Any) -> Non
     assert "error: badparser:" in result.stderr
     assert "backend 'gihtub' is not registered" in result.stderr
     assert "platform keys not recognised: linux-amd64" in result.stderr
+
+
+def test_cli_validate_catches_static_manifest_bugs(tmp_path: Any) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "nocli.yaml", {"install": {"backend": "path"}})
+    write_yaml(root / "ghnorepo.yaml", {"cli": "x", "install": {"backend": "github"}})
+    write_yaml(
+        root / "badtmpl.yaml",
+        {
+            "cli": "echo",
+            "install": {"backend": "path"},
+            "output": {"from_file": "{nosucharg}/r.json"},
+        },
+    )
+    write_yaml(root / "base.yaml", {"env": {"LC_ALL": "C"}})  # cli-less base is fine
+    maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root], use_env=False))
+    result = runner.invoke(app, ["validate"])
+    assert result.exit_code == 1
+    err = result.stderr
+    assert "error: nocli: no cli:" in err
+    assert "ghnorepo: install.backend: github needs both repo: and assets:" in err
+    assert "badtmpl: output.from_file names non-arg placeholder(s): nosucharg" in err
+    assert "ok: base" in result.stdout
+
+
+def test_cli_prepare_is_batch_resilient(tmp_path: Any) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "aaa.yaml", {"cli": "true", "install": {"backend": "path"}})
+    write_yaml(root / "mmm.yaml", {"cli": "not-a-real-binary-xyz", "install": {"backend": "path"}})
+    write_yaml(root / "zzz.yaml", {"cli": "sh", "install": {"backend": "path"}})
+    rt = Runtime(cache_root=tmp_path / "cache")
+    maina.register(rt, registry_dirs=[root], installers=[PathBackend()])
+    maina.use(rt)
+    result = runner.invoke(app, ["prepare"])
+    assert result.exit_code == 1
+    assert "prepared: aaa" in result.stdout
+    assert "prepared: zzz" in result.stdout
+    assert "failed: mmm:" in result.stderr
+
+
+def test_cli_run_no_args_help_hints_at_double_dash(tmp_path: Any) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "noargs.yaml", {"cli": "true", "install": {"backend": "path"}})
+    write_yaml(
+        root / "needy.yaml",
+        {
+            "cli": "echo",
+            "install": {"backend": "path"},
+            "args": {"msg": {"positional": True, "required": True}},
+        },
+    )
+    maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root], use_env=False))
+    hint = runner.invoke(app, ["run", "noargs"])
+    assert hint.exit_code == 0
+    assert "maina run noargs --" in hint.stdout
+    needy = runner.invoke(app, ["run", "needy"])
+    assert "no required arguments" not in needy.stdout
 
 
 def test_cli_list_children() -> None:
@@ -474,13 +531,13 @@ def test_cli_schema_emits_valid_json_schema() -> None:
 
 def test_cli_clean_removes_cache(tmp_path: Any) -> None:
     root = tmp_path / "reg"
-    write_yaml(root / "t.yaml", {"cli": "toolx", "install": {"backend": "path"}})
+    write_yaml(root / "t.yaml", {"cli": "toolx", "version": "1", "install": {"backend": "path"}})
     cache = tmp_path / "c"
     (cache / "tools" / "toolx" / "1").mkdir(parents=True)
-    maina.use(Runtime.preferred(cache_root=cache, registry_dirs=[root]))
+    maina.use(Runtime.preferred(cache_root=cache, registry_dirs=[root], use_env=False))
     result = runner.invoke(app, ["clean", "t"])
     assert result.exit_code == 0
-    assert "cleaned: toolx" in result.stdout
+    assert "cleaned: toolx/1" in result.stdout
     assert not (cache / "tools" / "toolx").exists()
     assert "nothing to clean" in runner.invoke(app, ["clean"]).stdout
 

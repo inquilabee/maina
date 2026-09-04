@@ -238,7 +238,8 @@ class Registry:
         out: list[str] = []
         for tid in ids:
             try:
-                if not self.load(tid).abstract:
+                manifest = self.load(tid)
+                if not manifest.abstract and manifest.has_cli:
                     out.append(tid)
             except ManifestError as exc:
                 warnings.warn(f"skipping {tid!r}: {exc}", RuntimeWarning, stacklevel=2)
@@ -423,8 +424,22 @@ class Registry:
         deep_subs = cls._INSTALL_DEEP_KEYS if key == "install" else ()
         for sub in deep_subs:
             if isinstance(parent.get(sub), dict) and isinstance(child.get(sub), dict):
-                out[sub] = {**parent[sub], **child[sub]}
+                out[sub] = cls._merge_platform_map(parent[sub], child[sub])
         return out
+
+    @staticmethod
+    def _merge_platform_map(parent: dict[str, Any], child: dict[str, Any]) -> dict[str, Any]:
+        """``{**parent, **child}`` for an ``assets`` / ``sha256`` map, except a
+        ``<platform>: null`` in the child drops that inherited entry — the same
+        null-drop idiom ``args`` and ``requires`` use, so a version-bump child
+        can shed a parent's stale asset name or digest."""
+        merged = deepcopy(parent)
+        for platform_key, value in child.items():
+            if value is None:
+                merged.pop(platform_key, None)
+            else:
+                merged[platform_key] = deepcopy(value)
+        return merged
 
     @staticmethod
     def _merge_args(out: dict[str, Any], child: dict[str, Any]) -> dict[str, Any]:

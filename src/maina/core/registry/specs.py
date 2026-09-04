@@ -12,6 +12,7 @@ from .common import (
     manifest_error,
     optional_str,
     require_bool,
+    require_optional_bool,
     safe_segment,
     scalar_str,
     unknown_keys,
@@ -119,7 +120,7 @@ class ArgSpec:
         positional = require_bool(
             raw.get("positional"), field_name=f"args.{name}.positional", tool_id=tool_id
         )
-        flag = None if raw.get("flag") is None else str(raw["flag"])
+        flag = cls._opt_scalar(raw, "flag", name=name, tool_id=tool_id)
         join = None if raw.get("join") is None else str(raw["join"])
         cls._check_shape(
             name, arg_type, positional=positional, flag=flag, join=join, tool_id=tool_id
@@ -127,18 +128,44 @@ class ArgSpec:
         return cls(
             type=arg_type,
             flag=flag,
-            joiner=None if raw.get("joiner") is None else str(raw["joiner"]),
+            joiner=cls._opt_scalar(raw, "joiner", name=name, tool_id=tool_id),
             positional=positional,
             required=require_bool(
                 raw.get("required"), field_name=f"args.{name}.required", tool_id=tool_id
             ),
-            repeat=raw.get("repeat"),
+            repeat=require_optional_bool(
+                raw.get("repeat"), field_name=f"args.{name}.repeat", tool_id=tool_id
+            ),
             join=join,
             order=cls._parse_order(raw.get("order"), name=name, tool_id=tool_id),
-            default=raw.get("default"),
+            default=cls._scalar_default(raw, arg_type, name=name, tool_id=tool_id),
             has_default="default" in raw,
             description=optional_str(raw.get("description")),
             help=optional_str(raw.get("help")),
+        )
+
+    @staticmethod
+    def _opt_scalar(raw: dict[str, Any], key: str, *, name: str, tool_id: str) -> str | None:
+        """An optional string arg field, run through the YAML-scalar guard."""
+        return (
+            None
+            if raw.get(key) is None
+            else scalar_str(raw[key], field_name=f"args.{name}.{key}", tool_id=tool_id)
+        )
+
+    @staticmethod
+    def _scalar_default(raw: dict[str, Any], arg_type: str, *, name: str, tool_id: str) -> Any:
+        """``default:`` — a ``flag`` keeps its bool; every other type rejects a
+        bare YAML ``bool`` / ``float`` (``default: no`` must not become argv
+        ``"False"``). Lists / dicts / ints pass through unchanged."""
+        if "default" not in raw:
+            return None
+        value = raw["default"]
+        keep_as_is = arg_type == "flag" or not isinstance(value, (bool, float))
+        return (
+            value
+            if keep_as_is
+            else scalar_str(value, field_name=f"args.{name}.default", tool_id=tool_id)
         )
 
     @staticmethod
@@ -355,6 +382,12 @@ class Manifest:
     @property
     def abstract(self) -> bool:
         return require_bool(self.data.get("abstract"), field_name="abstract", tool_id=self.id)
+
+    @property
+    def has_cli(self) -> bool:
+        """Whether ``cli:`` is set. A manifest without one is inheritance-only
+        (a ``base`` for ``extends``); it cannot be listed, prepared, or run."""
+        return self.data.get("cli") is not None
 
     @property
     def cli(self) -> str:

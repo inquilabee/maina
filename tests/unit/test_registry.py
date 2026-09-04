@@ -113,6 +113,15 @@ def test_list_commands_excludes_abstract(tmp_path: Path) -> None:
     assert registry.list_commands("family") == ["family-child"]
 
 
+def test_cli_less_base_is_not_a_callable_id(tmp_path: Path) -> None:
+    root = tmp_path / "registry"
+    write_yaml(root / "base.yaml", {"env": {"LC_ALL": "C"}})  # no cli:, no abstract:
+    write_yaml(root / "greet.yaml", {"cli": "echo", "install": {"backend": "path"}})
+    registry = Registry(root)
+    assert registry.list_commands(None) == ["greet"]
+    assert not registry.load("base").has_cli
+
+
 def test_list_commands_finds_children_under_a_hyphenated_directory(tmp_path: Path) -> None:
     root = tmp_path / "registry"
     write_yaml(root / "my-tool" / "my-tool.yaml", {"cli": "my-tool", "abstract": True})

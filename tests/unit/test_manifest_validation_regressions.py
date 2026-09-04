@@ -106,10 +106,83 @@ def test_requires_key_charset_validated_at_load(tmp_path: Path) -> None:
         reg.load("t")
 
 
-# --- review D: MAINA_REGISTRY diagnostics -------------------------------------
+# --- MAINA_REGISTRY diagnostics ---------------------------------------------
 
 
 def test_env_registry_missing_dir_warns(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MAINA_REGISTRY", str(tmp_path / "does-not-exist"))
     with pytest.warns(RuntimeWarning, match="not a directory"):
         Runtime._env_registry_dirs()
+
+
+# --- args.* scalar guards --------------------------------------------------------
+
+
+@pytest.mark.parametrize("literal", ["no", "on", "3.10"])
+def test_arg_default_rejects_bare_yaml_scalar(tmp_path: Path, literal: str) -> None:
+    root = tmp_path / "reg"
+    root.mkdir()
+    # Raw YAML so the 1.1 bool/float trap is actually exercised (a quoted value
+    # would round-trip as a string).
+    body = "cli: t\ninstall: {backend: path}\nargs:\n"
+    body += f"  color: {{flag: --color, default: {literal}}}\n"
+    (root / "t.yaml").write_text(body, encoding="utf-8")
+    with pytest.raises(ManifestError, match=r"args\.color\.default"):
+        Registry(root).load("t")
+
+
+def test_flag_arg_default_still_accepts_a_real_bool(tmp_path: Path) -> None:
+    reg = make_reg(
+        tmp_path,
+        {
+            "t.yaml": {
+                "cli": "t",
+                "install": {"backend": "path"},
+                "args": {"q": {"flag": "-q", "type": "flag", "default": True}},
+            }
+        },
+    )
+    assert reg.load("t").args["q"].default is True
+
+
+@pytest.mark.parametrize("repeat", ["no", 0, 1])
+def test_arg_repeat_rejects_non_bool(tmp_path: Path, repeat: Any) -> None:
+    reg = make_reg(
+        tmp_path,
+        {
+            "t.yaml": {
+                "cli": "t",
+                "install": {"backend": "path"},
+                "args": {"g": {"flag": "-g", "repeat": repeat}},
+            }
+        },
+    )
+    with pytest.raises(ManifestError, match=r"args\.g\.repeat"):
+        reg.load("t")
+
+
+# --- install.assets / sha256 null-drop across extends --------------------------
+
+
+def test_child_can_drop_an_inherited_asset_with_null(tmp_path: Path) -> None:
+    reg = make_reg(
+        tmp_path,
+        {
+            "tool.yaml": {
+                "abstract": True,
+                "cli": "tool",
+                "install": {
+                    "backend": "github",
+                    "repo": "acme/tool",
+                    "assets": {"linux-x86_64": "t-1-linux.tgz", "macos-arm64": "t-1-mac.tgz"},
+                },
+            },
+            "v2.yaml": {
+                "extends": "tool",
+                "version": "2",
+                "install": {"assets": {"linux-x86_64": "t-2-linux.tgz", "macos-arm64": None}},
+            },
+        },
+    )
+    assets = reg.load("v2").install.assets
+    assert assets == {"linux-x86_64": "t-2-linux.tgz"}

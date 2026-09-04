@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shlex
 import sys
+from string import Formatter
 from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
@@ -24,7 +25,7 @@ from maina.core.errors import (
     ManifestError,
 )
 from maina.core.platform import KNOWN_PLATFORM_KEYS
-from maina.core.registry import build_manifest_schema
+from maina.core.registry import BASE_TOOL_ID, build_manifest_schema
 from maina.runtime import runtime
 from maina.tool import Tool
 
@@ -114,9 +115,12 @@ def validate(
 ) -> None:
     """Load every manifest (or the named ids) and report each problem without aborting.
 
-    Checks the manifest loads, its ``parser:`` resolves, its ``install.backend``
-    is registered, and its ``install.assets`` / ``sha256`` platform keys are
-    real. Prints ``ok:`` / ``error:`` per id and exits non-zero if any failed.
+    Checks that the manifest loads and its ``parser:`` resolves; that a concrete
+    manifest has a ``cli:``; that ``install.backend`` is registered and (for
+    ``github``) carries ``repo`` + ``assets``; that ``install.assets`` /
+    ``sha256`` platform keys are real; and that every ``output.from_file``
+    placeholder names a declared arg. Prints ``ok:`` / ``error:`` per id and
+    exits non-zero if any failed.
     """
     rt = runtime()
     ids = tools or rt.registry.iter_ids()
@@ -136,17 +140,49 @@ def validate(
         raise typer.Exit(1)
 
 
+NO_CLI_PROBLEM = "no cli: set (add cli: <name>, or abstract: true for an extends-only base)"
+
+
 def validate_one(rt: Any, tid: str) -> str | None:
     """A one-line problem string for *tid*, or ``None`` when it is fine."""
     try:
-        install = Tool(tid, runtime=rt).manifest.install  # loads + checks parser
+        manifest = Tool(tid, runtime=rt).manifest  # loads + checks parser
     except MainaError as exc:
         return str(exc)
+    if not manifest.has_cli:
+        inheritance_only = manifest.abstract or manifest.id == BASE_TOOL_ID
+        return None if inheritance_only else NO_CLI_PROBLEM
+    return concrete_problem(manifest, rt)
+
+
+def concrete_problem(manifest: Any, rt: Any) -> str | None:
+    """Problems in a concrete (has-``cli``) manifest, or ``None``."""
+    found = install_problem(manifest, rt) or from_file_problem(manifest)
+    return None if manifest.abstract else found
+
+
+def install_problem(manifest: Any, rt: Any) -> str | None:
+    """Static problems in a manifest's ``install:`` block, or ``None``."""
+    install = manifest.install
     if install.backend not in rt.installer.backend_names:
         known = ", ".join(sorted(rt.installer.backend_names)) or "none"
         return f"install backend {install.backend!r} is not registered (known: {known})"
+    if install.backend == "github" and not (install.repo and install.assets):
+        return "install.backend: github needs both repo: and assets:"
     if bad := sorted((set(install.assets) | set(install.sha256)) - KNOWN_PLATFORM_KEYS):
         return f"install.assets/sha256 platform keys not recognised: {', '.join(bad)}"
+    return None
+
+
+def from_file_problem(manifest: Any) -> str | None:
+    """An ``output.from_file`` template naming something that is not an arg, or ``None``."""
+    template = manifest.output.from_file
+    if not template:
+        return None
+    allowed = {"cwd", *manifest.args}
+    fields = {field for _lit, field, _spec, _conv in Formatter().parse(template) if field}
+    if undeclared := sorted(fields - allowed):
+        return f"output.from_file names non-arg placeholder(s): {', '.join(undeclared)}"
     return None
 
 
@@ -212,23 +248,35 @@ def prepare(
     ``--force`` wipes the cached install for each named tool before preparing;
     it needs explicit ids and cannot be combined with ``--check``.
     """
+    reject_bad_prepare_flags(tools, check=check, force=force)
+    installer = runtime().installer
+    if check:
+        emit_check(installer, tools)
+        return
+    try:
+        for cli in installer.clean_ids(tools) if force else []:
+            typer.echo(f"cleaned: {cli}")
+        prepared, failures = installer.prepare_ids(tools)
+    except (ManifestError, InstallError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from exc
+    emit_prepare_outcome(prepared, failures)
+
+
+def reject_bad_prepare_flags(tools: list[str] | None, *, check: bool, force: bool) -> None:
     if force and check:
         raise typer.BadParameter("--force cannot be combined with --check (which installs nothing)")
     if force and not tools:
         raise typer.BadParameter("--force needs explicit tool ids ('maina clean' wipes the cache)")
-    installer = runtime().installer
-    try:
-        if check:
-            emit_check(installer, tools)
-            return
-        for cli in installer.clean_ids(tools) if force else []:
-            typer.echo(f"cleaned: {cli}")
-        prepared = installer.prepare_ids(tools)
-    except (ManifestError, InstallError) as exc:
-        typer.echo(str(exc), err=True)
-        raise typer.Exit(2) from exc
+
+
+def emit_prepare_outcome(prepared: list[str], failures: dict[str, str]) -> None:
     for tid in prepared:
         typer.echo(f"prepared: {tid}")
+    for tid, message in failures.items():
+        typer.echo(f"failed: {tid}: {message}", err=True)
+    if failures:
+        raise typer.Exit(1)
 
 
 def emit_check(installer: Any, tools: list[str] | None) -> None:
@@ -354,10 +402,13 @@ def echo_stderr(text: str) -> None:
 def emit_tool_help(tool_id: str) -> None:
     """Print registry help for a tool id, or exit 2 if the id is unknown."""
     try:
-        typer.echo(Tool(tool_id).help())
+        tool = Tool(tool_id)
     except ManifestError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(2) from exc
+    typer.echo(tool.help())
+    if not tool.manifest.abstract and all(not a.required for a in tool.args.values()):
+        typer.echo(f"\n(no required arguments — run it with:  maina run {tool_id} --)")
 
 
 def emit_result(result: ToolResult, *, as_json: bool = False) -> None:

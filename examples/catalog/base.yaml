@@ -1,0 +1,7 @@
+# A base.yaml auto-extends every manifest in this same registry root, so shared
+# defaults live in one place. It has no cli: of its own — it is never listed,
+# prepared, or run. `abstract: true` states that intent explicitly.
+abstract: true
+# Deterministic tool output regardless of the caller's locale.
+env:
+  LC_ALL: C.UTF-8

@@ -70,9 +70,10 @@ set `MAINA_ALLOW_MISE_BOOTSTRAP=1`; otherwise it raises `RuntimeProvisionError`.
 `examples/parsers_dirs/` (custom parser via `parsers_dirs`).
 
 If a `base.yaml` exists in a registry root it auto-extends every tool **in that
-same root** — put shared defaults (e.g. org-wide runtime pins) there. A
-`base.yaml` in another registered root is *not* applied, so overlay catalogs
-compose without rewriting each other. maina ships no `base.yaml`, so a static
+same root** — put shared defaults (e.g. org-wide runtime pins) there. It carries
+no `cli:` of its own, so `maina list` / `prepare` treat it as inheritance-only;
+add `abstract: true` to say so explicitly. A `base.yaml` in another registered
+root is *not* applied, so overlay catalogs compose without rewriting each other. maina ships no `base.yaml`, so a static
 binary never drags `mise` unless you add pins. The `npm` backend provisions
 Node on its own. Pin runtimes where you need them:
 

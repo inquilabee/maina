@@ -87,9 +87,12 @@ maina prepare --force shellcheck   # wipe its cache, then re-download
 
 ## `maina clean [TOOLS...]`
 
-Delete cached tool installs so the next run re-downloads them — for the named
-ids, or the whole `<cache>/tools/` tree with no arguments. A `path`-backed tool
-caches nothing, so it is a no-op.
+Delete cached tool installs so the next run re-downloads them. With no
+arguments the whole `<cache>/tools/` tree goes; a named id deletes only its own
+`<cli>/<version>` directory, so another manifest that shares the `cli` (a
+different `version:`, or a distinct `github` / `npm` identity) is left intact.
+A `path`-backed tool caches nothing, so it is a no-op. An abstract or
+`cli`-less id is rejected.
 
 ```bash
 maina clean                    # everything
@@ -125,8 +128,18 @@ runs. Cross-field and backend-specific rules stay with the loader.
 
 Load every manifest under the registry roots (or just the named ids) and
 report each error without stopping at the first. Prints `ok: <id>` /
-`error: <id>: <message>` and exits non-zero if any manifest failed to load —
-a lint step for a catalog.
+`error: <id>: <message>` and exits non-zero if any manifest failed — a lint
+step for a catalog.
+
+Beyond "does it load", it checks the things that otherwise only fail at
+install / run time:
+
+- a concrete manifest has a `cli:` (a `cli`-less one is inheritance-only —
+  give it `abstract: true`);
+- `install.backend` is registered, and a `github` backend has both `repo:`
+  and `assets:`;
+- `install.assets` / `sha256` keys are real `{os}-{arch}` platform keys;
+- every `output.from_file` placeholder names a declared arg (or `cwd`).
 
 ```bash
 maina validate                 # CI: "is every manifest well-formed?"

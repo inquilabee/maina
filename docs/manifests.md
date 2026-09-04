@@ -16,10 +16,11 @@ editor at it with a header line:
 # yaml-language-server: $schema=https://inquilabee.github.io/maina/maina-manifest.schema.json
 ```
 
-It is a *shape* check — unknown keys, wrong scalar types, bad enums. Cross-field
-rules (`separator` vs `args.order`, a `from_file` template var that must also be
-an arg, which `install` keys a backend needs) are still only enforced when
-`Tool(id)` loads the manifest.
+It is a *shape* check — unknown keys, wrong scalar types, bad enums. Rules it
+can't express are caught elsewhere: `separator` vs `args.order` and the scalar
+guards at manifest load (`Tool(id)`), and `github` needing `repo` + `assets`, a
+`from_file` template naming a real arg, and unknown asset platform keys by
+[`maina validate`](cli.md#maina-validate-tools).
 
 ## File layout and ids
 
@@ -219,13 +220,17 @@ safe. Without a `base.yaml`, a `path` or `github` tool never touches mise; the
 
 `extends` builds a chain root to leaf; a manifest with no `extends` still picks
 up the `base` **from its own root** when that root has a `base.yaml`, so the
-effective chain is `base -> ... -> tool`. Merge rules:
+effective chain is `base -> ... -> tool`. A `base.yaml` normally has no `cli:` —
+it is inheritance-only, and `maina list` / `prepare` / `validate` skip it on
+that basis; give it `abstract: true` to make the intent explicit. Merge rules:
 
 - `args`, `install`, `env`, `output`, `requires` merge per key (child wins). In
   `args`, `<name>: null` drops an inherited arg entirely (as
   `requires: { node: null }` drops a pin). `install` merges one level, but its
   `assets` and `sha256` sub-maps merge per platform key — a child overriding one
-  platform's asset keeps the parent's other platforms.
+  platform's asset keeps the parent's other platforms, and
+  `assets: { macos-arm64: null }` drops just that inherited entry (use it on a
+  version-bump child so a parent's stale asset name / digest does not linger).
 - Every other key is replaced by the child's value.
 - `subcommand` segments accumulate down the chain into `Manifest.subcommands`.
 - A cycle in `extends` raises `ManifestError`.
