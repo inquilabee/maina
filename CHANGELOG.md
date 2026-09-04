@@ -105,6 +105,9 @@
   crash). New `json-lenient` keeps the old swallow-and-return-text behaviour.
 - A configured parser is invoked even when stdout is empty (stderr-only tools
   are parseable).
+- `maina run` prints `parse error: …` to stderr when `result.parse_error` is
+  set, and exits non-zero when `--json` was asked for but parsing produced
+  nothing (previously it printed `null` and exited 0).
 - `ToolResult` gains `parse_error`, `cwd`, `exe`, `report` (the
   `output.from_file` contents), `parse_input` (report when set, else `raw`),
   and `to_dict()` (JSON-safe, stable key set).

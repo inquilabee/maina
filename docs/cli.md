@@ -39,7 +39,8 @@ Call `Tool(tool_id).run(**kwargs)`.
   string. `key:=value` always forces the literal string.
 - Tokens after `--` are passed through as `extra` argv.
 - `--json` prints `result.parsed` as JSON; without it the CLI prints the tool's
-  stdout exactly as produced.
+  stdout exactly as produced. A parser failure is printed to stderr as
+  `parse error: …`; under `--json` it also makes the command exit non-zero.
 - `--dry-run` prints the argv that would run (argv[0] is the bare `cli` name; a
   real run resolves it to the cached executable) and exits without running it.
 

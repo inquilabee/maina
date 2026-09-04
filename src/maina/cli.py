@@ -195,9 +195,15 @@ def dispatch_run(resolved_id: str, tokens: list[str], *, as_json: bool, dry_run:
         return
     result = run_tool_tokens(resolved_id, tokens)
     emit_result(result, as_json=as_json)
+    if result.parse_error:
+        echo_stderr(f"parse error: {result.parse_error}")
     if not result.ok:
         echo_stderr(result.stderr)
         # Docs contract: exit 1 = tool ran and failed; 2 = bad usage / unknown id.
+        raise typer.Exit(1)
+    # A parse failure under --json (the caller asked for parsed output and got
+    # none) is itself a failure.
+    if as_json and result.parsed is None and result.parse_error:
         raise typer.Exit(1)
 
 

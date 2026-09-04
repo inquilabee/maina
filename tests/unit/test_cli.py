@@ -379,6 +379,24 @@ def test_cli_run_dry_run_prints_argv_and_skips_execution() -> None:
     assert dry.stdout.strip() == "jq -r .name"
 
 
+def test_cli_run_surfaces_parse_error(tmp_path: Any) -> None:
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "j.yaml",
+        {
+            "cli": "echo",
+            "install": {"backend": "path"},
+            "parser": "json",
+            "args": {"msg": {"positional": True, "type": "string", "required": True}},
+        },
+    )
+    rt = Runtime.preferred(cache_root=tmp_path / "cache", registry_dirs=[root])
+    maina.use(rt)
+    result = runner.invoke(app, ["run", "j", "msg=not-json", "--json"])
+    assert result.exit_code == 1
+    assert "parse error" in result.stderr
+
+
 def test_cli_run_no_arg_tool_with_dashdash(tmp_path: Any) -> None:
     root = tmp_path / "reg"
     write_yaml(root / "noargs.yaml", {"cli": "true", "install": {"backend": "path"}})
