@@ -119,6 +119,35 @@ def test_fake_language_satisfies_protocol(tmp_path: Path) -> None:
     assert lang.ensure("node", "20") == tmp_path
 
 
+def test_resolve_rejects_unknown_backend_before_provisioning(tmp_path: Path) -> None:
+    ensured: list[tuple[str, str]] = []
+
+    @dataclass
+    class SpyLanguage:
+        cache_root: Path
+
+        def ensure(self, runtime: str, version: str, **_kw: object) -> Path:
+            ensured.append((runtime, version))
+            return self.cache_root
+
+        def env(self, runtime: str, version: str, **_kw: object) -> dict[str, str]:
+            del runtime, version
+            return {"PATH": str(self.cache_root)}
+
+    root = tmp_path / "reg"
+    write_yaml(root / "base.yaml", {"abstract": True, "requires": {"node": "22"}})
+    write_yaml(root / "t.yaml", {"cli": "t", "install": {"backend": "nope"}})
+    installer = Installer(
+        cache_root=tmp_path / "cache",
+        language=SpyLanguage(tmp_path / "cache"),
+        registry=Registry(root),
+        backends=[PathBackend()],
+    )
+    with pytest.raises(InstallError, match="unknown install backend"):
+        installer.resolve(Registry(root).load("t"))
+    assert ensured == []
+
+
 def test_installer_composes_multi_runtime_path(tmp_path: Path) -> None:
     ensured: list[tuple[str, str]] = []
 
@@ -290,6 +319,30 @@ def test_check_ids_reports_satisfied_and_missing(tmp_path: Path) -> None:
     # is_satisfied on an abstract manifest is a no-op "satisfied".
     write_yaml(root / "base.yaml", {"cli": "base", "abstract": True})
     assert installer.is_satisfied(Registry(root).load("base")) is True
+
+
+def test_check_ids_honours_missing_runtime(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "needsnode.yaml",
+        {"cli": "true", "install": {"backend": "path"}, "requires": {"node": "22"}},
+    )
+    registry = Registry(root)
+
+    class NoRuntimeLanguage(FakeLanguage):
+        def is_present(self, runtime: str, version: str) -> bool:
+            del runtime, version
+            return False
+
+    installer = Installer(
+        cache_root=tmp_path / "cache",
+        language=NoRuntimeLanguage(tmp_path / "cache"),
+        registry=registry,
+        backends=[PathBackend()],
+    )
+    satisfied, missing = installer.check_ids()
+    assert missing == ["needsnode"]
+    assert satisfied == []
 
 
 def test_check_ids_unknown_backend_is_missing(tmp_path: Path) -> None:

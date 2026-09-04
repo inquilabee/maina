@@ -134,8 +134,12 @@ class Registry:
 
     @staticmethod
     def _validate_platforms(tid: str, platforms: Any) -> None:
-        if not isinstance(platforms, list):
+        if platforms is None:
             return
+        if not isinstance(platforms, list):
+            raise manifest_error(
+                tid, f"platforms {platforms!r} must be a list, e.g. [linux, macos]"
+            )
         if unknown := sorted(str(p) for p in platforms if p not in VALID_PLATFORMS):
             allowed = ", ".join(sorted(VALID_PLATFORMS))
             raise manifest_error(tid, f"platforms {unknown} not in {{{allowed}}}")

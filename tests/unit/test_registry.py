@@ -197,6 +197,31 @@ def test_base_presence_is_memoized_and_reset_on_append(tmp_path: Path) -> None:
     assert "shared" in reg.load("leaf").args  # memo was invalidated
 
 
+def test_platforms_scalar_rejected_at_load(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "t.yaml", {"cli": "t", "platforms": "linux", "install": {"backend": "path"}})
+    with pytest.raises(ManifestError, match=r"platforms .* must be a list"):
+        Registry(root).load("t")
+
+
+def test_install_sha256_must_be_64_hex(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "t.yaml",
+        {
+            "cli": "t",
+            "install": {
+                "backend": "github",
+                "repo": "acme/t",
+                "assets": {"linux-x86_64": "t.tgz"},
+                "sha256": {"linux-x86_64": "abc123"},
+            },
+        },
+    )
+    with pytest.raises(ManifestError, match="64-char hex"):
+        Registry(root).load("t")
+
+
 @pytest.mark.parametrize("bad", [0, -5])
 def test_timeout_non_positive_rejected_at_load(tmp_path: Path, bad: int) -> None:
     root = tmp_path / "reg"

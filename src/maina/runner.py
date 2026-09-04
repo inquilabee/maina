@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from maina.core.argparser import ArgParser
 from maina.core.envfilter import ESSENTIAL_ENV, filter_env
-from maina.core.errors import ToolExecError, ToolTimeoutError
+from maina.core.errors import ArgError, ToolExecError, ToolTimeoutError
 from maina.core.parsers import ParserResolver
 from maina.core.result import ToolResult
 
@@ -189,5 +189,8 @@ class ToolRunner:
         raw = timeout if timeout is not None else self.manifest.data.get("timeout")
         if raw is None:
             return None
-        seconds = float(raw)
+        try:
+            seconds = float(raw)
+        except (TypeError, ValueError) as exc:
+            raise ArgError(f"timeout must be a number of seconds, got {raw!r}") from exc
         return seconds if seconds > 0 else None

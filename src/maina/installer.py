@@ -132,15 +132,17 @@ class Installer:
         """
         self._require_supported_platform(manifest)
         backend_name = manifest.install.backend
+        # Fail on an unknown backend *before* provisioning a language runtime —
+        # a typo'd ``backend:`` must not cost a mise install first.
+        backend = self._backends.get(backend_name)
+        if backend is None:
+            raise InstallError(f"unknown install backend: {backend_name!r}")
         version = self._cache_version(manifest)
         # Trim os.environ first, then compose: the language provider runs its
         # provisioning subprocesses (mise / npm) with this trimmed env too, so a
         # secret gated out by ``env_allow`` never reaches them.
         base_env = dict(filter_env(dict(os.environ), env_allow))
         env = self._compose_requires_env(manifest.requires, base_env)
-        backend = self._backends.get(backend_name)
-        if backend is None:
-            raise InstallError(f"unknown install backend: {backend_name!r}")
         ctx = InstallContext(cache_root=self.cache_root, language=self.language)
         lock_dir = self.cache_root / "tools" / manifest.cli / version
         # Defence in depth: cli/version are validated as safe segments at load,
@@ -182,6 +184,8 @@ class Installer:
             return True
         if manifest.platforms and current_platform() not in manifest.platforms:
             return True
+        if not self._requires_present(manifest.requires):
+            return False
         backend = self._backends.get(manifest.install.backend)
         probe = getattr(backend, "probe", None)
         if probe is None:
@@ -189,6 +193,17 @@ class Installer:
         ctx = InstallContext(cache_root=self.cache_root, language=self.language)
         satisfied: bool = probe(manifest, version=self._cache_version(manifest), ctx=ctx)
         return satisfied
+
+    def _requires_present(self, requires: RequiresSpec) -> bool:
+        """True when every pinned runtime is already resolvable (no install).
+
+        Uses the language provider's optional ``is_present`` probe; a provider
+        without one is trusted (returns True) rather than forcing a re-install.
+        """
+        probe = getattr(self.language, "is_present", None)
+        return probe is None or all(
+            probe(runtime, version) for runtime, version in requires.runtimes.items()
+        )
 
     ABSTRACT_PREPARE_HINT = "prepare a concrete child id or omit abstracts from prepare"
 

@@ -32,6 +32,11 @@ class MiseRuntime:
         root.mkdir(parents=True, exist_ok=True)
         self.cache_root = root
 
+    @property
+    def data_dir(self) -> Path:
+        """``MISE_DATA_DIR`` — mise's per-cache install tree."""
+        return self.cache_root / "mise-data"
+
     @staticmethod
     def _seed_env(base_env: dict[str, str] | None) -> dict[str, str]:
         """Start from the caller's trimmed env, else the full ``os.environ``."""
@@ -56,10 +61,9 @@ class MiseRuntime:
         """Ensure a mise-managed language runtime is installed; return its bin dir."""
         mise = self.mise_bin(base_env=base_env)
         spec = f"{runtime}@{version}"
-        data_dir = self.cache_root / "mise-data"
-        data_dir.mkdir(parents=True, exist_ok=True)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
         env = self._seed_env(base_env)
-        env["MISE_DATA_DIR"] = str(data_dir)
+        env["MISE_DATA_DIR"] = str(self.data_dir)
 
         if resolved := self._mise_which(mise, spec, runtime, env):
             return resolved
@@ -94,9 +98,22 @@ class MiseRuntime:
         env = self._seed_env(base_env)
         env |= {
             "PATH": f"{bin_dir}{os.pathsep}{env.get('PATH', '')}",
-            "MISE_DATA_DIR": str(self.cache_root / "mise-data"),
+            "MISE_DATA_DIR": str(self.data_dir),
         }
         return env
+
+    def is_present(self, runtime: str, version: str) -> bool:
+        """True when ``runtime@version`` already resolves — no install, no bootstrap."""
+        cached = (self.cache_root / "mise" / "bin" / "mise").is_file()
+        if not shutil.which("mise") and not cached:
+            return False
+        env = os.environ.copy()
+        env["MISE_DATA_DIR"] = str(self.data_dir)
+        try:
+            spec = f"{runtime}@{version}"
+            return self._mise_which(self.mise_bin(), spec, runtime, env) is not None
+        except RuntimeProvisionError:
+            return False
 
     @staticmethod
     def _bootstrap_mise(target: Path, base_env: dict[str, str] | None = None) -> Path:

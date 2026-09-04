@@ -280,14 +280,22 @@ class InstallSpec:
 
     @staticmethod
     def _parse_sha256(raw: Any, *, tool_id: str) -> dict[str, str]:
-        """Parse the optional ``install.sha256`` map (platform key → hex digest)."""
+        """Parse the optional ``install.sha256`` map (platform key → 64-hex digest)."""
         if raw is None:
             return {}
         if not isinstance(raw, dict):
             raise manifest_error(
                 tool_id, "install.sha256 must be a map of platform key to hex digest"
             )
-        return {str(key): str(value) for key, value in raw.items()}
+        out: dict[str, str] = {}
+        for key, value in raw.items():
+            digest = str(value).strip().lower()
+            if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+                raise manifest_error(
+                    tool_id, f"install.sha256.{key} {value!r} is not a 64-char hex digest"
+                )
+            out[str(key)] = digest
+        return out
 
 
 @dataclass(slots=True, frozen=True)

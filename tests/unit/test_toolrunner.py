@@ -146,6 +146,18 @@ def test_toolrunner_timeout_kwarg(tmp_path: Path) -> None:
     assert excinfo.value.timeout == pytest.approx(0.05)
 
 
+def test_toolrunner_non_numeric_timeout_kwarg_raises_arg_error(tmp_path: Path) -> None:
+    from maina.core.errors import ArgError
+
+    root = tmp_path / "reg"
+    write_yaml(root / "t.yaml", {"cli": "echo", "install": {"backend": "path"}})
+    registry = Registry(root)
+    runner = ToolRunner(registry.load("t"), installer=path_installer(tmp_path, registry))
+    bad_timeout: Any = "soon"
+    with pytest.raises(ArgError, match="number of seconds"):
+        runner.run({}, timeout=bad_timeout)
+
+
 def test_toolrunner_executor_records_cwd(tmp_path: Path) -> None:
     root = tmp_path / "reg"
     write_yaml(
