@@ -155,16 +155,29 @@ class Registry:
         for field_name, value in scalars.items():
             scalar_str(value, field_name=field_name, tool_id=tid)
 
-    @staticmethod
-    def _validate_separator_and_from_file(tid: str, merged: dict[str, Any]) -> None:
-        """``separator`` must be a non-empty string; no ``cwd`` arg with ``from_file``."""
-        sep = merged.get("separator")
-        if sep is not None and (not isinstance(sep, str) or not sep):
-            raise manifest_error(tid, f"separator {sep!r} must be a non-empty string")
-        output = merged.get("output") or {}
+    @classmethod
+    def _validate_separator_and_from_file(cls, tid: str, merged: dict[str, Any]) -> None:
+        """``separator`` shape / ``order`` conflict, and no ``cwd`` arg with ``from_file``."""
         args = merged.get("args") or {}
+        cls._validate_separator(tid, merged.get("separator"), args)
+        output = merged.get("output") or {}
         if isinstance(output, dict) and output.get("from_file") and "cwd" in args:
             raise manifest_error(tid, "an arg cannot be named 'cwd' when output.from_file is set")
+
+    @staticmethod
+    def _validate_separator(tid: str, sep: Any, args: Any) -> None:
+        if sep is None:
+            return
+        if not isinstance(sep, str) or not sep:
+            raise manifest_error(tid, f"separator {sep!r} must be a non-empty string")
+        if not isinstance(args, dict):
+            return
+        if ordered := [n for n, a in args.items() if isinstance(a, dict) and "order" in a]:
+            raise manifest_error(
+                tid,
+                "separator and args.order are two ways to lay out argv — pick one "
+                f"(args with order: {', '.join(map(str, ordered))})",
+            )
 
     @staticmethod
     def _validate_timeout(tid: str, timeout: Any) -> None:

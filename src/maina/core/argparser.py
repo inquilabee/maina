@@ -151,10 +151,14 @@ class ArgParser:
         items = value.items() if isinstance(value, dict) else value
         out: list[str] = []
         for pair in items:
+            if isinstance(pair, (str, bytes)) or not isinstance(pair, (tuple, list)):
+                raise ArgParser._arg_error(
+                    name, "pairs expects a dict or a list of [key, value] pairs"
+                )
             try:
                 key, val = pair
-            except (TypeError, ValueError) as exc:
-                raise ArgParser._arg_error(name, "pairs expects (key, value) items") from exc
+            except ValueError as exc:
+                raise ArgParser._arg_error(name, "each pair must be exactly [key, value]") from exc
             if joiner is None:
                 out.extend([flag, str(key), str(val)])
             else:

@@ -98,7 +98,8 @@ Calling rules:
 - By default all options are emitted before all positionals (each in
   declaration order). Give an arg `order: <int>` to place it anywhere — e.g.
   `path: { positional: true, order: 1 }` + `name: { flag: -name, order: 2 }`
-  yields `find <path> -name <pat>`.
+  yields `find <path> -name <pat>`. `order:` and the top-level `separator:` are
+  two ways to lay out argv and cannot be combined (rejected at load).
 - `type: pairs` takes a dict or a list of `[key, value]` items and emits one
   flag per pair. Default is three tokens `--flag key value` (`jq --arg name v`).
   Add `joiner:` for the two-token `--flag key<joiner>value` shape

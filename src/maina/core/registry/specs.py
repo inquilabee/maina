@@ -111,9 +111,6 @@ class ArgSpec:
         cls._check_shape(
             name, arg_type, positional=positional, flag=flag, join=join, tool_id=tool_id
         )
-        order = raw.get("order")
-        if order is not None and (isinstance(order, bool) or not isinstance(order, int)):
-            raise manifest_error(tool_id, f"args.{name} order {order!r} must be an integer")
         return cls(
             type=arg_type,
             flag=flag,
@@ -122,12 +119,18 @@ class ArgSpec:
             required=raw.get("required", False) is True,
             repeat=raw.get("repeat"),
             join=join,
-            order=order,
+            order=cls._parse_order(raw.get("order"), name=name, tool_id=tool_id),
             default=raw.get("default"),
             has_default="default" in raw,
             description=optional_str(raw.get("description")),
             help=optional_str(raw.get("help")),
         )
+
+    @staticmethod
+    def _parse_order(order: Any, *, name: str, tool_id: str) -> int | None:
+        if order is not None and (isinstance(order, bool) or not isinstance(order, int)):
+            raise manifest_error(tool_id, f"args.{name} order {order!r} must be an integer")
+        return order
 
     @staticmethod
     def _check_shape(

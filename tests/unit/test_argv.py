@@ -134,3 +134,9 @@ def test_build_argv_default_order_is_options_then_positionals() -> None:
     }
     argv = ArgParser(schema).build("t", [], {"path": "x", "flag": True})
     assert argv == ["t", "--flag", "x"]
+
+
+def test_build_argv_pairs_rejects_string_item() -> None:
+    schema = {"arg": {"flag": "--arg", "type": "pairs"}}
+    with pytest.raises(ArgError, match="dict or a list of"):
+        ArgParser(schema).build("t", [], {"arg": ["ab", "cd"]})

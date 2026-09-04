@@ -63,10 +63,15 @@ def join_tool_id(name: str, subcommand: str | None = None) -> str:
 
 
 def yaml_path_to_id(path: Path, root: Path) -> str:
-    """Convert a registry YAML path to a hyphen id."""
+    """Convert a registry YAML path to a canonical hyphen id.
+
+    Routed through :func:`normalize_id` so a hyphen *inside* a filename
+    (``foo-foo.yaml``) collapses the same way ``normalize_id`` collapses a
+    trailing-dupe id — otherwise the file would be enumerated but unloadable.
+    """
     parts = list(path.relative_to(root).with_suffix("").parts)
     family = len(parts) >= 2 and parts[-1] == parts[-2]
-    return "-".join(parts[:-1]) if family else "-".join(parts)
+    return normalize_id("-".join(parts[:-1]) if family else "-".join(parts))
 
 
 def id_candidate_paths(root: Path, tool_id: str, parts: list[str]) -> Iterator[Path]:

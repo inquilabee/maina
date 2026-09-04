@@ -226,6 +226,29 @@ def test_base_yaml_extends_a_tool_in_the_same_root(tmp_path: Path) -> None:
     assert "shared" in Registry(root).load("leaf").args
 
 
+def test_separator_and_order_are_mutually_exclusive(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "t.yaml",
+        {
+            "cli": "t",
+            "install": {"backend": "path"},
+            "separator": "--",
+            "args": {"p": {"positional": True, "order": 1}},
+        },
+    )
+    with pytest.raises(ManifestError, match="two ways to lay out argv"):
+        Registry(root).load("t")
+
+
+def test_doubled_stem_manifest_is_loadable(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "docker-docker.yaml", {"cli": "docker", "install": {"backend": "path"}})
+    reg = Registry(root)
+    assert reg.list_commands() == ["docker"]
+    assert reg.load("docker").cli == "docker"
+
+
 def test_platforms_scalar_rejected_at_load(tmp_path: Path) -> None:
     root = tmp_path / "reg"
     write_yaml(root / "t.yaml", {"cli": "t", "platforms": "linux", "install": {"backend": "path"}})
