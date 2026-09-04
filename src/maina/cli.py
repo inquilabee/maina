@@ -120,15 +120,15 @@ def validate(
     Prints ``ok: <id>`` / ``error: <id>: <message>`` per manifest and exits
     non-zero if any manifest failed to load.
     """
-    registry = runtime().registry
-    ids = tools or registry.iter_ids()
+    rt = runtime()
+    ids = tools or rt.registry.iter_ids()
     if not ids:
         typer.echo("no manifests registered")
         return
     failed = 0
     for tid in sorted(ids):
         try:
-            registry.load(tid)
+            Tool(tid, runtime=rt)  # loads + checks parser / backend
         except MainaError as exc:
             failed += 1
             typer.echo(f"error: {tid}: {exc}", err=True)

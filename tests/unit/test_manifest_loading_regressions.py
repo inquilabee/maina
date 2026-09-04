@@ -188,7 +188,7 @@ def test_flagless_non_positional_raises(tmp_path: Path) -> None:
         reg.load("t")
 
 
-def test_unknown_parser_name_raises_at_run(tmp_path: Path) -> None:
+def test_unknown_parser_name_surfaces_on_parse_error_not_crash(tmp_path: Path) -> None:
     reg = make_reg(
         tmp_path,
         {
@@ -206,8 +206,10 @@ def test_unknown_parser_name_raises_at_run(tmp_path: Path) -> None:
         installer=path_installer(tmp_path, reg),
         parsers=ParserResolver(generals=builtin_generals()),
     )
-    with pytest.raises(ManifestError, match="unknown parser 'jsonn'"):
-        runner.run({"m": "hi"})
+    result = runner.run({"m": "hi"})
+    assert result.parsed is None
+    assert result.parse_error is not None
+    assert "unknown parser 'jsonn'" in result.parse_error
 
 
 def test_bad_schema_version_raises(tmp_path: Path) -> None:

@@ -56,6 +56,11 @@ class Installer:
         return list(self._backends.values())
 
     @property
+    def backend_names(self) -> frozenset[str]:
+        """Names of the registered install backends."""
+        return frozenset(self._backends)
+
+    @property
     def language(self) -> LanguageRuntimeProvider:
         if self._language is None:
             self._language = MiseRuntime(cache_root=self.cache_root)

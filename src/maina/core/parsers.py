@@ -235,8 +235,9 @@ class BoundParser:
         """
         try:
             resolved = self.resolve()
-        except ParseError as exc:
-            # A parsers/*.py that failed to import — not a reason to crash run().
+        except (ParseError, ManifestError) as exc:
+            # An unknown parser name or a parsers/*.py that failed to import —
+            # surfaced, not a reason to throw away a completed run.
             result.parsed = None
             result.parse_error = str(exc)
             return result

@@ -150,11 +150,17 @@ def test_cli_validate_reports_each_error_and_exits_nonzero(tmp_path: Any) -> Non
     root = tmp_path / "reg"
     write_yaml(root / "good.yaml", {"cli": "echo", "install": {"backend": "path"}})
     (root / "bad.yaml").write_text("cli: bad\noutputs: {}\n", encoding="utf-8")
+    # a manifest whose parser: name is unknown — used to fail only after a run
+    write_yaml(
+        root / "badparser.yaml",
+        {"cli": "echo", "install": {"backend": "path"}, "parser": "jsonn"},
+    )
     maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root]))
     result = runner.invoke(app, ["validate"])
     assert result.exit_code == 1
     assert "ok: good" in result.stdout
     assert "error: bad:" in result.stderr
+    assert "error: badparser:" in result.stderr
 
 
 def test_cli_list_children() -> None:

@@ -7,7 +7,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from maina.core.argparser import ArgParser
-from maina.core.errors import AbstractToolError
+from maina.core.errors import AbstractToolError, ManifestError
 from maina.core.registry import Registry
 from maina.runner import ToolRunner
 from maina.runtime import runtime as active_runtime
@@ -46,6 +46,23 @@ class Tool:
         self._manifest: Manifest | None = (
             None if self._id is None else self._registry.load(self._id)
         )
+        if self._manifest is not None:
+            self._check_parser(self._manifest)
+
+    def _check_parser(self, manifest: Manifest) -> None:
+        """Fail at construction on a ``parser:`` this runtime cannot resolve —
+        not after a subprocess has already run (an unknown *.py* module is
+        already caught at load; this is the general-name case)."""
+        ref = manifest.parser
+        if (
+            ref is not None
+            and manifest.parser_path is None
+            and not self._runtime.parsers.is_general(ref)
+        ):
+            raise ManifestError(
+                f"manifest {manifest.id!r} parser {ref!r} is not a "
+                "registered parser or a *.py module"
+            )
 
     @property
     def id(self) -> str | None:
