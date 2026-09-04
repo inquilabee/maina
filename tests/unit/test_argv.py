@@ -116,3 +116,21 @@ def test_build_argv_separator_omitted_when_no_positionals() -> None:
     schema = {"n": {"flag": "-n", "type": "string"}}
     argv = ArgParser(schema).build("t", [], {"n": "3"}, separator="--")
     assert argv == ["t", "-n", "3"]
+
+
+def test_build_argv_order_puts_option_after_positional() -> None:
+    schema = {
+        "name": {"flag": "-name", "type": "string", "order": 2},
+        "path": {"positional": True, "type": "path", "order": 1},
+    }
+    argv = ArgParser(schema).build("find", [], {"path": ".", "name": "*.py"})
+    assert argv == ["find", ".", "-name", "*.py"]
+
+
+def test_build_argv_default_order_is_options_then_positionals() -> None:
+    schema = {
+        "path": {"positional": True, "type": "path"},
+        "flag": {"flag": "--flag", "type": "flag"},
+    }
+    argv = ArgParser(schema).build("t", [], {"path": "x", "flag": True})
+    assert argv == ["t", "--flag", "x"]

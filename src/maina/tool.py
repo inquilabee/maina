@@ -99,6 +99,7 @@ class Tool:
             "required": spec.required,
             "repeat": spec.repeat,
             "join": spec.join,
+            "order": spec.order,
             "default": spec.default if spec.has_default else None,
             "has_default": spec.has_default,
             "description": spec.description or spec.help,

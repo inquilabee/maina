@@ -74,6 +74,7 @@ args:
 | `type` | string | `string`, `flag`, `path`, or `pairs` (rejected otherwise). `path` is emit-only metadata (no coercion). |
 | `flag` | string | The option flag, e.g. `--config`. Required unless `positional: true`. |
 | `joiner` | string | Emit `flag` and value as one token: `joiner: "="` → `--config=value`. |
+| `order` | int | Sort key for this arg's tokens in argv. Default is options (0) before positionals (100), each in declaration order; set `order:` to interleave — e.g. an option *after* a positional (`find <path> -name '*.py'`). |
 | `positional` | bool | Emit the value with no flag, after all options. |
 | `required` | bool | Missing value with no `default` raises `ArgError`. |
 | `default` | any | Value used when the caller omits the argument. |
@@ -94,6 +95,10 @@ Calling rules:
   pass it via `run(args={"timeout": "30"})`.
 - Child `args` merge onto the parent per field: overriding `default:` keeps the
   inherited `flag` / `type` / `required`.
+- By default all options are emitted before all positionals (each in
+  declaration order). Give an arg `order: <int>` to place it anywhere — e.g.
+  `path: { positional: true, order: 1 }` + `name: { flag: -name, order: 2 }`
+  yields `find <path> -name <pat>`.
 - `type: pairs` takes a dict or a list of `[key, value]` items and emits one
   flag per pair. Default is three tokens `--flag key value` (`jq --arg name v`).
   Add `joiner:` for the two-token `--flag key<joiner>value` shape

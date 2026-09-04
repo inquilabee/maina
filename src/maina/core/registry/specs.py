@@ -52,6 +52,7 @@ ARG_KEYS = frozenset(
         "required",
         "repeat",
         "join",
+        "order",
         "default",
         "description",
         "help",
@@ -137,6 +138,7 @@ class ArgSpec:
     required: bool = False
     repeat: bool | None = None
     join: str | None = None
+    order: int | None = None
     default: Any = field(default=None, hash=False, compare=False)
     has_default: bool = False
     description: str | None = None
@@ -156,6 +158,9 @@ class ArgSpec:
         cls._check_shape(
             name, arg_type, positional=positional, flag=flag, join=join, tool_id=tool_id
         )
+        order = raw.get("order")
+        if order is not None and (isinstance(order, bool) or not isinstance(order, int)):
+            raise manifest_error(tool_id, f"args.{name} order {order!r} must be an integer")
         return cls(
             type=arg_type,
             flag=flag,
@@ -164,6 +169,7 @@ class ArgSpec:
             required=raw.get("required", False) is True,
             repeat=raw.get("repeat"),
             join=join,
+            order=order,
             default=raw.get("default"),
             has_default="default" in raw,
             description=optional_str(raw.get("description")),

@@ -44,34 +44,47 @@ class ArgParser:
         extra: str | list[str] | None = None,
         separator: str | None = None,
     ) -> list[str]:
-        """Build argv: cli + subcommand segments + options + [separator] + positionals + extra.
+        """Build argv: cli + subcommand segments + args (ordered) + extra.
+
+        Default order is all options then all positionals, each in declaration
+        order. An arg with an explicit ``order: <int>`` sorts by that instead —
+        the escape hatch for a CLI that wants an option *after* a positional
+        (``find <path> -name '*.py'``).
 
         ``separator`` (the manifest's top-level ``separator:``, typically ``--``)
-        is emitted once before the positional block whenever any positional is
-        present, so a caller value beginning with ``-`` cannot be read as an
-        option.
+        is emitted once before the first positional in the final order, so a
+        caller value beginning with ``-`` cannot be read as an option.
         """
         argv = [cli, *subcommands]
         if unknown := set(kwargs) - set(self.schema):
             names = ", ".join(sorted(unknown))
             raise ArgError(f"unknown arguments: {names}")
 
-        positionals: list[str] = []
-        options: list[str] = []
-        for name, spec in self.schema.items():
+        emitted = self._emit_all(kwargs)
+        sep_pending = separator is not None
+        for _rank, _idx, is_positional, tokens in emitted:
+            if is_positional and sep_pending:
+                argv.append(separator)  # type: ignore[arg-type]
+                sep_pending = False
+            argv.extend(tokens)
+        argv.extend(self.normalize_extra(extra))
+        return argv
+
+    def _emit_all(self, kwargs: dict[str, Any]) -> list[tuple[float, int, bool, list[str]]]:
+        """``(rank, decl_index, is_positional, tokens)`` per set arg, sorted for argv."""
+        rows: list[tuple[float, int, bool, list[str]]] = []
+        for idx, (name, spec) in enumerate(self.schema.items()):
             value = self._resolve_value(name, spec, kwargs)
             if value is None:
                 continue
             tokens = self._emit_arg(name, spec, value)
-            bucket = positionals if spec.positional else options
-            bucket.extend(tokens)
-
-        argv.extend(options)
-        if separator is not None and positionals:
-            argv.append(separator)
-        argv.extend(positionals)
-        argv.extend(self.normalize_extra(extra))
-        return argv
+            if not tokens:
+                continue
+            default_rank = 100.0 if spec.positional else 0.0
+            rank = default_rank if spec.order is None else float(spec.order)
+            rows.append((rank, idx, spec.positional, tokens))
+        rows.sort(key=lambda row: (row[0], row[1]))
+        return rows
 
     def resolved_values(self, kwargs: dict[str, Any]) -> dict[str, Any]:
         """Every arg's effective value (caller value or manifest ``default:``).
