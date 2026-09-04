@@ -1,4 +1,4 @@
-"""Regression tests for the second blind-review findings (P0 + P1s + validation)."""
+"""Regression tests: manifest load, inheritance merge, and load-time validation."""
 
 from __future__ import annotations
 

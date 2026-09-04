@@ -134,6 +134,27 @@ def test_extends_cycle(tmp_path: Path) -> None:
         Registry(root).load("a")
 
 
+@pytest.mark.parametrize("evil", ["/etc/evil.py", "../evil.py", "sub/../../evil.py"])
+def test_parser_ref_outside_parsers_dir_rejected(tmp_path: Path, evil: str) -> None:
+    """A ``parser:`` ref is exec'd, so it must not escape the family parsers/ dir."""
+    root = tmp_path / "reg"
+    write_yaml(root / "t.yaml", {"cli": "t", "install": {"backend": "path"}, "parser": evil})
+    (root / "parsers").mkdir(parents=True)
+    (root / "parsers" / "ok.py").write_text("def parse(raw, result):\n    return raw\n")
+    with pytest.raises(ManifestError, match="parser"):
+        Registry(root).load("t")
+
+
+def test_parser_ref_plain_filename_resolves(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "t.yaml", {"cli": "t", "install": {"backend": "path"}, "parser": "ok.py"})
+    (root / "parsers").mkdir(parents=True)
+    (root / "parsers" / "ok.py").write_text("def parse(raw, result):\n    return raw\n")
+    manifest = Registry(root).load("t")
+    assert manifest.parser_path is not None
+    assert manifest.parser_path.name == "ok.py"
+
+
 def test_base_auto_extends_when_present(tmp_path: Path) -> None:
     root = tmp_path / "registry"
     write_yaml(

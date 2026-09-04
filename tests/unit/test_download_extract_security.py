@@ -1,4 +1,4 @@
-"""Security and install-reliability tests for Agent B changes."""
+"""Security tests: archive extraction, HTTPS download + redirect allowlist, sha256, locking."""
 
 from __future__ import annotations
 

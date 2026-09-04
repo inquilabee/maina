@@ -1,4 +1,4 @@
-"""Regression tests for the third blind review (review C) findings."""
+"""Regression tests: install-path safety, env trimming, argv/pairs, and output.from_file."""
 
 from __future__ import annotations
 

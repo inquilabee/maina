@@ -1,4 +1,4 @@
-"""Regression tests for the fourth blind review (review D) findings."""
+"""Regression tests: install identity hashing, manifest field validation, registry diagnostics."""
 
 from __future__ import annotations
 
