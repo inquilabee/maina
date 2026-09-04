@@ -77,6 +77,19 @@ def test_build_argv_rejects_non_scalar_value(value: object) -> None:
         ArgParser(schema).build("tool", [], {"x": value})
 
 
+@pytest.mark.parametrize("value", [True, False])
+def test_build_argv_rejects_bool_for_a_non_flag_arg(*, value: bool) -> None:
+    schema = {"name": {"flag": "--name", "type": "string"}}
+    with pytest.raises(ArgError, match="must be a string or number, not bool"):
+        ArgParser(schema).build("echo", [], {"name": value})
+
+
+def test_build_argv_rejects_bool_inside_a_list_value() -> None:
+    schema = {"flags": {"flag": "--flags", "repeat": True}}
+    with pytest.raises(ArgError, match="must be a string or number, not bool"):
+        ArgParser(schema).build("echo", [], {"flags": [True, "x"]})
+
+
 def test_build_argv_repeat_false_keeps_single_flag() -> None:
     schema = {"glob": {"flag": "--glob", "type": "string", "repeat": False}}
     argv = ArgParser(schema).build("rg", [], {"glob": ["*.py", "*.md"]})

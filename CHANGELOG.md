@@ -215,9 +215,37 @@
   not a bare `OSError`.
 - `Tool.run` defaults stdin to `DEVNULL`; a stdin-reading tool no longer blocks
   on the caller's terminal. Pass `stdin=` to feed it.
+- `maina run` / `maina run --dry-run` route a manifest arg whose name collides
+  with a `Tool.run` parameter (`parser`, `timeout`, `cwd`, `env`, `stdin`,
+  `text`, `extra`, `env_allow`, `args`) through the `args={...}` escape hatch
+  automatically. Previously such an arg was silently dropped from argv
+  (`parser=`, `text=`, `stdin=`), or crashed `main()` with a raw `TypeError`
+  (`timeout=`, `cwd=`, `extra=`, `env=`, `args=`) — and `--dry-run` reported
+  success either way, since `Tool.argv()` didn't hit the same collision.
+  `examples/catalog/prettier.yaml`'s `parser` arg is now runnable through
+  `maina run`.
+- `args.<name>.positional: true` together with `flag:` is rejected at load —
+  argv only ever emitted the positional, but `help()` / `describe()` reported
+  the flag, and a child overriding a parent's positional with `flag:` alone
+  (without also setting `positional: false`) loaded clean and silently kept
+  emitting a bare operand.
+- A non-`flag` arg rejects a `bool` value (`argv(name=False)` no longer emits
+  the literal token `"False"`) — matches the existing rejection of a bare
+  `default: false` for the same field.
+- `env: { VAR: null }` drops that inherited variable (mirrors `args` /
+  `requires` / `install.assets`); a plain `VAR:` with no value is a load error
+  instead of setting the subprocess variable to the string `"None"`.
+- A same-root id collision — two manifest files deriving one id (e.g.
+  `kubectl/get.yaml` and `kubectl-get.yaml` both resolving to `kubectl-get`) —
+  warns (`RuntimeWarning`) from `Registry.iter_ids()` / `maina list`, and
+  `maina validate` reports it as an error naming both files. Previously the
+  shadowed file had no diagnostic anywhere.
 
 ### Manifest expressiveness
 
+- `args.<name>.choices: [...]` limits a value (or every item, for a list) to
+  a fixed set — checked on every `run()` / `argv()`, not just at load. Not
+  valid on `type: flag` / `type: pairs`.
 - `args.<name>.type: pairs` emits one flag per pair — three tokens
   `--flag key value` by default (`jq --arg`), or two (`--flag key=value`) when
   the arg also sets `joiner: "="` (`docker -e K=V`).

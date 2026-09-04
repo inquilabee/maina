@@ -75,6 +75,7 @@ ARG_PROPERTIES: dict[str, dict[str, Any]] = {
     "default": {},
     "description": {"type": "string"},
     "help": {"type": "string"},
+    "choices": {"type": "array", "items": {"type": "string"}, "minItems": 1},
 }
 
 INSTALL_PROPERTIES: dict[str, dict[str, Any]] = {

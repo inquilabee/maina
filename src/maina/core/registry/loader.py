@@ -250,12 +250,28 @@ class Registry:
 
         This is a *set* of ids for catalog listing — it says nothing about which
         root wins a duplicate id (that precedence lives in ``_manifest_lookup``,
-        which scans ``reversed(self.roots)``).
+        which scans ``reversed(self.roots)``). A same-root collision (two files
+        deriving the one id) warns — see :meth:`duplicate_ids`.
         """
-        seen: dict[str, None] = {
-            tid: None for root in self.roots for tid in registry_ids.iter_yaml_ids(root)
-        }
+        seen: dict[str, None] = {}
+        for root in self.roots:
+            for tid, paths in registry_ids.duplicate_ids(root).items():
+                files = ", ".join(str(p) for p in paths)
+                warnings.warn(
+                    f"{tid!r} is derived from {len(paths)} manifests under {root}: "
+                    f"{files} — only one is reachable",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+            seen |= dict.fromkeys(registry_ids.iter_yaml_ids(root))
         return list(seen)
+
+    def duplicate_ids(self) -> dict[str, list[Path]]:
+        """Same-root id collisions across every root — see :meth:`iter_ids`."""
+        out: dict[str, list[Path]] = {}
+        for root in self.roots:
+            out |= registry_ids.duplicate_ids(root)
+        return out
 
     def _load_chain(
         self,
@@ -415,30 +431,34 @@ class Registry:
         cls, key: str, parent: dict[str, Any], child: dict[str, Any]
     ) -> dict[str, Any]:
         """Merge a MAP_KEYS block. ``args`` merges per-arg-name then per-field;
-        ``install`` shallow-merges but deep-merges ``assets`` / ``sha256``;
-        ``<arg>: null`` drops an inherited arg (mirrors ``requires``)."""
+        ``env`` merges per-key with ``<var>: null`` dropping an inherited one
+        (mirrors ``requires``); ``install`` shallow-merges but deep-merges
+        ``assets`` / ``sha256`` the same way."""
         out = deepcopy(parent)
         if key == "args":
             return cls._merge_args(out, child)
+        if key == "env":
+            return cls._merge_null_dropping(parent, child)
         out |= deepcopy(child)
         deep_subs = cls._INSTALL_DEEP_KEYS if key == "install" else ()
         for sub in deep_subs:
             if isinstance(parent.get(sub), dict) and isinstance(child.get(sub), dict):
-                out[sub] = cls._merge_platform_map(parent[sub], child[sub])
+                out[sub] = cls._merge_null_dropping(parent[sub], child[sub])
         return out
 
     @staticmethod
-    def _merge_platform_map(parent: dict[str, Any], child: dict[str, Any]) -> dict[str, Any]:
-        """``{**parent, **child}`` for an ``assets`` / ``sha256`` map, except a
-        ``<platform>: null`` in the child drops that inherited entry — the same
-        null-drop idiom ``args`` and ``requires`` use, so a version-bump child
-        can shed a parent's stale asset name or digest."""
+    def _merge_null_dropping(parent: dict[str, Any], child: dict[str, Any]) -> dict[str, Any]:
+        """``{**parent, **child}``, except a ``null`` value in the child drops
+        that inherited key — the null-drop idiom ``args`` and ``requires`` use,
+        applied to ``env`` and to ``install``'s ``assets`` / ``sha256`` maps (so
+        a version-bump child can shed a parent's stale asset name or digest, and
+        a child can turn off an inherited env var)."""
         merged = deepcopy(parent)
-        for platform_key, value in child.items():
+        for key, value in child.items():
             if value is None:
-                merged.pop(platform_key, None)
+                merged.pop(key, None)
             else:
-                merged[platform_key] = deepcopy(value)
+                merged[key] = deepcopy(value)
         return merged
 
     @staticmethod

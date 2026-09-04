@@ -127,7 +127,34 @@ class ArgParser:
             raise ArgError(
                 f"{self.tool_id}: missing required argument: {name} (known: {self._known_args()})"
             )
+        if value is not None and spec.choices is not None:
+            self._check_choices(name, spec.choices, value)
         return value
+
+    def _check_choices(self, name: str, choices: tuple[str, ...], value: Any) -> None:
+        """Every value (or, for a list, every item) must be one of *choices*."""
+        items = value if isinstance(value, list) else [value]
+        if bad := sorted({str(v) for v in items if str(v) not in choices}):
+            allowed = ", ".join(choices)
+            raise ArgError(
+                f"{self.tool_id}: argument {name!r} must be one of {{{allowed}}}, "
+                f"got {', '.join(bad)}"
+            )
+
+    @staticmethod
+    def _scalar_token(name: str, value: Any) -> str:
+        """Stringify one argv-bound value, rejecting ``bool`` and non-scalars.
+
+        ``bool`` is a Python ``int`` subclass, so an unguarded ``str()`` turns a
+        caller's ``False`` into the literal token ``"False"``; a dict/list/other
+        object turns into its ``repr()``. Neither is a value a downstream CLI can
+        use — a caller who wants a boolean flag wants ``type: flag``.
+        """
+        if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+            raise ArgParser._arg_error(
+                name, f"value must be a string or number, not {type(value).__name__}"
+            )
+        return str(value)
 
     @staticmethod
     def _emit_arg(name: str, spec: ArgSpec, value: Any) -> list[str]:
@@ -146,11 +173,7 @@ class ArgParser:
                 positional=spec.positional,
                 joiner=spec.joiner,
             )
-        if not isinstance(value, (str, int, float)):
-            raise ArgParser._arg_error(
-                name, f"value must be a string or number, not {type(value).__name__}"
-            )
-        token = str(value)
+        token = ArgParser._scalar_token(name, value)
         if spec.positional:
             return [token]
         if not spec.flag:
@@ -211,7 +234,7 @@ class ArgParser:
         joiner: str | None = None,
     ) -> list[str]:
         """Emit list values as CSV, positionals, or repeated flags."""
-        tokens = [str(v) for v in values]
+        tokens = [ArgParser._scalar_token(name, v) for v in values]
         return (
             (
                 ArgParser._emit_csv(name, flag, tokens, positional=positional, joiner=joiner)

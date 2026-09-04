@@ -8,7 +8,9 @@ install:
 args:
   path: {positional: true, required: true, type: path}
   write: {flag: --write, type: flag}
-  # `parser` collides with run(parser=): pass it as run(args={"parser": "babel"}).
+  # `parser` collides with Tool.run(parser=) — from Python pass it as
+  # run(args={"parser": "babel"}); `maina run prettier parser=babel` on the
+  # CLI does that automatically.
   parser: {flag: --parser}
 output:
   success_codes: [0]

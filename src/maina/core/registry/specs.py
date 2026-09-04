@@ -65,6 +65,7 @@ ARG_KEYS = frozenset(
         "default",
         "description",
         "help",
+        "choices",
     }
 )
 ARG_TYPES = frozenset({"string", "flag", "path", "pairs"})
@@ -108,6 +109,7 @@ class ArgSpec:
     has_default: bool = False
     description: str | None = None
     help: str | None = None
+    choices: tuple[str, ...] | None = None
 
     @classmethod
     def from_mapping(cls, name: str, raw: Any, *, tool_id: str) -> ArgSpec:
@@ -142,6 +144,24 @@ class ArgSpec:
             has_default="default" in raw,
             description=optional_str(raw.get("description")),
             help=optional_str(raw.get("help")),
+            choices=cls._parse_choices(raw, arg_type, name=name, tool_id=tool_id),
+        )
+
+    @staticmethod
+    def _parse_choices(
+        raw: dict[str, Any], arg_type: str, *, name: str, tool_id: str
+    ) -> tuple[str, ...] | None:
+        """``choices:`` — a non-empty list of scalar values the arg is limited to."""
+        choices = raw.get("choices")
+        if choices is None:
+            return None
+        if arg_type in ("flag", "pairs"):
+            raise manifest_error(tool_id, f"args.{name} choices doesn't apply to type: {arg_type}")
+        if not isinstance(choices, list) or not choices:
+            raise manifest_error(tool_id, f"args.{name} choices must be a non-empty list")
+        return tuple(
+            scalar_str(v, field_name=f"args.{name}.choices[{i}]", tool_id=tool_id)
+            for i, v in enumerate(choices)
         )
 
     @staticmethod
@@ -189,6 +209,13 @@ class ArgSpec:
             raise manifest_error(tool_id, f"args.{name} type {arg_type!r} not in {{{allowed}}}")
         if not positional and flag is None:
             raise manifest_error(tool_id, f"args.{name} needs a flag or positional: true")
+        if positional and flag is not None:
+            raise manifest_error(
+                tool_id,
+                f"args.{name} cannot set both flag and positional: true — argv only emits the "
+                "positional (a child overriding a parent's positional must also set "
+                "positional: false)",
+            )
         if join is not None and join not in JOIN_VALUES:
             raise manifest_error(tool_id, f"args.{name} join {join!r} not in {{csv}}")
         if arg_type == "pairs" and flag is None:

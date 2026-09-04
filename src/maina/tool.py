@@ -123,6 +123,7 @@ class Tool:
             "default": spec.default if spec.has_default else None,
             "has_default": spec.has_default,
             "description": spec.description or spec.help,
+            "choices": list(spec.choices) if spec.choices else None,
         }
 
     def run(
@@ -272,7 +273,8 @@ class Tool:
             flag = spec.flag or ("positional" if spec.positional else "")
             req = "required" if spec.required else "optional"
             default = f", default: {spec.default!r}" if spec.has_default else ""
-            base = f"  {name}: {spec.type} {flag} ({req}{default})"
+            choices = f", choices: {{{', '.join(spec.choices)}}}" if spec.choices else ""
+            base = f"  {name}: {spec.type} {flag} ({req}{default}{choices})"
             desc = spec.description or spec.help
             lines.append(f"{base} — {desc}" if desc else base)
         return lines

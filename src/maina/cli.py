@@ -25,7 +25,7 @@ from maina.core.errors import (
     ManifestError,
 )
 from maina.core.platform import KNOWN_PLATFORM_KEYS
-from maina.core.registry import BASE_TOOL_ID, build_manifest_schema
+from maina.core.registry import BASE_TOOL_ID, RESERVED_RUN_PARAMS, build_manifest_schema
 from maina.runtime import runtime
 from maina.tool import Tool
 
@@ -118,16 +118,17 @@ def validate(
     Checks that the manifest loads and its ``parser:`` resolves; that a concrete
     manifest has a ``cli:``; that ``install.backend`` is registered and (for
     ``github``) carries ``repo`` + ``assets``; that ``install.assets`` /
-    ``sha256`` platform keys are real; and that every ``output.from_file``
-    placeholder names a declared arg. Prints ``ok:`` / ``error:`` per id and
-    exits non-zero if any failed.
+    ``sha256`` platform keys are real; that every ``output.from_file``
+    placeholder names a declared arg; and that no two files under one root
+    derive the same id (one would silently shadow the other). Prints
+    ``ok:`` / ``error:`` per id and exits non-zero if any failed.
     """
     rt = runtime()
     ids = tools or rt.registry.iter_ids()
     if not ids:
         typer.echo("no manifests registered")
         return
-    failed = 0
+    failed = emit_duplicate_id_errors(rt)
     for tid in sorted(ids):
         problem = validate_one(rt, tid)
         if problem is None:
@@ -138,6 +139,16 @@ def validate(
     if failed:
         typer.echo(f"{failed} manifest(s) failed", err=True)
         raise typer.Exit(1)
+
+
+def emit_duplicate_id_errors(rt: Any) -> int:
+    """Print an ``error:`` line per same-root id collision; return how many."""
+    count = 0
+    for tid, paths in sorted(rt.registry.duplicate_ids().items()):
+        files = ", ".join(str(p) for p in paths)
+        typer.echo(f"error: {tid}: derived from {len(paths)} manifests: {files}", err=True)
+        count += 1
+    return count
 
 
 NO_CLI_PROBLEM = "no cli: set (add cli: <name>, or abstract: true for an extends-only base)"
@@ -368,7 +379,7 @@ def dry_run_argv(resolved_id: str, tokens: list[str]) -> list[str]:
     try:
         tool = Tool(resolved_id)
         kwargs, extra = RunArgParser.parse(tokens, flag_names=flag_names_for(tool))
-        return tool.argv(extra=extra, **kwargs)
+        return tool.argv(**reserved_safe_kwargs(kwargs, extra=extra))
     except (ManifestError, AbstractToolError, ArgError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(2) from exc
@@ -378,6 +389,18 @@ def flag_names_for(tool: Tool) -> frozenset[str]:
     return frozenset(name for name, spec in tool.args.items() if spec.type == "flag")
 
 
+def reserved_safe_kwargs(kwargs: dict[str, Any], **extra_params: Any) -> dict[str, Any]:
+    """Merge parsed manifest kwargs with *extra_params* for a ``Tool.run`` /
+    ``Tool.argv`` call, routing any manifest arg name that collides with one of
+    ``Tool.run``'s own parameters (``parser``, ``timeout``, ``cwd``, ``env``,
+    ``args``, …) through the ``args={...}`` escape hatch — otherwise it is
+    silently absorbed by ``run`` or crashes it with a duplicate keyword.
+    """
+    reserved = {k: v for k, v in kwargs.items() if k in RESERVED_RUN_PARAMS}
+    plain = {k: v for k, v in kwargs.items() if k not in RESERVED_RUN_PARAMS}
+    return {**extra_params, **plain, **({"args": reserved} if reserved else {})}
+
+
 def run_tool_tokens(
     resolved_id: str, tokens: list[str], *, timeout: float | None = None, cwd: str | None = None
 ) -> ToolResult:
@@ -385,7 +408,8 @@ def run_tool_tokens(
     try:
         tool = Tool(resolved_id)
         kwargs, extra = RunArgParser.parse(tokens, flag_names=flag_names_for(tool))
-        return tool.run(extra=extra, timeout=timeout, cwd=cwd, **kwargs)
+        call_kwargs = reserved_safe_kwargs(kwargs, extra=extra, timeout=timeout, cwd=cwd)
+        return tool.run(**call_kwargs)
     except (ManifestError, AbstractToolError, ArgError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(2) from exc

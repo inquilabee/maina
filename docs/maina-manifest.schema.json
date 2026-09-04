@@ -86,6 +86,13 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "choices": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
         "default": {},
         "description": {
           "type": "string"

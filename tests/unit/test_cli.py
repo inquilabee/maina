@@ -1,4 +1,4 @@
-"""Tests for Tool.__str__ / help and Typer CLI run parsing."""
+"""Tests for the Typer `maina` CLI app (list / run / prepare / validate / ...)."""
 
 from __future__ import annotations
 
@@ -10,100 +10,12 @@ from typer.testing import CliRunner
 import maina
 from helpers import write_yaml
 from maina.backends import PathBackend
-from maina.cli import RunArgParser, RunInvocation, app, main
+from maina.cli import app, main
 from maina.core.result import ToolResult
 from maina.runtime import Runtime
 from maina.tool import Tool
 
 runner = CliRunner()
-
-
-def test_str_bound_tool_owns_help_block() -> None:
-    text = str(Tool("jq"))
-    assert text.startswith("Tool: jq")
-    assert "cli: jq" in text
-    assert "abstract:" not in text
-    assert "Arguments:" in text
-    assert "filter:" in text
-
-
-def test_str_abstract_tool_shows_abstract_true() -> None:
-    text = str(Tool("kubectl"))
-    assert text.startswith("Tool: kubectl")
-    assert "abstract: true" in text
-    assert "abstract: False" not in text
-    assert "abstract: None" not in text
-
-
-def test_str_shellcheck_includes_arg_descriptions() -> None:
-    text = str(Tool("shellcheck"))
-    assert "Tool: shellcheck" in text
-    assert "cli: shellcheck" in text
-    assert "path:" in text
-    assert "Script file" in text
-
-
-def test_str_unbound_is_library_help() -> None:
-    text = str(Tool())
-    assert "Registered tools:" in text
-    assert "import maina" in text
-    assert "maina run" not in text
-    assert "shellcheck" in text
-    bullets = [
-        line.strip().removeprefix("- ").strip()
-        for line in text.split("Registered tools:", 1)[1].splitlines()
-        if line.strip().startswith("-")
-    ]
-    assert "kubectl-get" in bullets
-    assert "kubectl" not in bullets
-    assert "base" not in bullets
-    assert "git" not in bullets
-
-
-def test_help_returns_str(capsys: pytest.CaptureFixture[str]) -> None:
-    tool = Tool("jq")
-    returned = tool.help()
-    captured = capsys.readouterr()
-    assert returned == str(tool)
-    assert captured.out == ""
-
-
-def test_run_arg_parser_kwargs_and_extra() -> None:
-    kwargs, extra = RunArgParser.parse(
-        ["filter=.", "null_input", "path=a", "path=b", "--", "-c", "--arg", "x", "y"],
-        flag_names=frozenset({"null_input"}),
-    )
-    assert kwargs == {
-        "filter": ".",
-        "null_input": True,
-        "path": ["a", "b"],
-    }
-    assert extra == ["-c", "--arg", "x", "y"]
-
-
-def test_run_arg_parser_bare_non_flag_token_rejected() -> None:
-    import typer
-
-    with pytest.raises(typer.BadParameter, match="not a flag"):
-        RunArgParser.parse(["verbose"], flag_names=frozenset())
-
-
-def test_run_arg_parser_bool_coercion() -> None:
-    # Coercion only applies to args the manifest declares as type: flag.
-    flags = frozenset({"silent", "raw"})
-    kwargs, extra = RunArgParser.parse(["silent=true", "raw=false"], flag_names=flags)
-    assert kwargs == {"silent": True, "raw": False}
-    assert extra is None
-    # A non-flag numeric value stays a string.
-    plain, _ = RunArgParser.parse(["count=1"])
-    assert plain == {"count": "1"}
-
-
-def test_run_invocation_strips_help_before_extra() -> None:
-    tool_id, tokens, wants_help = RunInvocation.parse("shellcheck", ["--help", "--", "--help"])
-    assert tool_id == "shellcheck"
-    assert wants_help is True
-    assert tokens == ["--", "--help"]
 
 
 def test_cli_root_help() -> None:
@@ -144,70 +56,6 @@ def test_cli_list_top_level() -> None:
     assert "kubectl" not in lines
     assert "git" not in lines
     assert "Top-level tools:" not in result.stdout
-
-
-def test_cli_validate_reports_each_error_and_exits_nonzero(tmp_path: Any) -> None:
-    root = tmp_path / "reg"
-    write_yaml(root / "good.yaml", {"cli": "echo", "install": {"backend": "path"}})
-    (root / "bad.yaml").write_text("cli: bad\noutputs: {}\n", encoding="utf-8")
-    write_yaml(
-        root / "badparser.yaml",
-        {"cli": "echo", "install": {"backend": "path"}, "parser": "jsonn"},
-    )
-    write_yaml(root / "badbackend.yaml", {"cli": "x", "install": {"backend": "gihtub"}})
-    write_yaml(
-        root / "badkey.yaml",
-        {
-            "cli": "x",
-            "install": {"backend": "github", "repo": "a/b", "assets": {"linux-amd64": "x"}},
-        },
-    )
-    maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root], use_env=False))
-    result = runner.invoke(app, ["validate"])
-    assert result.exit_code == 1
-    assert "ok: good" in result.stdout
-    assert "error: bad:" in result.stderr
-    assert "error: badparser:" in result.stderr
-    assert "backend 'gihtub' is not registered" in result.stderr
-    assert "platform keys not recognised: linux-amd64" in result.stderr
-
-
-def test_cli_validate_catches_static_manifest_bugs(tmp_path: Any) -> None:
-    root = tmp_path / "reg"
-    write_yaml(root / "nocli.yaml", {"install": {"backend": "path"}})
-    write_yaml(root / "ghnorepo.yaml", {"cli": "x", "install": {"backend": "github"}})
-    write_yaml(
-        root / "badtmpl.yaml",
-        {
-            "cli": "echo",
-            "install": {"backend": "path"},
-            "output": {"from_file": "{nosucharg}/r.json"},
-        },
-    )
-    write_yaml(root / "base.yaml", {"env": {"LC_ALL": "C"}})  # cli-less base is fine
-    maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root], use_env=False))
-    result = runner.invoke(app, ["validate"])
-    assert result.exit_code == 1
-    err = result.stderr
-    assert "error: nocli: no cli:" in err
-    assert "ghnorepo: install.backend: github needs both repo: and assets:" in err
-    assert "badtmpl: output.from_file names non-arg placeholder(s): nosucharg" in err
-    assert "ok: base" in result.stdout
-
-
-def test_cli_prepare_is_batch_resilient(tmp_path: Any) -> None:
-    root = tmp_path / "reg"
-    write_yaml(root / "aaa.yaml", {"cli": "true", "install": {"backend": "path"}})
-    write_yaml(root / "mmm.yaml", {"cli": "not-a-real-binary-xyz", "install": {"backend": "path"}})
-    write_yaml(root / "zzz.yaml", {"cli": "sh", "install": {"backend": "path"}})
-    rt = Runtime(cache_root=tmp_path / "cache")
-    maina.register(rt, registry_dirs=[root], installers=[PathBackend()])
-    maina.use(rt)
-    result = runner.invoke(app, ["prepare"])
-    assert result.exit_code == 1
-    assert "prepared: aaa" in result.stdout
-    assert "prepared: zzz" in result.stdout
-    assert "failed: mmm:" in result.stderr
 
 
 def test_cli_run_no_args_help_hints_at_double_dash(tmp_path: Any) -> None:
@@ -319,6 +167,42 @@ def test_cli_run_with_kwargs_still_runs(monkeypatch: pytest.MonkeyPatch) -> None
     assert "ok" in result.stdout
 
 
+def test_cli_run_arg_named_like_a_run_param_reaches_argv(tmp_path: Any) -> None:
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "prettierish.yaml",
+        {
+            "cli": "echo",
+            "install": {"backend": "path"},
+            "args": {
+                "path": {"positional": True, "required": True},
+                "parser": {"flag": "--parser"},
+            },
+        },
+    )
+    maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root], use_env=False))
+
+    dry = runner.invoke(app, ["run", "prettierish", "path=x", "parser=babel", "--dry-run"])
+    assert dry.exit_code == 0
+    assert dry.stdout.strip() == "echo --parser babel x"
+
+    real = runner.invoke(app, ["run", "prettierish", "path=x", "parser=babel"])
+    assert real.exit_code == 0
+    assert real.stdout.strip() == "--parser babel x"
+
+
+def test_cli_run_timeout_arg_does_not_collide_with_timeout_flag(tmp_path: Any) -> None:
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "collide.yaml",
+        {"cli": "echo", "install": {"backend": "path"}, "args": {"timeout": {"flag": "--timeout"}}},
+    )
+    maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root], use_env=False))
+    result = runner.invoke(app, ["run", "collide", "timeout=9"])
+    assert result.exit_code == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == "--timeout 9"
+
+
 def test_cli_run_help_after_extra_separator_does_not_short_circuit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -356,104 +240,6 @@ def test_main_returns_int_for_help() -> None:
     assert main(["run", "definitely-missing-tool"]) == 2
 
 
-def test_cli_prepare_path_tool(tmp_path: Any) -> None:
-    root = tmp_path / "reg"
-    write_yaml(
-        root / "trueish.yaml",
-        {"cli": "true", "install": {"backend": "path"}},
-    )
-    rt = Runtime(cache_root=tmp_path / "cache")
-    maina.register(rt, registry_dirs=[root], installers=[PathBackend()])
-    maina.use(rt)
-    result = runner.invoke(app, ["prepare", "trueish"])
-    assert result.exit_code == 0, result.stdout + result.stderr
-    assert "prepared: trueish" in result.stdout
-
-
-def test_cli_prepare_force_needs_ids_and_rejects_check(tmp_path: Any) -> None:
-    root = tmp_path / "reg"
-    write_yaml(root / "trueish.yaml", {"cli": "true", "install": {"backend": "path"}})
-    rt = Runtime(cache_root=tmp_path / "cache")
-    maina.register(rt, registry_dirs=[root], installers=[PathBackend()])
-    maina.use(rt)
-
-    bare = runner.invoke(app, ["prepare", "--force"])
-    assert bare.exit_code != 0
-    assert "needs explicit tool ids" in (bare.stdout + bare.stderr)
-
-    combo = runner.invoke(app, ["prepare", "trueish", "--force", "--check"])
-    assert combo.exit_code != 0
-    assert "cannot be combined with --check" in (combo.stdout + combo.stderr)
-
-
-def test_cli_prepare_check_reports_state(tmp_path: Any) -> None:
-    root = tmp_path / "reg"
-    # `true` is on PATH → satisfied; a bogus cli → missing.
-    write_yaml(root / "trueish.yaml", {"cli": "true", "install": {"backend": "path"}})
-    write_yaml(
-        root / "nope.yaml",
-        {"cli": "definitely-not-a-real-binary", "install": {"backend": "path"}},
-    )
-    rt = Runtime(cache_root=tmp_path / "cache")
-    maina.register(rt, registry_dirs=[root], installers=[PathBackend()])
-    maina.use(rt)
-    result = runner.invoke(app, ["prepare", "--check"])
-    assert result.exit_code == 1, result.stdout + result.stderr
-    assert "satisfied: trueish" in result.stdout
-    assert "missing: nope" in result.stdout
-
-    ok = runner.invoke(app, ["prepare", "trueish", "--check"])
-    assert ok.exit_code == 0, ok.stdout + ok.stderr
-    assert ok.stdout.strip() == "satisfied: trueish"
-
-
-def test_cli_prepare_rejects_explicit_abstract(tmp_path: Any) -> None:
-    root = tmp_path / "reg"
-    write_yaml(
-        root / "base.yaml",
-        {"cli": "base", "abstract": True, "install": {"backend": "path"}},
-    )
-    write_yaml(
-        root / "child.yaml",
-        {
-            "cli": "true",
-            "extends": "base",
-            "abstract": False,
-            "install": {"backend": "path"},
-        },
-    )
-    rt = Runtime(cache_root=tmp_path / "cache")
-    maina.register(rt, registry_dirs=[root], installers=[PathBackend()])
-    maina.use(rt)
-    result = runner.invoke(app, ["prepare", "base"])
-    assert result.exit_code == 2
-    assert "cannot prepare abstract" in (result.stdout + result.stderr)
-
-
-def test_cli_prepare_skips_abstract(tmp_path: Any) -> None:
-    root = tmp_path / "reg"
-    write_yaml(
-        root / "base.yaml",
-        {"cli": "base", "abstract": True, "install": {"backend": "path"}},
-    )
-    write_yaml(
-        root / "child.yaml",
-        {
-            "cli": "true",
-            "extends": "base",
-            "abstract": False,
-            "install": {"backend": "path"},
-        },
-    )
-    rt = Runtime(cache_root=tmp_path / "cache")
-    maina.register(rt, registry_dirs=[root], installers=[PathBackend()])
-    maina.use(rt)
-    result = runner.invoke(app, ["prepare"])
-    assert result.exit_code == 0, result.stdout + result.stderr
-    assert "prepared: child" in result.stdout
-    assert "prepared: base" not in result.stdout
-
-
 def test_cli_version_flag() -> None:
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
@@ -472,29 +258,6 @@ def test_cli_bad_manifest_is_one_line_not_traceback(tmp_path: Any, monkeypatch: 
         assert main(["list"]) == 0
     # Naming the broken id explicitly is still a one-line error, exit 2.
     assert main(["run", "broke"]) == 2
-
-
-def test_run_argparser_raw_string_form() -> None:
-    kwargs, _extra = RunArgParser.parse(["count:=1", "flag=1"], flag_names=frozenset({"flag"}))
-    assert kwargs["count"] == "1"
-    assert kwargs["flag"] is True
-
-
-def test_run_argparser_colon_eq_after_eq_is_a_value() -> None:
-    kwargs, _ = RunArgParser.parse(["filter=.x:=1"])
-    assert kwargs == {"filter": ".x:=1"}
-
-
-def test_run_argparser_pairs_then_plain_collision_is_bad_parameter() -> None:
-    import typer
-
-    with pytest.raises(typer.BadParameter, match="already given a plain value"):
-        RunArgParser.parse(["env=oops", "env.K=V"])
-
-
-def test_tool_argv_previews_argv_without_running() -> None:
-    argv = Tool("jq").argv(filter=".", compact=True)
-    assert argv == ["jq", "-c", "."]
 
 
 def test_cli_run_dry_run_prints_argv_and_skips_execution() -> None:
@@ -527,19 +290,6 @@ def test_cli_schema_emits_valid_json_schema() -> None:
     assert doc["$schema"] == "https://json-schema.org/draft/2020-12/schema"
     assert "cli" in doc["properties"]
     assert doc["$defs"]["install"]["properties"]["backend"]["enum"]
-
-
-def test_cli_clean_removes_cache(tmp_path: Any) -> None:
-    root = tmp_path / "reg"
-    write_yaml(root / "t.yaml", {"cli": "toolx", "version": "1", "install": {"backend": "path"}})
-    cache = tmp_path / "c"
-    (cache / "tools" / "toolx" / "1").mkdir(parents=True)
-    maina.use(Runtime.preferred(cache_root=cache, registry_dirs=[root], use_env=False))
-    result = runner.invoke(app, ["clean", "t"])
-    assert result.exit_code == 0
-    assert "cleaned: toolx/1" in result.stdout
-    assert not (cache / "tools" / "toolx").exists()
-    assert "nothing to clean" in runner.invoke(app, ["clean"]).stdout
 
 
 def test_cli_run_timeout_and_cwd_opts(tmp_path: Any) -> None:

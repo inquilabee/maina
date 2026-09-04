@@ -161,6 +161,153 @@ def test_arg_repeat_rejects_non_bool(tmp_path: Path, repeat: Any) -> None:
         reg.load("t")
 
 
+def test_flag_and_positional_together_rejected(tmp_path: Path) -> None:
+    reg = make_reg(
+        tmp_path,
+        {
+            "t.yaml": {
+                "cli": "echo",
+                "install": {"backend": "path"},
+                "args": {"both": {"flag": "--both", "positional": True}},
+            }
+        },
+    )
+    with pytest.raises(ManifestError, match=r"cannot set both flag and positional"):
+        reg.load("t")
+
+
+def test_child_promoting_a_parents_positional_needs_positional_false(tmp_path: Path) -> None:
+    reg = make_reg(
+        tmp_path,
+        {
+            "p.yaml": {"cli": "echo", "abstract": True, "args": {"x": {"positional": True}}},
+            "c.yaml": {
+                "extends": "p",
+                "install": {"backend": "path"},
+                "args": {"x": {"flag": "--x"}},
+            },
+        },
+    )
+    with pytest.raises(ManifestError, match=r"cannot set both flag and positional"):
+        reg.load("c")
+    ok = make_reg(
+        tmp_path,
+        {
+            "p2.yaml": {"cli": "echo", "abstract": True, "args": {"x": {"positional": True}}},
+            "c2.yaml": {
+                "extends": "p2",
+                "install": {"backend": "path"},
+                "args": {"x": {"flag": "--x", "positional": False}},
+            },
+        },
+    )
+    spec = ok.load("c2").args["x"]
+    assert spec.flag == "--x"
+    assert spec.positional is False
+
+
+# --- choices: ------------------------------------------------------------------
+
+
+def test_arg_choices_rejects_a_value_outside_the_set(tmp_path: Path) -> None:
+    from maina.core.argparser import ArgParser
+    from maina.core.errors import ArgError
+
+    reg = make_reg(
+        tmp_path,
+        {
+            "t.yaml": {
+                "cli": "echo",
+                "install": {"backend": "path"},
+                "args": {"mode": {"flag": "--mode", "choices": ["json", "text"]}},
+            }
+        },
+    )
+    manifest = reg.load("t")
+    parser = ArgParser(manifest.args, tool_id=manifest.id)
+    assert parser.build("echo", [], {"mode": "json"}) == ["echo", "--mode", "json"]
+    with pytest.raises(ArgError, match=r"must be one of \{json, text\}, got xml"):
+        parser.build("echo", [], {"mode": "xml"})
+
+
+def test_arg_choices_rejects_empty_list_and_flag_type(tmp_path: Path) -> None:
+    empty = make_reg(
+        tmp_path,
+        {
+            "t.yaml": {
+                "cli": "echo",
+                "install": {"backend": "path"},
+                "args": {"mode": {"flag": "--mode", "choices": []}},
+            }
+        },
+    )
+    with pytest.raises(ManifestError, match="choices must be a non-empty list"):
+        empty.load("t")
+
+    on_flag = make_reg(
+        tmp_path,
+        {
+            "f.yaml": {
+                "cli": "echo",
+                "install": {"backend": "path"},
+                "args": {"v": {"flag": "-v", "type": "flag", "choices": ["a"]}},
+            }
+        },
+    )
+    with pytest.raises(ManifestError, match="choices doesn't apply to type: flag"):
+        on_flag.load("f")
+
+
+# --- env null-drop and bare-key rejection ---------------------------------------
+
+
+def test_env_null_drops_an_inherited_var(tmp_path: Path) -> None:
+    reg = make_reg(
+        tmp_path,
+        {
+            "parent.yaml": {
+                "cli": "env",
+                "abstract": True,
+                "env": {"FOO": "parent", "BAR": "keep"},
+            },
+            "child.yaml": {
+                "extends": "parent",
+                "install": {"backend": "path"},
+                "env": {"FOO": None},
+            },
+        },
+    )
+    assert reg.load("child").env == {"BAR": "keep"}
+
+
+def test_env_bare_key_is_a_load_error_not_the_string_none(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    root.mkdir()
+    (root / "t.yaml").write_text("cli: echo\ninstall: {backend: path}\nenv:\n  BLANK:\n", "utf-8")
+    with pytest.raises(ManifestError, match=r"env\.BLANK.*not null"):
+        Registry(root).load("t")
+
+
+# --- same-root duplicate id detection -------------------------------------------
+
+
+def test_duplicate_id_across_files_in_one_root_warns(tmp_path: Path) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "kubectl" / "kubectl.yaml", {"cli": "kubectl", "abstract": True})
+    write_yaml(
+        root / "kubectl" / "get.yaml",
+        {"extends": "kubectl", "subcommand": "get", "install": {"backend": "path"}},
+    )
+    write_yaml(root / "kubectl-get.yaml", {"cli": "kubectl", "install": {"backend": "path"}})
+    registry = Registry(root)
+    with pytest.warns(RuntimeWarning, match="'kubectl-get' is derived from 2 manifests"):
+        ids = registry.iter_ids()
+    assert "kubectl-get" in ids
+    dupes = registry.duplicate_ids()
+    assert set(dupes) == {"kubectl-get"}
+    assert len(dupes["kubectl-get"]) == 2
+
+
 # --- install.assets / sha256 null-drop across extends --------------------------
 
 

@@ -89,14 +89,15 @@ args:
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `type` | string | `string`, `flag`, `path`, or `pairs` (rejected otherwise). `path` is emit-only metadata (no coercion). |
-| `flag` | string | The option flag, e.g. `--config`. Required unless `positional: true`. |
+| `flag` | string | The option flag, e.g. `--config`. Required unless `positional: true`. Mutually exclusive with `positional: true` — set both and the manifest fails to load. |
 | `joiner` | string | Emit `flag` and value as one token: `joiner: "="` → `--config=value`. |
 | `order` | int | Sort key for this arg's tokens in argv. Default is options (0) before positionals (100), each in declaration order; set `order:` to interleave — e.g. an option *after* a positional (`find <path> -name '*.py'`). |
-| `positional` | bool | Emit the value with no flag, after all options. |
+| `positional` | bool | Emit the value with no flag, after all options. A child that gives a parent's positional arg a `flag:` must also set `positional: false` — arg fields merge per-field down `extends`, so `positional: true` otherwise stays set and the load fails. |
 | `required` | bool | Missing value with no `default` raises `ArgError`. |
 | `default` | any | Value used when the caller omits the argument. |
 | `repeat` | bool | For list values: `true` repeats the flag per item, `false` emits one flag then all items. |
 | `join` | string | `csv` joins a list into one comma-separated token. |
+| `choices` | list of string | A non-empty allowlist; the value (or, for a list, every item) must match one, checked at every `run` / `argv`. Not valid on `type: flag` / `type: pairs`. |
 | `description` / `help` | string | Shown in `Tool(id).help()`. |
 
 Calling rules:
@@ -109,8 +110,11 @@ Calling rules:
 - Passing an argument name not in the schema raises `ArgError`.
 - An `args` entry whose name collides with a `run()` parameter — `parser`,
   `timeout`, `cwd`, `stdin`, `env_allow`, `env`, `text`, `extra`, `args` — is
-  still valid, but pass it via `run(args={"env": "browser"})`, not
+  still valid, but from Python pass it via `run(args={"env": "browser"})`, not
   `run(env="browser")` (which sets the subprocess environment instead).
+  `maina run` on the CLI routes a `key=value` token with one of these names
+  through that same escape hatch automatically, so `maina run tool env=browser` reaches the manifest's `env` arg rather than the subprocess
+  environment.
 - Child `args` merge onto the parent per field: overriding `default:` keeps the
   inherited `flag` / `type` / `required`.
 - By default all options are emitted before all positionals (each in

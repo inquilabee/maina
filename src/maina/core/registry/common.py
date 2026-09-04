@@ -49,12 +49,18 @@ def require_optional_bool(value: Any, *, field_name: str, tool_id: str) -> bool 
 
 
 def scalar_str(value: Any, *, field_name: str, tool_id: str) -> str:
-    """Coerce a YAML scalar to ``str``, rejecting ``bool`` and ``float``.
+    """Coerce a YAML scalar to ``str``, rejecting ``bool``, ``float``, and ``None``.
 
     YAML 1.1 turns ``yes`` / ``on`` into booleans and ``3.10`` into the float
     ``3.1``; a field that names a download, a cache path, or a subprocess env
-    value must be quoted, not silently mangled.
+    value must be quoted, not silently mangled. Callers where ``None`` is a
+    meaningful "unset" (an optional field, an inheritance drop marker) must
+    handle it before calling this — it is never a valid string value.
     """
+    if value is None:
+        raise manifest_error(
+            tool_id, f"{field_name} must be a quoted string, not null (a bare 'key:' is null)"
+        )
     if isinstance(value, bool):
         raise manifest_error(
             tool_id, f"{field_name} must be a quoted string, not a YAML boolean ({value!r})"

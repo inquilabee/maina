@@ -183,14 +183,33 @@ def list_child_ids(base: Path, prefix: str) -> list[str]:
     ]
 
 
-def iter_yaml_ids(root: Path) -> list[str]:
-    """Collect registry ids from YAML files under one root (skip parsers/, dot-dirs)."""
+def iter_yaml_id_paths(root: Path) -> list[tuple[str, Path]]:
+    """``(id, path)`` for every manifest under *root* (skip parsers/, dot-dirs)."""
     return (
         [
-            yaml_path_to_id(path, root)
+            (yaml_path_to_id(path, root), path)
             for path in sorted(root.rglob("*"))
             if is_manifest_path(path.relative_to(root))
         ]
         if root.is_dir()
         else []
     )
+
+
+def iter_yaml_ids(root: Path) -> list[str]:
+    """Collect registry ids from YAML files under one root (skip parsers/, dot-dirs)."""
+    return [tid for tid, _path in iter_yaml_id_paths(root)]
+
+
+def duplicate_ids(root: Path) -> dict[str, list[Path]]:
+    """Ids derived from more than one manifest file under *root*.
+
+    A **same-root** collision (e.g. ``kubectl/get.yaml`` and ``kubectl-get.yaml``
+    both deriving id ``kubectl-get``) silently shadows one file with the other —
+    unlike an id repeated *across* roots, which is the designed overlay
+    precedence (later root wins) and not a collision.
+    """
+    by_id: dict[str, list[Path]] = {}
+    for tid, path in iter_yaml_id_paths(root):
+        by_id.setdefault(tid, []).append(path)
+    return {tid: paths for tid, paths in by_id.items() if len(paths) > 1}
