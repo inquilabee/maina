@@ -68,6 +68,7 @@ class ToolRunner:
             self.manifest.subcommands,
             kwargs,
             extra=extra,
+            separator=self.manifest.separator,
         )
         exe, env = self.installer.resolve(self.manifest, env_allow=env_allow)
         # resolve() already trimmed the base env for install subprocesses; trim

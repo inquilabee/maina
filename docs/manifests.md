@@ -29,7 +29,8 @@ closed, it is not silently ignored).
 | `extends` | string | Parent registry id. See [inheritance](#inheritance). |
 | `abstract` | bool | `true` marks an inheritance-only surface. **Not inherited** — a child is abstract only if it says so itself. |
 | `platforms` | list | `linux` / `macos` / `windows`. Enforced at resolve time. |
-| `timeout` | number | Default subprocess timeout in seconds. Overridden by `run(timeout=...)`. |
+| `timeout` | number | Default subprocess timeout in seconds (> 0). Overridden by `run(timeout=...)`. |
+| `separator` | string | Token emitted once before the positional block when any positional is present (usually `"--"`). |
 | `parser` | string | A general parser name or a `*.py` file. See [Parsers](parsers.md). |
 | `env` | map | Static `NAME: value` pairs layered onto the subprocess, always forwarded. |
 | `args` | map | Keyword-argument to argv schema. See [args](#args). |
@@ -73,7 +74,6 @@ args:
 | `type` | string | `string`, `flag`, `path`, or `pairs` (rejected otherwise). `path` is emit-only metadata (no coercion). |
 | `flag` | string | The option flag, e.g. `--config`. Required unless `positional: true`. |
 | `joiner` | string | Emit `flag` and value as one token: `joiner: "="` → `--config=value`. |
-| `separator` | string | Emit this literal token immediately before this arg's tokens (e.g. `separator: "--"` before positional paths). |
 | `positional` | bool | Emit the value with no flag, after all options. |
 | `required` | bool | Missing value with no `default` raises `ArgError`. |
 | `default` | any | Value used when the caller omits the argument. |
@@ -103,7 +103,17 @@ Calling rules:
 args:
   arg: { flag: --arg, type: pairs }              # run(arg={"x": "1"}) -> --arg x 1
   env: { flag: -e, type: pairs, joiner: "=" }    # run(env={"K": "V"}) -> -e K=V
-  paths: { positional: true, separator: "--" }   # ... -- src/
+```
+
+Set a top-level `separator: "--"` to emit that token once before the positional
+block whenever any positional is present, so a caller value that starts with `-`
+can't be read as an option:
+
+```yaml
+separator: "--"
+args:
+  paths: { positional: true, repeat: true, type: path }
+# run(paths=["-x"]) -> git log -- -x
 ```
 
 ## output

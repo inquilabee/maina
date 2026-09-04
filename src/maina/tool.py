@@ -73,6 +73,7 @@ class Tool:
             "version": m.version,
             "abstract": m.abstract,
             "parser": m.parser,
+            "separator": m.separator,
             "platforms": list(m.platforms),
             "args": {name: self._describe_arg(spec) for name, spec in m.args.items()},
             "install": {
@@ -94,7 +95,6 @@ class Tool:
             "type": spec.type,
             "flag": spec.flag,
             "joiner": spec.joiner,
-            "separator": spec.separator,
             "positional": spec.positional,
             "required": spec.required,
             "repeat": spec.repeat,
@@ -165,6 +165,7 @@ class Tool:
             manifest.subcommands,
             {**kwargs, **(dict(args) if args else {})},
             extra=extra,
+            separator=manifest.separator,
         )
 
     def __call__(

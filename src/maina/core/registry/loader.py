@@ -138,6 +138,9 @@ class Registry:
             )
         cls._validate_timeout(tid, merged.get("timeout"))
         cls._validate_platforms(tid, merged.get("platforms"))
+        sep = merged.get("separator")
+        if sep is not None and (not isinstance(sep, str) or not sep):
+            raise manifest_error(tid, f"separator {sep!r} must be a non-empty string")
 
     @staticmethod
     def _validate_timeout(tid: str, timeout: Any) -> None:

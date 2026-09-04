@@ -101,3 +101,18 @@ def test_build_argv_pairs_with_joiner_two_tokens() -> None:
     schema = {"env": {"flag": "-e", "type": "pairs", "joiner": "="}}
     argv = ArgParser(schema).build("docker", ["run"], {"env": {"K": "V", "A": "B"}})
     assert argv == ["docker", "run", "-e", "K=V", "-e", "A=B"]
+
+
+def test_build_argv_separator_before_positionals() -> None:
+    schema = {
+        "n": {"flag": "--max-count", "joiner": "=", "type": "string"},
+        "paths": {"positional": True, "repeat": True, "type": "path"},
+    }
+    argv = ArgParser(schema).build("git", ["log"], {"n": "3", "paths": ["-x"]}, separator="--")
+    assert argv == ["git", "log", "--max-count=3", "--", "-x"]
+
+
+def test_build_argv_separator_omitted_when_no_positionals() -> None:
+    schema = {"n": {"flag": "-n", "type": "string"}}
+    argv = ArgParser(schema).build("t", [], {"n": "3"}, separator="--")
+    assert argv == ["t", "-n", "3"]

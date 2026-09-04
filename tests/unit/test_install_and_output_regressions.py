@@ -220,15 +220,6 @@ def test_pairs_type_emits_flag_key_value() -> None:
     assert argv2 == ["jq", "--arg", "a", "b"]
 
 
-def test_separator_injects_literal_token() -> None:
-    schema = {
-        "n": {"flag": "--max-count", "joiner": "=", "type": "string"},
-        "paths": {"positional": True, "repeat": True, "type": "path", "separator": "--"},
-    }
-    argv = ArgParser(schema).build("git", ["log"], {"n": "3", "paths": ["src"]})
-    assert argv == ["git", "log", "--max-count=3", "--", "src"]
-
-
 def test_join_typo_rejected_at_load(tmp_path: Path) -> None:
     reg = make_reg(
         tmp_path,

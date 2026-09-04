@@ -42,8 +42,15 @@ class ArgParser:
         kwargs: dict[str, Any],
         *,
         extra: str | list[str] | None = None,
+        separator: str | None = None,
     ) -> list[str]:
-        """Build argv: cli + subcommand segments + mapped options + extra."""
+        """Build argv: cli + subcommand segments + options + [separator] + positionals + extra.
+
+        ``separator`` (the manifest's top-level ``separator:``, typically ``--``)
+        is emitted once before the positional block whenever any positional is
+        present, so a caller value beginning with ``-`` cannot be read as an
+        option.
+        """
         argv = [cli, *subcommands]
         if unknown := set(kwargs) - set(self.schema):
             names = ", ".join(sorted(unknown))
@@ -56,14 +63,12 @@ class ArgParser:
             if value is None:
                 continue
             tokens = self._emit_arg(name, spec, value)
-            if not tokens:
-                continue
             bucket = positionals if spec.positional else options
-            if spec.separator is not None:
-                bucket.append(spec.separator)
             bucket.extend(tokens)
 
         argv.extend(options)
+        if separator is not None and positionals:
+            argv.append(separator)
         argv.extend(positionals)
         argv.extend(self.normalize_extra(extra))
         return argv

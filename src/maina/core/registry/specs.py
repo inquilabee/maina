@@ -32,6 +32,7 @@ TOP_LEVEL_KEYS = frozenset(
         "abstract",
         "platforms",
         "timeout",
+        "separator",
         "parser",
         "env",
         "args",
@@ -47,7 +48,6 @@ ARG_KEYS = frozenset(
         "type",
         "flag",
         "joiner",
-        "separator",
         "positional",
         "required",
         "repeat",
@@ -127,7 +127,6 @@ class ArgSpec:
     type: str = "string"
     flag: str | None = None
     joiner: str | None = None
-    separator: str | None = None
     positional: bool = False
     required: bool = False
     repeat: bool | None = None
@@ -155,7 +154,6 @@ class ArgSpec:
             type=arg_type,
             flag=flag,
             joiner=None if raw.get("joiner") is None else str(raw["joiner"]),
-            separator=None if raw.get("separator") is None else str(raw["separator"]),
             positional=positional,
             required=raw.get("required", False) is True,
             repeat=raw.get("repeat"),
@@ -499,6 +497,12 @@ class Manifest:
     @property
     def parser(self) -> str | None:
         value = self.data.get("parser")
+        return None if value is None else str(value)
+
+    @property
+    def separator(self) -> str | None:
+        """Token emitted before the positional block (typically ``--``)."""
+        value = self.data.get("separator")
         return None if value is None else str(value)
 
     @property
