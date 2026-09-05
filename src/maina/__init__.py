@@ -30,8 +30,8 @@ from maina.core.protocols import (
 from maina.core.registry import ArgSpec, InstallSpec, Manifest, OutputSpec, Registry
 from maina.core.result import ToolResult
 from maina.runner import ToolRunner
-from maina.runtime import Runtime, isolated, register, runtime, use
-from maina.tool import Tool
+from maina.runtime import Runtime, isolated, runtime, use
+from maina.tool import MainaApp, Tool, register
 
 try:
     __version__ = _version("maina")
@@ -48,6 +48,7 @@ __all__ = [
     "InstallSpec",
     "InstallerBackend",
     "LanguageRuntimeProvider",
+    "MainaApp",
     "MainaError",
     "Manifest",
     "ManifestError",

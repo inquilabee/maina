@@ -344,8 +344,11 @@ def register(
 ) -> Runtime:
     """Mutate a Runtime (positional or ``runtime=``) or the active session; return it.
 
-    Prefer ``register(rt, ...)``. ``runtime=`` remains for compatibility. Passing both
-    raises ``ValueError``. With neither, mutates ``SESSION.get()``.
+    Low-level composition helper — returns the bare ``Runtime``. Most callers want
+    the public ``maina.register(...)`` (:func:`maina.tool.register`), which wraps this
+    and returns a :class:`~maina.tool.MainaApp` bound to a ``Tool()`` factory instead.
+    Passing both ``rt`` and ``runtime=`` raises ``ValueError``. With neither, mutates
+    ``SESSION.get()``.
     """
     if rt is not None and runtime is not None:
         raise ValueError("pass Runtime positionally or as runtime=, not both")

@@ -15,13 +15,12 @@ from pathlib import Path
 import maina
 
 here = Path("examples/parsers_dirs")
-rt = maina.Runtime.preferred()
-maina.register(
-    rt,
+app = maina.register(
+    maina.Runtime.preferred(),
     registry_dirs=[here / "tools"],
     parsers_dirs=[here / "parsers"],
 )
-maina.Tool("echo_shout", runtime=rt).run(message="hi")
+app.tool("echo_shout").run(message="hi")
 ```
 
 Run: `uv run python examples/parsers_dirs/demo.py`

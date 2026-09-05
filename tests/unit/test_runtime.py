@@ -9,6 +9,7 @@ import pytest
 
 import maina
 from helpers import fixture_runtime, write_yaml
+from maina.backends import PathBackend
 from maina.core.errors import ManifestError, RegisterError
 from maina.core.parsers import ParserResolver
 from maina.runtime import Runtime, resolve_cache_root
@@ -123,6 +124,32 @@ def test_module_register_appends_overlay(tmp_path: Path) -> None:
     assert tool.id == "jq"
     text = str(tool)
     assert "cli: jq-overlay" in text
+
+
+def test_register_returns_a_bound_app(tmp_path: Path) -> None:
+    root = tmp_path / "tools"
+    write_yaml(root / "local.yaml", {"cli": "echo", "install": {"backend": "path"}})
+    rt = Runtime()
+    app = maina.register(rt, registry_dirs=[root], installers=[PathBackend()])
+    assert isinstance(app, maina.MainaApp)
+    assert app.runtime is rt
+    assert app.tool("local").id == "local"
+    assert app.tool("local").run().ok
+
+
+def test_two_apps_do_not_interfere(tmp_path: Path) -> None:
+    root_a = tmp_path / "a"
+    root_b = tmp_path / "b"
+    write_yaml(root_a / "only-a.yaml", {"cli": "echo", "install": {"backend": "path"}})
+    write_yaml(root_b / "only-b.yaml", {"cli": "echo", "install": {"backend": "path"}})
+    app_a = maina.register(Runtime(), registry_dirs=[root_a], installers=[PathBackend()])
+    app_b = maina.register(Runtime(), registry_dirs=[root_b], installers=[PathBackend()])
+    assert app_a.tool("only-a").id == "only-a"
+    assert app_b.tool("only-b").id == "only-b"
+    with pytest.raises(ManifestError):
+        app_a.tool("only-b")
+    with pytest.raises(ManifestError):
+        app_b.tool("only-a")
 
 
 def test_discover_warns_on_a_broken_entry_point(monkeypatch: pytest.MonkeyPatch) -> None:

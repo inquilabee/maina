@@ -10,11 +10,15 @@ from maina.core.argparser import ArgParser
 from maina.core.errors import AbstractToolError, ManifestError
 from maina.core.registry import Registry
 from maina.runner import ToolRunner
+from maina.runtime import register as _compose_register
 from maina.runtime import runtime as active_runtime
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Iterable, Mapping, Sequence
+    from pathlib import Path
 
+    from maina.core.parsers import ParserInput
+    from maina.core.protocols import InstallerBackend, LanguageRuntimeProvider
     from maina.core.registry import ArgSpec, Manifest
     from maina.core.result import ToolResult
     from maina.runtime import Runtime
@@ -25,9 +29,8 @@ class Tool:
 
     Usage:
       import maina
-      rt = maina.Runtime.preferred()
-      maina.register(rt, registry_dirs=["my_tools"])
-      result = maina.Tool("mytool", runtime=rt).run(path=["src"])
+      app = maina.register(maina.Runtime.preferred(), registry_dirs=["my_tools"])
+      result = app.tool("mytool").run(path=["src"])
       print(result.raw, result.parsed)
 
     For the ``maina`` CLI, run ``maina --help``.
@@ -298,3 +301,63 @@ class Tool:
             desc = spec.description or spec.help
             lines.append(f"{base} — {desc}" if desc else base)
         return lines
+
+
+class MainaApp:
+    """One ``Runtime``'s registered catalog, bound to a ``Tool()`` factory.
+
+    Returned by :func:`register` so a caller doesn't thread the same
+    ``Runtime`` through every ``Tool(..., runtime=rt)`` call by hand, and so
+    several independent apps (separate registry/parsers dirs, separate cache)
+    can coexist in one process without going through the process-wide
+    ``SESSION`` singleton (:class:`~maina.runtime.RuntimeSession`).
+    """
+
+    def __init__(self, runtime: Runtime) -> None:
+        self.runtime = runtime
+
+    def tool(self, name: str | None = None, *, subcommand: str | None = None) -> Tool:
+        """``Tool(name, runtime=self.runtime)`` — bound to this app's catalog."""
+        return Tool(name, subcommand=subcommand, runtime=self.runtime)
+
+    def __repr__(self) -> str:
+        return f"MainaApp({self.runtime!r})"
+
+
+def register(
+    rt: Runtime | None = None,
+    /,
+    *,
+    registry_dirs: Path | str | Sequence[Path | str] | None = None,
+    parsers: Mapping[str, ParserInput] | None = None,
+    parsers_dirs: Path | str | Sequence[Path | str] | None = None,
+    installers: Sequence[InstallerBackend] | None = None,
+    language: LanguageRuntimeProvider | None = None,
+    replace: bool = False,
+    runtime: Runtime | None = None,
+) -> MainaApp:
+    """Mutate a Runtime (positional or ``runtime=``) or the active session; return a MainaApp.
+
+    Prefer ``register(rt, ...)``. ``runtime=`` is an alternate keyword spelling of the
+    same Runtime. Passing both raises ``ValueError``. With neither, mutates
+    ``maina.runtime()`` (the process-wide active session).
+
+    The returned :class:`MainaApp` wraps the mutated Runtime — call ``.tool(name)``
+    on it instead of threading the Runtime through every ``Tool(..., runtime=...)``
+    call, and to run several independent catalogs in one process without touching
+    the shared session::
+
+        app = maina.register(maina.Runtime.preferred(), registry_dirs=["my_tools"])
+        result = app.tool("mytool").run(path=["src"])
+    """
+    target = _compose_register(
+        rt,
+        registry_dirs=registry_dirs,
+        parsers=parsers,
+        parsers_dirs=parsers_dirs,
+        installers=installers,
+        language=language,
+        replace=replace,
+        runtime=runtime,
+    )
+    return MainaApp(target)
