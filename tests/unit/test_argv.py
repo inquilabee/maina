@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pathlib
+
 import pytest
 
 from maina.core.argparser import ArgParser
@@ -236,3 +238,29 @@ def test_join_uses_the_separator_the_manifest_names() -> None:
 def test_a_joined_positional_needs_no_flag() -> None:
     parser = ArgParser({"paths": {"positional": True, "join": ":"}})
     assert parser.build("tool", [], {"paths": ["a", "b"]}) == ["tool", "a:b"]
+
+
+def test_a_pathlib_path_is_accepted_wherever_a_value_is() -> None:
+    """A path is the most common thing a wrapped CLI takes, and ``Path`` is what
+    Python callers already hold — ``type: path`` should not mean "str only"."""
+    schema = {
+        "paths": {"positional": True, "repeat": True, "type": "path"},
+        "config": {"flag": "--config", "type": "path"},
+        "env": {"flag": "-e", "type": "pairs", "joiner": "="},
+    }
+    argv = ArgParser(schema).build(
+        "tool",
+        [],
+        {
+            "paths": [pathlib.Path("src"), pathlib.Path("tests")],
+            "config": pathlib.Path("cfg/x.toml"),
+            "env": {"ROOT": pathlib.Path("/repo")},
+        },
+    )
+    assert argv == ["tool", "--config", "cfg/x.toml", "-e", "ROOT=/repo", "src", "tests"]
+
+
+def test_a_bool_is_still_refused_even_though_paths_are_accepted() -> None:
+    parser = ArgParser({"name": {"flag": "--name"}})
+    with pytest.raises(ArgError, match="must be a string or number, not bool"):
+        parser.build("tool", [], {"name": True})

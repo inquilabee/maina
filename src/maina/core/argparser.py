@@ -1,12 +1,14 @@
 """Kwargs → argv mapping from registry arg schema.
 
-``type: path`` in YAML is emit-only metadata (help/docs). Values are still
-passed through as strings like other non-flag types; there is no ``Path``
-coercion at the ArgParser boundary.
+``type: path`` in YAML is emit-only metadata (help/docs) — it does not change
+how a value is emitted. An ``os.PathLike`` value is accepted for any arg and
+converted with ``os.fspath``, since a path is the most common thing a wrapped
+CLI takes and ``pathlib.Path`` is what Python callers already hold.
 """
 
 from __future__ import annotations
 
+import os
 import shlex
 from typing import TYPE_CHECKING, Any
 
@@ -152,7 +154,13 @@ class ArgParser:
 
         Every value that reaches argv goes through here, ``type: pairs`` keys and
         values included (*what* names which half for the error message).
+
+        ``os.PathLike`` is accepted and converted: a path is the most common
+        thing a wrapped CLI takes, and ``pathlib.Path`` is what Python callers
+        already hold. ``os.fspath`` is unambiguous, unlike ``str()`` on a bool.
         """
+        if isinstance(value, os.PathLike):
+            value = os.fspath(value)
         if isinstance(value, bool) or not isinstance(value, (str, int, float)):
             raise ArgParser._arg_error(
                 name, f"{what} must be a string or number, not {type(value).__name__}"

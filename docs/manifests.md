@@ -88,7 +88,7 @@ args:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `type` | string | `string`, `flag`, `path`, or `pairs` (rejected otherwise). `path` is emit-only metadata (no coercion). |
+| `type` | string | `string`, `flag`, `path`, or `pairs` (rejected otherwise). `path` is emit-only metadata for help and docs; it does not change emission. A `pathlib.Path` (any `os.PathLike`) is accepted for *any* arg and converted with `os.fspath`. |
 | `flag` | string | The option flag, e.g. `--config`. Required unless `positional: true`. Mutually exclusive with `positional: true` — set both and the manifest fails to load. |
 | `false_flag` | string | Token emitted when a `type: flag` arg is explicitly `False` (`--no-fix`). Without it, off emits nothing — with it, "not passed" and "passed off" are different requests. |
 | `joiner` | string | Emit `flag` and value as one token: `joiner: "="` → `--config=value`. |

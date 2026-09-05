@@ -334,6 +334,13 @@
 
 ### Manifest expressiveness
 
+- **`os.PathLike` values are accepted** for any arg and converted with
+  `os.fspath`. A path is the most common thing a wrapped CLI takes and
+  `pathlib.Path` is what Python callers already hold, so refusing it (with
+  "value must be a string or number, not PosixPath") was friction for no safety
+  — `os.fspath` is unambiguous, unlike `str()` on a bool, which is still
+  refused. Found by porting a real catalog onto maina.
+
 - **`args.<name>.false_flag`** — the token a `type: flag` arg emits when it is
   explicitly `False` (`--fix` / `--no-fix`). Without it, off emits nothing; with
   it, "not passed" and "passed off" are different requests. Rejected at load on
