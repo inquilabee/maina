@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import subprocess
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from maina.core.errors import InstallError
+from maina.core.subprocess_utils import resolve_within, run_or_wrap
 
 if TYPE_CHECKING:
     from maina.core.protocols import InstallContext
@@ -90,12 +90,15 @@ class PipBackend:
                 f"{manifest.cli!r} entry point (is the console script named something else? "
                 "set cli: to the script name and install.package: to the distribution)"
             )
-        resolved = entry.resolve()
-        if not resolved.is_relative_to(venv.resolve()):
-            raise InstallError(
-                f"{manifest.id}: {manifest.cli} resolved to {resolved}, outside the tool cache "
-                f"({venv}); refusing to run an out-of-cache install"
-            )
+        resolve_within(
+            entry,
+            venv,
+            error_cls=InstallError,
+            message=(
+                f"{manifest.id}: {manifest.cli} resolved to {entry.resolve()}, outside the tool "
+                f"cache ({venv}); refusing to run an out-of-cache install"
+            ),
+        )
         return entry
 
     def _venv_python(
@@ -108,24 +111,14 @@ class PipBackend:
         """Create the tool's venv and return the interpreter inside it."""
         base = self._base_interpreter(manifest, env, ctx)
         venv.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            subprocess.run(
-                [str(base), "-m", "venv", str(venv)],
-                check=True,
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=self.VENV_TIMEOUT,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise InstallError(f"{manifest.id}: creating a venv timed out") from exc
-        except subprocess.CalledProcessError as exc:
-            detail = (exc.stderr or exc.stdout or "").strip()
-            raise InstallError(
-                f"{manifest.id}: could not create a venv at {venv}: {detail}"
-            ) from exc
-        except OSError as exc:
-            raise InstallError(f"{manifest.id}: could not run {base}: {exc}") from exc
+        run_or_wrap(
+            [str(base), "-m", "venv", str(venv)],
+            env=env,
+            timeout=self.VENV_TIMEOUT,
+            error_cls=InstallError,
+            on_timeout=lambda: f"{manifest.id}: creating a venv timed out",
+            on_failure=lambda detail: f"{manifest.id}: could not create a venv at {venv}: {detail}",
+        )
         inside = venv / "Scripts" / "python.exe" if sys.platform == "win32" else venv / "bin/python"
         if not inside.is_file():
             raise InstallError(f"{manifest.id}: venv at {venv} has no interpreter")
@@ -191,19 +184,16 @@ class PipBackend:
         if not allow_sdist:
             argv.append("--only-binary=:all:")
         argv.extend(["--", spec])
-        try:
-            subprocess.run(
-                argv,
-                check=True,
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=PipBackend.INSTALL_TIMEOUT,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise InstallError(
-                f"{manifest.id}: pip install {spec} timed out after {PipBackend.INSTALL_TIMEOUT}s"
-            ) from exc
-        except subprocess.CalledProcessError as exc:
-            detail = (exc.stderr or exc.stdout or str(exc)).strip()
-            raise InstallError(f"{manifest.id}: pip install {spec} failed: {detail}") from exc
+        run_or_wrap(
+            argv,
+            env=env,
+            timeout=PipBackend.INSTALL_TIMEOUT,
+            error_cls=InstallError,
+            on_timeout=(
+                lambda: (
+                    f"{manifest.id}: pip install {spec} timed out "
+                    f"after {PipBackend.INSTALL_TIMEOUT}s"
+                )
+            ),
+            on_failure=lambda detail: f"{manifest.id}: pip install {spec} failed: {detail}",
+        )

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 import shutil
-import subprocess
 from typing import TYPE_CHECKING
 
 from maina.core.errors import InstallError
+from maina.core.subprocess_utils import resolve_within, run_or_wrap
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -128,12 +128,15 @@ class NpmBackend:
         NpmBackend._npm_install(npm, prefix, pkg_spec, env, allow_scripts=allow_scripts)
         if not (link.is_file() or link.is_symlink()):
             raise InstallError(f"npm install of {pkg_spec} did not produce {cli}")
-        resolved = link.resolve()
-        if not resolved.is_relative_to(prefix.resolve()):
-            raise InstallError(
-                f"npm resolved {cli} to {resolved}, outside the tool cache "
+        resolve_within(
+            link,
+            prefix,
+            error_cls=InstallError,
+            message=(
+                f"npm resolved {cli} to {link.resolve()}, outside the tool cache "
                 f"({prefix}); refusing to link an out-of-cache install"
-            )
+            ),
+        )
         return link
 
     INSTALL_TIMEOUT = 600
@@ -165,18 +168,13 @@ class NpmBackend:
         if not allow_scripts:
             argv.append("--ignore-scripts")
         argv.append(pkg_spec)
-        try:
-            subprocess.run(
-                argv,
-                check=True,
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=NpmBackend.INSTALL_TIMEOUT,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise InstallError(
-                f"npm install {pkg_spec} timed out after {NpmBackend.INSTALL_TIMEOUT}s"
-            ) from exc
-        except subprocess.CalledProcessError as exc:
-            raise InstallError(f"npm install {pkg_spec} failed: {exc.stderr or exc}") from exc
+        run_or_wrap(
+            argv,
+            env=env,
+            timeout=NpmBackend.INSTALL_TIMEOUT,
+            error_cls=InstallError,
+            on_timeout=(
+                lambda: f"npm install {pkg_spec} timed out after {NpmBackend.INSTALL_TIMEOUT}s"
+            ),
+            on_failure=lambda detail: f"npm install {pkg_spec} failed: {detail}",
+        )

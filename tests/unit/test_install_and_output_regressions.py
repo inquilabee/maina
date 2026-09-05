@@ -187,7 +187,7 @@ def test_env_allow_reaches_language_provider(
 def test_npm_install_uses_ignore_scripts_by_default(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import maina.backends.npm as npm_mod
+    import maina.core.subprocess_utils as subprocess_utils_mod
     from maina.backends.npm import NpmBackend
 
     calls: list[list[str]] = []
@@ -200,7 +200,7 @@ def test_npm_install_uses_ignore_scripts_by_default(
         calls.append(list(argv))
         return _Result()
 
-    monkeypatch.setattr(npm_mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(subprocess_utils_mod.subprocess, "run", fake_run)
     NpmBackend._npm_install("/usr/bin/npm", tmp_path / "x", "jscpd@1", {"PATH": "/usr/bin"})
     assert "--ignore-scripts" in calls[0]
     calls.clear()

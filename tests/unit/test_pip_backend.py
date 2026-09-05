@@ -218,3 +218,32 @@ def test_a_failed_pip_install_surfaces_pips_own_message(
     monkeypatch.setattr(subprocess, "run", fake_run)
     with pytest.raises(InstallError, match="No matching distribution found"):
         PipBackend().resolve(pip_manifest(), version="1.2.3", env={}, ctx=context(tmp_path))
+
+
+def test_a_pip_install_timeout_is_wrapped_as_install_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        del kwargs
+        if "venv" in argv:
+            venv = Path(argv[-1])
+            (venv / "bin").mkdir(parents=True, exist_ok=True)
+            (venv / "bin" / "python").write_text("", encoding="utf-8")
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        raise subprocess.TimeoutExpired(cmd=argv, timeout=600)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(InstallError, match="timed out after"):
+        PipBackend().resolve(pip_manifest(), version="1.2.3", env={}, ctx=context(tmp_path))
+
+
+def test_a_venv_creation_timeout_is_wrapped_as_install_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        del kwargs
+        raise subprocess.TimeoutExpired(cmd=argv, timeout=120)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(InstallError, match="creating a venv timed out"):
+        PipBackend().resolve(pip_manifest(), version="1.2.3", env={}, ctx=context(tmp_path))

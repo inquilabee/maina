@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 from maina.core.errors import RuntimeProvisionError
+from maina.core.subprocess_utils import run_or_wrap
 
 # `mise.run` is an unpinned installer script. Downloading and piping it into a
 # shell is opt-in: set MAINA_ALLOW_MISE_BOOTSTRAP=1 (or put `mise` on PATH).
@@ -68,22 +69,14 @@ class MiseRuntime:
         if resolved := self._mise_which(mise, spec, runtime, env):
             return resolved
 
-        try:
-            subprocess.run(
-                [str(mise), "install", spec],
-                check=True,
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=MISE_INSTALL_TIMEOUT,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise RuntimeProvisionError(
-                f"mise install {spec} timed out after {MISE_INSTALL_TIMEOUT}s"
-            ) from exc
-        except subprocess.CalledProcessError as exc:
-            detail = exc.stderr or exc.stdout or str(exc)
-            raise RuntimeProvisionError(f"mise install {spec} failed: {detail}") from exc
+        run_or_wrap(
+            [str(mise), "install", spec],
+            env=env,
+            timeout=MISE_INSTALL_TIMEOUT,
+            error_cls=RuntimeProvisionError,
+            on_timeout=lambda: f"mise install {spec} timed out after {MISE_INSTALL_TIMEOUT}s",
+            on_failure=lambda detail: f"mise install {spec} failed: {detail}",
+        )
 
         resolved = self._mise_which(mise, spec, runtime, env)
         if resolved is not None:
@@ -173,26 +166,29 @@ class MiseRuntime:
     def _mise_which_uncaught(
         mise: Path, spec: str, runtime: str, env: dict[str, str]
     ) -> Path | None:
-        which = subprocess.run(
-            [str(mise), "which", "--toolchain", spec, runtime],
-            check=False,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=MISE_QUERY_TIMEOUT,
-        )
-        if which.returncode == 0 and which.stdout.strip():
-            return Path(which.stdout.strip()).parent
+        try:
+            which = subprocess.run(
+                [str(mise), "which", "--toolchain", spec, runtime],
+                check=False,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=MISE_QUERY_TIMEOUT,
+            )
+            if which.returncode == 0 and which.stdout.strip():
+                return Path(which.stdout.strip()).parent
 
-        shell = shutil.which("sh") or "/bin/sh"
-        exe = subprocess.run(
-            [str(mise), "exec", spec, "--", shell, "-c", f"command -v {shlex.quote(runtime)}"],
-            check=False,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=MISE_QUERY_TIMEOUT,
-        )
+            shell = shutil.which("sh") or "/bin/sh"
+            exe = subprocess.run(
+                [str(mise), "exec", spec, "--", shell, "-c", f"command -v {shlex.quote(runtime)}"],
+                check=False,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=MISE_QUERY_TIMEOUT,
+            )
+        except OSError as exc:
+            raise RuntimeProvisionError(f"could not run mise for {spec}: {exc}") from exc
         if exe.returncode == 0 and (path := exe.stdout.strip()):
             return Path(path).parent
         return None

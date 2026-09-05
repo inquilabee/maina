@@ -481,6 +481,21 @@ def test_npm_install_accepts_in_cache_bin(tmp_path: Path, monkeypatch: pytest.Mo
     assert (prefix / "package.json").is_file()
 
 
+def test_npm_install_timeout_is_wrapped_as_install_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import subprocess
+
+    from maina.backends.npm import NpmBackend
+
+    def fake_run(argv: list[str], **_kw: object) -> None:
+        raise subprocess.TimeoutExpired(cmd=argv, timeout=600)
+
+    monkeypatch.setattr("maina.core.subprocess_utils.subprocess.run", fake_run)
+    with pytest.raises(InstallError, match="timed out after"):
+        NpmBackend._npm_install("/usr/bin/npm", tmp_path, "tool@1", {"PATH": "/usr/bin"})
+
+
 def test_resolve_rejects_unsupported_platform(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
