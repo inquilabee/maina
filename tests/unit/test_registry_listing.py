@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -162,3 +162,44 @@ def test_a_manifest_edited_in_place_is_reparsed(tmp_path: Path) -> None:
     assert registry.load("t").cli == "echo"
     write_yaml(path, {"cli": "printf"})
     assert registry.load("t").cli == "printf"
+
+
+def test_repeated_load_reuses_the_cached_manifest_not_a_fresh_merge(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A second load() of the same id must not re-walk and re-merge the whole
+    extends chain — list_commands(None) does exactly this for every id via
+    _exclude_abstract, on every call."""
+    from maina.core.registry import merge as merge_module
+
+    root = tmp_path / "reg"
+    write_yaml(root / "base.yaml", {"cli": "echo", "abstract": True})
+    write_yaml(root / "t.yaml", {"extends": "base", "cli": "printf"})
+    registry = Registry([root])
+
+    first = registry.load("t")
+    calls = 0
+    real_merge_maps = merge_module.merge_maps
+
+    def counting_merge_maps(parent: dict[str, Any], child: dict[str, Any]) -> dict[str, Any]:
+        nonlocal calls
+        calls += 1
+        return real_merge_maps(parent, child)
+
+    monkeypatch.setattr(merge_module, "merge_maps", counting_merge_maps)
+    second = registry.load("t")
+    assert second is first
+    assert calls == 0
+
+
+def test_manifest_cache_invalidates_when_a_parent_layer_changes(tmp_path: Path) -> None:
+    """The cache key covers every layer's own stamp, not just the leaf's — an
+    edited parent must invalidate every child's cached Manifest too."""
+    root = tmp_path / "reg"
+    base_path = write_yaml(root / "base.yaml", {"cli": "echo", "abstract": True, "timeout": 5})
+    write_yaml(root / "t.yaml", {"extends": "base", "cli": "printf"})
+    registry = Registry([root])
+    assert registry.load("t").data["timeout"] == 5
+
+    write_yaml(base_path, {"cli": "echo", "abstract": True, "timeout": 30})
+    assert registry.load("t").data["timeout"] == 30

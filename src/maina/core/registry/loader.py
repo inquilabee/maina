@@ -12,26 +12,13 @@ import yaml
 from maina.core.errors import ManifestError
 
 from . import ids as registry_ids
-from .common import (
-    MANIFEST_PREFIX,
-    manifest_error,
-    require_bool,
-    require_str_keys,
-    safe_segment,
-    scalar_str,
-    unknown_keys,
-)
+from .common import MANIFEST_PREFIX
 from .install import InstallSpec
-from .keys import (
-    BASE_TOOL_ID,
-    CURRENT_SCHEMA,
-    IGNORED_MANIFEST_KEYS,
-    TOP_LEVEL_KEYS,
-    VALID_PLATFORMS,
-)
+from .keys import BASE_TOOL_ID, IGNORED_MANIFEST_KEYS
 from .merge import merge_maps
 from .requires import RequiresSpec
 from .specs import Manifest, OutputSpec, parse_args_map
+from .validate import MAX_YAML_ANCHORS, count_yaml_anchors, validate_parser_ref, validate_top_level
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -65,6 +52,13 @@ class Registry:
         # `list_commands` parses the whole catalog to filter abstracts. Keyed on
         # the file's own stamp, so an edited manifest re-parses on its own.
         self._raw_yaml: dict[tuple[str, int, int], dict[str, Any]] = {}
+        # Built Manifest per (id, stamp of every file in its extends chain) —
+        # without this, `list_commands(None)` re-deepcopies, re-merges, and
+        # re-validates every id's whole chain on every call via
+        # `_exclude_abstract`, and a repeated `Tool(id)` does the same. Keying
+        # on every layer's own stamp (not just the leaf's) means an edited
+        # parent invalidates every child's cached Manifest too.
+        self._manifests: dict[tuple[str, tuple[tuple[str, int, int], ...]], Manifest] = {}
 
     @property
     def root(self) -> Path:
@@ -102,6 +96,7 @@ class Registry:
         self._id_paths.clear()
         self._scan_index.clear()
         self._raw_yaml.clear()
+        self._manifests.clear()
 
     def load(self, tool_id: str) -> Manifest:
         """Load and merge a tool manifest by registry id.
@@ -109,13 +104,34 @@ class Registry:
         A problem found while merging or validating is re-raised naming the
         file(s) it came from: the id is derived from a path, and for a defect
         inherited from a shared parent it points at the wrong manifest entirely.
+
+        The built ``Manifest`` is cached on the id plus every chain layer's
+        own stamp (see ``_manifests``), so a repeated ``load()`` of the same
+        id — as ``list_commands(None)`` does for every id in the catalog — is
+        O(1) after the first, not a full re-deepcopy/re-merge/re-validate.
         """
         tid = self.normalize_id(tool_id)
         chain = self._load_chain(tid, [])
+        cache_key = (tid, tuple(self._stat_key(path) for _cid, path, _root, _data in chain))
+        if cache_key in self._manifests:
+            return self._manifests[cache_key]
         try:
-            return self._build(tid, chain)
+            manifest = self._build(tid, chain)
         except ManifestError as exc:
             raise self._located(exc, chain) from exc
+        self._manifests[cache_key] = manifest
+        return manifest
+
+    @staticmethod
+    def _stat_key(path: Path) -> tuple[str, int, int]:
+        """``(path, mtime_ns, size)`` — the same file-identity stamp used for
+        the raw-YAML cache, reused here so the Manifest cache invalidates
+        exactly when a re-parse would have produced a different result."""
+        try:
+            stat = path.stat()
+        except OSError as exc:
+            raise ManifestError(f"cannot read {path}: {exc}") from exc
+        return (str(path), stat.st_mtime_ns, stat.st_size)
 
     @staticmethod
     def _located(
@@ -151,7 +167,7 @@ class Registry:
 
         for key in IGNORED_MANIFEST_KEYS:
             merged.pop(key, None)
-        self._validate_top_level(tid, merged)
+        validate_top_level(tid, merged)
 
         decl_path, decl_root = self._parser_declaring_layer(chain, merged.get("parser"))
         parser_path = self._resolve_parser_path(decl_path, decl_root, merged.get("parser"))
@@ -181,96 +197,6 @@ class Registry:
             if data.get("parser") == parser:
                 return path, root
         return chain[-1][1], chain[-1][2]
-
-    @classmethod
-    def _validate_top_level(cls, tid: str, merged: dict[str, Any]) -> None:
-        """Fail closed on unknown keys and bad schema / timeout / platforms values."""
-        if bad := unknown_keys(merged, TOP_LEVEL_KEYS):
-            raise manifest_error(tid, f"unknown top-level keys: {', '.join(bad)}")
-        schema = merged.get("schema")
-        if schema is not None and schema != CURRENT_SCHEMA:
-            raise manifest_error(
-                tid, f"schema {schema!r} unsupported (maina understands schema {CURRENT_SCHEMA})"
-            )
-        # Eager, like every other bool field — `abstract: "true"` (a string)
-        # must not load clean and only surface as a masked warning later.
-        require_bool(merged.get("abstract"), field_name="abstract", tool_id=tid)
-        cls._validate_timeout(tid, merged.get("timeout"))
-        cls._validate_platforms(tid, merged.get("platforms"))
-        cls._validate_separator_and_from_file(tid, merged)
-        cls._validate_scalar_fields(tid, merged)
-
-    @staticmethod
-    def _validate_scalar_fields(tid: str, merged: dict[str, Any]) -> None:
-        """Force validation for scalar fields the resolved ``Manifest`` otherwise
-        reads through lazy properties (``cli``, ``version``, ``env``), so a bad
-        value fails at ``load()``, not at first property access or first
-        download. ``cli`` / ``version`` also get the same ``safe_segment``
-        path-traversal check their properties run — a manifest whose ``cli``
-        would resolve outside the cache root must not load cleanly and only
-        fail once something reads ``.cli``.
-        """
-        for field_name in ("cli", "version"):
-            if merged.get(field_name) is not None:
-                safe_segment(merged[field_name], field_name=field_name, tool_id=tid)
-        env = merged.get("env")
-        if isinstance(env, dict):
-            require_str_keys(env, block_name="env", tool_id=tid)
-            for key, value in env.items():
-                scalar_str(value, field_name=f"env.{key}", tool_id=tid)
-
-    @classmethod
-    def _validate_separator_and_from_file(cls, tid: str, merged: dict[str, Any]) -> None:
-        """``separator`` shape / ``order`` conflict, and no ``cwd`` arg with ``from_file``."""
-        args = merged.get("args") or {}
-        cls._validate_separator(tid, merged.get("separator"), args)
-        output = merged.get("output") or {}
-        if isinstance(output, dict) and output.get("from_file") and "cwd" in args:
-            raise manifest_error(tid, "an arg cannot be named 'cwd' when output.from_file is set")
-
-    @staticmethod
-    def _validate_separator(tid: str, sep: Any, args: Any) -> None:
-        if sep is None:
-            return
-        if not isinstance(sep, str) or not sep:
-            raise manifest_error(tid, f"separator {sep!r} must be a non-empty string")
-        if not isinstance(args, dict):
-            return
-        # `order: null` is the null-drop idiom clearing an inherited order, not a
-        # declaration of one — it must not trip the conflict it just resolved.
-        if ordered := [
-            n for n, a in args.items() if isinstance(a, dict) and a.get("order") is not None
-        ]:
-            raise manifest_error(
-                tid,
-                "separator and args.order are two ways to lay out argv — pick one "
-                f"(args with order: {', '.join(map(str, ordered))})",
-            )
-
-    @staticmethod
-    def _validate_timeout(tid: str, timeout: Any) -> None:
-        if timeout is None:
-            return
-        if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
-            raise manifest_error(tid, f"timeout {timeout!r} must be a number of seconds")
-        if timeout <= 0:
-            raise manifest_error(tid, f"timeout {timeout!r} must be > 0 (omit it for no limit)")
-
-    @staticmethod
-    def _validate_platforms(tid: str, platforms: Any) -> None:
-        if platforms is None:
-            return
-        if not isinstance(platforms, list):
-            raise manifest_error(
-                tid, f"platforms {platforms!r} must be a list, e.g. [linux, macos]"
-            )
-        # isinstance first: an unhashable item (e.g. a stray mapping from a YAML
-        # indentation slip) must not crash `in` on the membership check below.
-        if unknown := sorted(
-            str(p) for p in platforms if not isinstance(p, str) or p not in VALID_PLATFORMS
-        ):
-            allowed = ", ".join(sorted(VALID_PLATFORMS))
-            raise manifest_error(tid, f"platforms {unknown} not in {{{allowed}}}")
 
     def list_commands(self, tool_id: str | None = None) -> list[str]:
         """List callable registry ids, or concrete descendants of a parent.
@@ -436,25 +362,6 @@ class Registry:
         raise ManifestError(f"no registry entry for {tid!r} under {roots}")
 
     @staticmethod
-    def _validate_parser_ref(parser: str) -> None:
-        """A ``parsers/`` ref is a plain relative filename — no ``..``, no abs path.
-
-        The resolved file is ``exec``'d, so a manifest must not be able to point
-        it outside the family ``parsers/`` directory.
-        """
-        parts = parser.replace("\\", "/").split("/")
-        if (
-            parser != parser.strip()
-            or "\x00" in parser
-            or parser.startswith("/")
-            or ".." in parts
-            or Path(parser).is_absolute()
-        ):
-            raise ManifestError(
-                f"parser {parser!r} must be a plain relative filename under parsers/"
-            )
-
-    @staticmethod
     def _resolve_parser_path(
         leaf_path: Path,
         leaf_root: Path,
@@ -465,7 +372,7 @@ class Registry:
             return None
         if not parser.endswith(".py"):
             return None
-        Registry._validate_parser_ref(parser)
+        validate_parser_ref(parser)
         family_parsers = registry_ids.family_parsers_dir(leaf_path, leaf_root)
         candidate = family_parsers / parser
         if not candidate.resolve().is_relative_to(family_parsers.resolve()):
@@ -474,64 +381,29 @@ class Registry:
             return candidate
         raise ManifestError(f"parser {parser!r} not found under {family_parsers}")
 
-    # A manifest is a small hand-written config; a wall of real anchors is a
-    # mistake, not a legitimate hand-written shape.
-    MAX_YAML_ANCHORS = 64
-
-    @staticmethod
-    def _count_yaml_anchors(text: str) -> int:
-        """Count real ``&name`` anchor declarations, not the literal ``&``
-        character.
-
-        An ordinary description or a URL query string can easily contain
-        65+ literal ``&`` characters with zero real anchors, which a
-        ``text.count("&")`` guard rejects as a false positive. Composing
-        (not constructing) the document exposes the actual anchor table
-        PyYAML's own ``Composer`` builds; ``Composer.compose_document``
-        clears it right after composing (for multi-document streams), so
-        this reads it before that happens rather than via the ``compose()``
-        convenience function. Aliases resolve to the *same* node object as
-        their anchor, so this table already reflects real anchor
-        *declarations* regardless of how many aliases reference each one.
-        """
-        loader = yaml.SafeLoader(text)
-        try:
-            loader.get_event()  # STREAM-START
-            if loader.check_event(yaml.StreamEndEvent):
-                return 0
-            loader.get_event()  # DOCUMENT-START
-            loader.compose_node(None, None)
-            return len(loader.anchors)
-        finally:
-            loader.dispose()
-
     def _load_raw_yaml(self, path: Path) -> dict[str, Any]:
         """Load a single YAML manifest file, memoized on its own mtime + size.
 
         The returned mapping is shared with every other loader of the same file;
         callers deep-copy before merging (see :meth:`_build`).
         """
-        try:
-            stat = path.stat()
-        except OSError as exc:
-            raise ManifestError(f"cannot read {path}: {exc}") from exc
-        key = (str(path), stat.st_mtime_ns, stat.st_size)
+        key = self._stat_key(path)
         if key not in self._raw_yaml:
             self._raw_yaml[key] = self._parse_yaml(path)
         return self._raw_yaml[key]
 
-    @classmethod
-    def _parse_yaml(cls, path: Path) -> dict[str, Any]:
+    @staticmethod
+    def _parse_yaml(path: Path) -> dict[str, Any]:
         """Read and parse one YAML manifest file."""
         try:
             text = path.read_text(encoding="utf-8")
         except OSError as exc:
             raise ManifestError(f"cannot read {path}: {exc}") from exc
         try:
-            anchor_count = cls._count_yaml_anchors(text)
+            anchor_count = count_yaml_anchors(text)
         except yaml.YAMLError as exc:
             raise ManifestError(f"invalid YAML in {path}: {exc}") from exc
-        if anchor_count > cls.MAX_YAML_ANCHORS:
+        if anchor_count > MAX_YAML_ANCHORS:
             raise ManifestError(f"{MANIFEST_PREFIX}{path} has too many YAML anchors")
         try:
             raw = yaml.safe_load(text)
