@@ -101,6 +101,21 @@ def test_script_backend_rejects_dir_with_ambiguous_entries(tmp_path: Path) -> No
         resolve_script(manifest, tmp_path)
 
 
+def test_script_backend_rejects_a_symlinked_dir_entry_escaping_the_directory(
+    tmp_path: Path,
+) -> None:
+    """A directory's own listing is a fresh filesystem lookup the loader never
+    validated — a matching member must not be a symlink to outside it."""
+    outside = tmp_path / "outside.sh"
+    outside.write_text("#!/bin/sh\necho pwned\n", encoding="utf-8")
+    pkg = tmp_path / "registry" / "release"
+    pkg.mkdir(parents=True)
+    (pkg / "release.py").symlink_to(outside)
+    manifest = Manifest(id="release", data={"cli": "release"}, entry_path=pkg)
+    with pytest.raises(InstallError, match="escapes"):
+        resolve_script(manifest, tmp_path)
+
+
 def test_script_backend_probe(tmp_path: Path) -> None:
     entry = tmp_path / "deploy.py"
     entry.write_text("#!/usr/bin/env python3\n", encoding="utf-8")

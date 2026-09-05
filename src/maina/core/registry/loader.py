@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from maina.core.errors import ManifestError
+from maina.core.subprocess_utils import resolve_within
 
 from . import ids as registry_ids
 from .common import MANIFEST_PREFIX
@@ -400,8 +401,7 @@ class Registry:
             else registry_ids.family_dir(decl_path, decl_root, family_dirname)
         )
         candidate = base / ref
-        if not candidate.resolve().is_relative_to(base.resolve()):
-            raise ManifestError(f"{ref!r} escapes {base}")
+        resolve_within(candidate, base, error_cls=ManifestError, message=f"{ref!r} escapes {base}")
         return candidate
 
     @staticmethod

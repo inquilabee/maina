@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from maina.core.errors import InstallError
 from maina.core.protocols import InstallerBackend
+from maina.core.subprocess_utils import resolve_within
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -63,7 +64,13 @@ class ScriptBackend(InstallerBackend):
     @staticmethod
     def _entry_file(path: Path, tool_id: str) -> Path:
         """*path* itself if it is a file; otherwise the one ``<dirname>.*``
-        file inside it that is the directory's entry point."""
+        file inside it that is the directory's entry point.
+
+        The loader already checked ``path`` itself stays inside the registry
+        root, but a directory's own listing is a fresh filesystem lookup — a
+        member matched here could be a symlink pointing outside ``path``, so
+        it gets its own containment check before anything execs it.
+        """
         if path.is_file():
             return path
         matches = [p for p in path.iterdir() if p.is_file() and p.stem == path.name]
@@ -73,7 +80,14 @@ class ScriptBackend(InstallerBackend):
                 f"named {path.name!r} (any/no extension) as its entry point; found "
                 f"{len(matches)}"
             )
-        return matches[0]
+        entry = matches[0]
+        resolve_within(
+            entry,
+            path,
+            error_cls=InstallError,
+            message=f"{tool_id!r}: script entry {entry} escapes {path}",
+        )
+        return entry
 
     @staticmethod
     def _require_shebang(path: Path, tool_id: str) -> None:
