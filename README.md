@@ -68,8 +68,10 @@ set `MAINA_ALLOW_MISE_BOOTSTRAP=1`; otherwise it raises `RuntimeProvisionError`.
 
 `extends` parents use registry ids (no `.yaml` suffix), e.g. `extends: kubectl`
 (not `kubectl-kubectl`). Family roots resolve from `kubectl/kubectl.yaml` as id
-`kubectl`. See `examples/local_tool/` (overlay registry) and
-`examples/parsers_dirs/` (custom parser via `parsers_dirs`).
+`kubectl`. See `examples/local_tool/` (overlay registry),
+`examples/parsers_dirs/` (custom parser via `parsers_dirs`), and
+`examples/scripts_dir/` (a repo-local script or script package via
+`install.backend: script`).
 
 If a `base.yaml` exists in a registry root it auto-extends every tool **in that
 same root** — put shared defaults (e.g. org-wide runtime pins) there. It carries
@@ -120,7 +122,8 @@ A download whose SHA-256 does not match is rejected before `chmod +x`.
   (`git remote` lists remotes).
 - See `examples/catalog/` for a worked catalog (`github`, `npm`, `pip`,
   `output.from_file`, a subcommand family), `examples/local_tool/` for an
-  overlay registry, and `examples/parsers_dirs/` for a custom parser.
+  overlay registry, `examples/parsers_dirs/` for a custom parser, and
+  `examples/scripts_dir/` for the `script` backend.
 
 ## Setup
 
@@ -128,6 +131,7 @@ A download whose SHA-256 does not match is rejected before `chmod +x`.
 uv sync
 uv run python examples/demo.py
 uv run python examples/parsers_dirs/demo.py
+uv run python examples/scripts_dir/demo.py
 uv run python examples/catalog/demo.py    # worked catalog: github + npm + from_file + family
 ```
 

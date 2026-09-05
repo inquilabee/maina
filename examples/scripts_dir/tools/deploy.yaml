@@ -1,0 +1,10 @@
+# A single-file script tool: scripts/deploy.sh is chmod +x'd and exec'd
+# directly at resolve time — its own shebang picks the interpreter.
+cli: deploy
+install:
+  backend: script
+  entry: deploy.sh
+args:
+  target: {positional: true, required: true}
+output:
+  success_codes: [0]

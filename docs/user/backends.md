@@ -1,8 +1,8 @@
 # Install backends
 
 An install backend turns a manifest's `install:` block into an executable path
-plus a process environment. maina ships three; you can
-[register your own](extending.md#custom-install-backends).
+plus a process environment. maina ships five (`path`, `github`, `npm`, `pip`,
+`script`); you can [register your own](extending.md#custom-install-backends).
 
 ## Resolution flow
 
@@ -27,6 +27,33 @@ binary is not found.
 install:
   backend: path
 ```
+
+## `script`
+
+Runs a repo-local file or directory named by `install.entry`. A bare name
+resolves under the nearest `scripts/` directory walking up from the manifest
+that declared it (the same family convention `parser:` uses for a colocated
+`parsers/*.py`); a `/`-containing entry resolves under the manifest's
+registry root instead.
+
+```yaml
+install:
+  backend: script
+  entry: deploy.sh
+```
+
+No install, no cache — the entry is chmod +x'd and exec'd directly, and its
+own shebang (`#!/usr/bin/env python3`, `#!/usr/bin/env bash`, ...) picks the
+interpreter. A `requires:` pin is already on `PATH` by the time this runs
+(the installer composes `requires:` env before dispatching to any backend),
+so the shebang resolves to the pinned interpreter without maina invoking it
+explicitly.
+
+`entry` can also name a directory — a small script package. It must contain
+exactly one file named like the directory itself (any or no extension, e.g.
+`release/release.py`), which is the entry point; sibling files in the
+directory are free to import or source each other however their language
+allows. See `examples/scripts_dir/`.
 
 ## `github`
 

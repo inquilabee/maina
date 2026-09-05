@@ -182,7 +182,7 @@ install:
 
 | Field | Backends | Meaning |
 | --- | --- | --- |
-| `backend` | all | `path` (default), `github`, `npm`, `pip`, or a registered custom name. |
+| `backend` | all | `path` (default), `github`, `npm`, `pip`, `script`, or a registered custom name. |
 | `repo` | `github` | `owner/name` GitHub repository (validated at load). |
 | `assets` | `github` | Platform key (`linux-x86_64`, `macos-arm64`, ...) to release asset name (each a single safe path segment). An entry here overrides `asset_template` for that platform. |
 | `asset_template` | `github` | One pattern for every platform's asset name, instead of repeating six near-identical lines. Placeholders are `{version}`, `{os}`, `{arch}` — anything else is rejected at load rather than surfacing as a 404 mid-install. |
@@ -191,6 +191,7 @@ install:
 | `tag` | `github` | Release tag (a single safe path segment). Defaults to `version`. `latest` resolves the newest release **once**: the download is cached under that tag, so later runs keep using it until `maina clean <id>`. Pin a real tag for a reproducible catalog. |
 | `sha256` | `github` | Optional platform key to hex digest. A mismatch aborts before `chmod +x`. |
 | `package` | `npm`, `pip` | Package name to install. For `npm`, validated at load (`@scope/name` allowed). For `pip`, the distribution that provides the `cli:` console script. Defaults to `cli`. |
+| `entry` | `script` | File or directory to run, resolved at load time: a bare name under the nearest family `scripts/` dir, a `/`-containing path under the registry root. See [install backends](backends.md#script). |
 | `allow_scripts` | `npm` | `true` lets `npm install` run the package's lifecycle scripts. Default `false` (`--ignore-scripts`). |
 | `allow_sdist` | `pip` | `true` lets pip build a source distribution, which executes the package's own `setup.py`. Default `false` (`--only-binary=:all:`) — the pip analogue of `allow_scripts`. |
 | `allow_any_executable` | `github` | `true` lets extraction fall back to the archive's single executable member when no member is named `binary`. Default `false` — otherwise a missing named member is a hard error, so maina never runs a binary the manifest did not name. |

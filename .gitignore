@@ -38,6 +38,13 @@ adr/
 scripts/
 todos.md
 
+# `scripts/` above is this repo's own local dev-script dir, not the maina
+# family-dir convention (install.backend: script's install.entry: resolution
+# expects a directory literally named scripts/ next to the manifest) — carve
+# the worked example back out.
+!examples/scripts_dir/tools/scripts/
+!examples/scripts_dir/tools/scripts/**
+
 # cache files and dir
 *cache*
 

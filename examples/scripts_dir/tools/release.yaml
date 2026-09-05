@@ -1,0 +1,9 @@
+# A directory script tool: scripts/release/ must contain exactly one file
+# named like the directory itself (release.py here) as its entry point;
+# sibling files (helper.py) are free to import it however Python allows.
+cli: release
+install:
+  backend: script
+  entry: release
+output:
+  success_codes: [0]
