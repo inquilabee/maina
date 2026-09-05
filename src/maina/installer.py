@@ -77,8 +77,10 @@ class Installer:
 
     @staticmethod
     @contextmanager
-    def install_dir_lock(dest: Path) -> Iterator[None]:
-        """Exclusive lock for a cache install directory (parallel prepare safety).
+    def _dir_lock(dest: Path) -> Iterator[None]:
+        """Exclusive lock for *dest* (parallel prepare safety), shared machinery
+        for both a tool's own install dir and a shared runtime's provisioning
+        dir (see :meth:`install_dir_lock` / :meth:`runtime_lock`).
 
         Uses ``_fcntl.flock`` on POSIX; where ``fcntl`` is unavailable (Windows)
         the body runs without the advisory lock.
@@ -86,11 +88,11 @@ class Installer:
         dest.mkdir(parents=True, exist_ok=True)
         if _fcntl is None:
             warnings.warn(
-                "install_dir_lock: fcntl is unavailable on this platform (Windows) — "
+                "install lock: fcntl is unavailable on this platform (Windows) — "
                 "concurrent prepare() calls have no protection against interleaved writes "
                 "into the same cache directory",
                 RuntimeWarning,
-                stacklevel=2,
+                stacklevel=3,
             )
             yield
             return
@@ -101,6 +103,28 @@ class Installer:
                 yield
             finally:
                 _fcntl.flock(lock_file.fileno(), _fcntl.LOCK_UN)
+
+    @classmethod
+    @contextmanager
+    def install_dir_lock(cls, dest: Path) -> Iterator[None]:
+        """Exclusive lock for a cache install directory (parallel prepare safety)."""
+        with cls._dir_lock(dest):
+            yield
+
+    @classmethod
+    @contextmanager
+    def runtime_lock(cls, cache_root: Path, runtime: str, version: str) -> Iterator[None]:
+        """Exclusive lock for one ``requires:`` runtime pin's provisioning.
+
+        Two manifests pinning the same ``runtime@version`` (even under
+        different tool ids, so a per-tool :meth:`install_dir_lock` would not
+        overlap) must not race a shared ``mise install`` into the same
+        ``mise-data`` directory. Keyed under its own namespace, distinct from
+        ``tools/``, so it can never nest with (or deadlock against)
+        ``install_dir_lock`` taken by the same call path.
+        """
+        with cls._dir_lock(cache_root / "runtimes" / f"{runtime}-{version}"):
+            yield
 
     def register_backends(
         self,
@@ -209,7 +233,8 @@ class Installer:
         if not pins:
             return env
         for runtime, version in pins.items():
-            bin_dir = self.language.ensure(runtime, version, base_env=env)
+            with self.runtime_lock(self.cache_root, runtime, version):
+                bin_dir = self.language.ensure(runtime, version, base_env=env)
             InstallContext.prepend_path(env, bin_dir)
         env["MISE_DATA_DIR"] = str(self.cache_root / "mise-data")
         return env

@@ -6,6 +6,8 @@ import gzip
 import io
 import subprocess
 import tarfile
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -329,6 +331,52 @@ def test_install_dir_lock_exclusive(tmp_path: Path) -> None:
     dest = tmp_path / "tools" / "x" / "1"
     with Installer.install_dir_lock(dest):
         assert (dest / ".maina-install.lock").is_file()
+
+
+def test_runtime_lock_creates_a_lock_file(tmp_path: Path) -> None:
+    with Installer.runtime_lock(tmp_path, "node", "20"):
+        assert (tmp_path / "runtimes" / "node-20" / ".maina-install.lock").is_file()
+
+
+def test_compose_requires_env_serializes_same_runtime_pin(tmp_path: Path) -> None:
+    """F22: two manifests pinning the same runtime must not race
+    ``language.ensure()`` into the shared mise-data directory."""
+    active = 0
+    overlap = threading.Event()
+    guard = threading.Lock()
+
+    class SlowLanguage:
+        def ensure(
+            self, runtime: str, version: str, *, base_env: dict[str, str] | None = None
+        ) -> Path:
+            nonlocal active
+            _ = base_env
+            with guard:
+                active += 1
+                if active > 1:
+                    overlap.set()
+            time.sleep(0.05)
+            with guard:
+                active -= 1
+            return tmp_path / "bin" / runtime / version
+
+        def env(
+            self, runtime: str, version: str, *, base_env: dict[str, str] | None = None
+        ) -> dict[str, str]:
+            _ = (runtime, version, base_env)
+            raise NotImplementedError
+
+    installer = Installer(cache_root=tmp_path, registry=Registry([]), language=SlowLanguage())
+    requires = RequiresSpec.from_mapping({"node": "20"}, tool_id="t")
+    threads = [
+        threading.Thread(target=installer._compose_requires_env, args=(requires, {}))
+        for _ in range(4)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert not overlap.is_set()
 
 
 def test_toolrunner_timeout_raises_tool_timeout_error(tmp_path: Path) -> None:
