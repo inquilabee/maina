@@ -8,7 +8,7 @@ import json
 import sys
 import warnings
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any
 
 from maina.core.errors import ManifestError, ParseError
 from maina.core.protocols import Parser
@@ -96,6 +96,12 @@ class ParserResolver:
 
     def __init__(self, *, generals: dict[str, Parser] | None = None) -> None:
         self._generals: dict[str, Parser] = dict(generals) if generals is not None else {}
+        # Instance-scoped, not a ClassVar: a module cache shared across every
+        # ParserResolver (and every Runtime) in the process would grow without
+        # bound in a long-lived process loading many parsers/*.py files across
+        # Registry.refresh() calls. Scoping it here means it lives and dies
+        # with this resolver.
+        self._module_cache: dict[tuple[str, int, int], Parser] = {}
 
     def bind(
         self,
@@ -164,17 +170,14 @@ class ParserResolver:
             raise ManifestError(f"parser {name!r} must be a Parser callable")
         return parser(fn)
 
-    _MODULE_CACHE: ClassVar[dict[tuple[str, int, int], Parser]] = {}
-
-    @classmethod
-    def load_parser_module(cls, path: Path) -> Parser:
+    def load_parser_module(self, path: Path) -> Parser:
         """Load ``parse`` from a registry ``parsers/*.py`` file (cached by mtime/size)."""
         try:
             stat = path.stat()
         except OSError as exc:
             raise ManifestError(f"cannot load parser module {path}: {exc}") from exc
         key = (str(path), stat.st_mtime_ns, stat.st_size)
-        if (cached := cls._MODULE_CACHE.get(key)) is not None:
+        if (cached := self._module_cache.get(key)) is not None:
             return cached
         # Hash the full path in so two ``parsers/`` dirs with a same-named file
         # (``add.py``) get distinct ``sys.modules`` entries.
@@ -194,7 +197,7 @@ class ParserResolver:
             raise ParseError(f"parser module {path} failed to import: {exc}") from exc
         parse = getattr(module, "parse", None)
         resolved = ParserResolver._require_parser(str(path), parse)
-        cls._MODULE_CACHE[key] = resolved
+        self._module_cache[key] = resolved
         return resolved
 
     # Back-compat aliases for call sites that still reference classmethods.
@@ -232,7 +235,7 @@ class BoundParser:
                 else parser(self.override)
             )
         if self.parser_path is not None:
-            return ParserResolver.load_parser_module(self.parser_path)
+            return self._registry.load_parser_module(self.parser_path)
         if self.parser_ref is None:
             return None
         if not self._registry.is_general(self.parser_ref):

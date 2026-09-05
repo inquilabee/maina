@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 
@@ -10,9 +10,6 @@ from maina.core.errors import ManifestError, ParseError
 from maina.core.parsers import ParserResolver, builtin_generals
 from maina.core.result import ToolResult
 from maina.runtime import Runtime
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def make_result(raw: str = "") -> ToolResult:
@@ -158,8 +155,21 @@ def test_same_stem_parser_modules_are_distinct(tmp_path: Path) -> None:
     for path, tag in ((a, "A"), (b, "B")):
         path.parent.mkdir(parents=True)
         path.write_text(f"def parse(raw, result):\n    return {tag!r}\n", encoding="utf-8")
-    assert ParserResolver.load_parser_module(a)("x", make_result()) == "A"
-    assert ParserResolver.load_parser_module(b)("x", make_result()) == "B"
+    resolver = ParserResolver()
+    assert resolver.load_parser_module(a)("x", make_result()) == "A"
+    assert resolver.load_parser_module(b)("x", make_result()) == "B"
+
+
+def test_module_cache_is_scoped_to_the_resolver_instance(tmp_path: Path) -> None:
+    """F37: the module cache must not be a process-wide ClassVar — a second,
+    independent ParserResolver must not see the first one's cached entry."""
+    path = tmp_path / "p.py"
+    path.write_text("def parse(raw, result):\n    return 'ONE'\n", encoding="utf-8")
+    first = ParserResolver()
+    first.load_parser_module(path)
+    assert path in {Path(key[0]) for key in first._module_cache}
+    second = ParserResolver()
+    assert not second._module_cache
 
 
 def test_parser_name_replace() -> None:
