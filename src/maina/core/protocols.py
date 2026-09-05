@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
@@ -77,15 +78,25 @@ class InstallContext:
         return env
 
 
-@runtime_checkable
-class InstallerBackend(Protocol):
-    """One install.backend name in manifests."""
+class InstallerBackend(ABC):
+    """One install.backend name in manifests.
+
+    A real base class (not a ``Protocol``): backends declare conformance by
+    explicit inheritance, and Python enforces it — a subclass that forgets
+    ``resolve`` or ``name`` fails at instantiation with a clear
+    ``TypeError``, not a confusing ``AttributeError`` the first time a
+    manifest dispatches to it. ``probe`` stays a plain optional method
+    (undeclared here): :class:`~maina.installer.Installer` treats a backend
+    without one as always "not satisfied" rather than requiring every
+    backend to implement a side-effect-free check.
+    """
 
     @property
+    @abstractmethod
     def name(self) -> str:
         """Dispatch key matching ``install.backend`` in YAML."""
-        ...
 
+    @abstractmethod
     def resolve(
         self,
         manifest: Manifest,
@@ -95,4 +106,3 @@ class InstallerBackend(Protocol):
         ctx: InstallContext,
     ) -> tuple[str, dict[str, str]]:
         """Return ``(executable, env)``. May mutate env (e.g. PATH)."""
-        ...

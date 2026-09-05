@@ -13,7 +13,7 @@ import warnings
 import zipfile
 from contextlib import suppress
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Any, Literal
+from typing import IO, TYPE_CHECKING, Literal, Protocol
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -32,6 +32,16 @@ CHUNK_SIZE = 64 * 1024
 REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 MAX_REDIRECT_HOPS = 5
 TarReadMode = Literal["r:gz", "r:xz"]
+
+
+class DecompressingReader(Protocol):
+    """A ``gzip.GzipFile`` / ``lzma.LZMAFile``-shaped chunked byte reader.
+
+    The two don't share a common typed base in ``typing``, so ``_capped_copy``
+    names the one method it actually calls.
+    """
+
+    def read(self, size: int = ..., /) -> bytes: ...
 
 
 class ArchiveFetcher:
@@ -217,17 +227,6 @@ class ArchiveFetcher:
         with tarfile.open(archive, mode) as tar:
             cls._extract_tar_members(tar, dest)
 
-    # Back-compat aliases for callers/tests that named the old helpers.
-    @classmethod
-    def safe_extract_tar_gz(cls, archive: Path, dest: Path) -> None:
-        """Extract a .tar.gz archive after rejecting path-escape members."""
-        cls.safe_extract_tar(archive, dest, mode="r:gz")
-
-    @classmethod
-    def safe_extract_tar_xz(cls, archive: Path, dest: Path) -> None:
-        """Extract a .tar.xz archive after rejecting path-escape members."""
-        cls.safe_extract_tar(archive, dest, mode="r:xz")
-
     @classmethod
     def _extract_tar_members(cls, tar: tarfile.TarFile, dest: Path) -> None:
         """Validate then extract every member of an open tar archive.
@@ -325,7 +324,7 @@ class ArchiveFetcher:
         tmp.replace(out)
 
     @staticmethod
-    def _capped_copy(src: Any, dst: IO[bytes], name: str) -> None:
+    def _capped_copy(src: DecompressingReader, dst: IO[bytes], name: str) -> None:
         """Stream *src* (a decompressing reader) to *dst*, aborting past the cap."""
         written = 0
         while chunk := src.read(1 << 20):

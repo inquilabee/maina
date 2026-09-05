@@ -15,7 +15,9 @@ from maina.core.subprocess_utils import run_or_wrap
 # shell is opt-in: set MAINA_ALLOW_MISE_BOOTSTRAP=1 (or put `mise` on PATH).
 BOOTSTRAP_ENV = "MAINA_ALLOW_MISE_BOOTSTRAP"
 # Pin the mise release the bootstrap installs (mise.run honours MISE_VERSION).
-PINNED_MISE_VERSION = "v2025.1.0"
+# Bump periodically — verified current via `gh api repos/jdx/mise/releases/latest`
+# (or https://github.com/jdx/mise/releases/latest) at the time this was last set.
+PINNED_MISE_VERSION = "v2026.9.1"
 # subprocess timeouts (seconds) for runtime provisioning.
 MISE_INSTALL_TIMEOUT = 600
 MISE_QUERY_TIMEOUT = 60
@@ -105,6 +107,14 @@ class MiseRuntime:
         No install and no bootstrap, so a readiness check (``prepare --check``)
         can compose the PATH a real run would see without provisioning anything.
         ``None`` means "not installed here", never "installing it failed".
+
+        This check on mise's own presence is *not* redundant with
+        ``mise_bin()``'s identical-looking one, despite appearances: when
+        ``MAINA_ALLOW_MISE_BOOTSTRAP`` is set in the environment (plausible in
+        CI), calling ``mise_bin()`` directly when mise is absent would run the
+        real ``curl | sh`` bootstrap — exactly the side effect this probe must
+        never have. Returning ``None`` here first means ``mise_bin()`` (and
+        its bootstrap branch) is only ever reached when mise already resolves.
         """
         cached = (self.cache_root / "mise" / "bin" / "mise").is_file()
         if not shutil.which("mise") and not cached:

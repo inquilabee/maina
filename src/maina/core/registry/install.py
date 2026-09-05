@@ -98,6 +98,11 @@ class InstallSpec:
             ),
         )
 
+    # 8 bytes (64 bits): wide enough that a collision between two distinct
+    # specs sharing a cache directory is not a realistic catalog-scale risk
+    # (5 bytes/40 bits was the original width).
+    IDENTITY_DIGEST_SIZE: ClassVar[int] = 8
+
     def identity_key(self, *, extra: tuple[Any, ...] = ()) -> str:
         """Short stable hash of what this spec fetches (repo/tag/asset/sha256).
 
@@ -123,7 +128,9 @@ class InstallSpec:
                 extra,
             )
         )
-        return hashlib.blake2s(payload.encode("utf-8"), digest_size=5).hexdigest()
+        return hashlib.blake2s(
+            payload.encode("utf-8"), digest_size=self.IDENTITY_DIGEST_SIZE
+        ).hexdigest()
 
     # npm package: optional @scope/, then a name of url-safe lowercase chars.
     _NPM_NAME_RE = re.compile(r"^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*$")

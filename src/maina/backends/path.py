@@ -6,23 +6,21 @@ import shutil
 from typing import TYPE_CHECKING
 
 from maina.core.errors import InstallError
+from maina.core.protocols import InstallerBackend
 
 if TYPE_CHECKING:
     from maina.core.protocols import InstallContext
     from maina.core.registry import Manifest
 
 
-class PathBackend:
+class PathBackend(InstallerBackend):
     """Resolve a CLI from PATH (``install.backend: path``)."""
-
-    def __init__(self) -> None:
-        self._which = shutil.which
 
     @property
     def name(self) -> str:
         return "path"
 
-    def resolve(
+    def resolve(  # ruff:ignore[no-self-use] - must be an instance method, overrides InstallerBackend.resolve
         self,
         manifest: Manifest,
         *,
@@ -31,12 +29,13 @@ class PathBackend:
         ctx: InstallContext,
     ) -> tuple[str, dict[str, str]]:
         del version, ctx
-        found = self._which(manifest.cli, path=env.get("PATH"))
+        found = shutil.which(manifest.cli, path=env.get("PATH"))
         if not found:
             raise InstallError(f"{manifest.cli!r} not found on PATH")
         return found, env
 
-    def probe(self, manifest: Manifest, *, version: str, ctx: InstallContext) -> bool:
+    @staticmethod
+    def probe(manifest: Manifest, *, version: str, ctx: InstallContext) -> bool:
         """True when the CLI already resolves on PATH (no side effects).
 
         Searches ``ctx.probe_path`` — the ambient PATH plus the bin dirs of any
@@ -44,4 +43,4 @@ class PathBackend:
         runtime is not reported ``missing`` by a check that ``resolve`` passes.
         """
         del version
-        return self._which(manifest.cli, path=ctx.probe_path) is not None
+        return shutil.which(manifest.cli, path=ctx.probe_path) is not None

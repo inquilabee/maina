@@ -10,6 +10,7 @@ import pytest
 from helpers import write_yaml
 from maina.backends import PathBackend
 from maina.core.errors import InstallError, UnsupportedPlatformError
+from maina.core.protocols import InstallerBackend
 from maina.core.registry import Manifest, Registry
 from maina.installer import Installer
 from maina.runtime import Runtime, register
@@ -35,7 +36,7 @@ class FakeLanguage:
         return {"PATH": str(self.cache_root)}
 
 
-class MockBackend:
+class MockBackend(InstallerBackend):
     """InstallerBackend that records resolve calls."""
 
     def __init__(self, name: str = "mock") -> None:
@@ -90,6 +91,26 @@ def test_installer_backend_replace(tmp_path: Path) -> None:
     installer.resolve(load_backend_manifest(tmp_path, backend="path"))
     assert first.calls == []
     assert second.calls == ["demo"]
+
+
+def test_register_backends_rejects_a_backend_missing_the_protocol(tmp_path: Path) -> None:
+    """A custom backend that doesn't subclass InstallerBackend fails at
+    registration, with a clear message — not an AttributeError the first
+    time a manifest dispatches to it."""
+    from maina.core.errors import RegisterError
+
+    class NotABackend:
+        @property
+        def name(self) -> str:
+            return "broken"
+
+    with pytest.raises(RegisterError, match="is not an InstallerBackend subclass"):
+        Installer(
+            cache_root=tmp_path / "cache",
+            language=FakeLanguage(tmp_path / "cache"),
+            registry=Registry([]),
+            backends=[NotABackend()],  # type: ignore
+        )
 
 
 def test_unknown_backend_errors(tmp_path: Path) -> None:
@@ -190,51 +211,6 @@ def test_installer_composes_multi_runtime_path(tmp_path: Path) -> None:
     assert str(tmp_path / "cache" / "bins" / "python" / "3.14" / "bin") in path
     assert str(tmp_path / "cache" / "bins" / "node" / "latest" / "bin") in path
     assert env["MISE_DATA_DIR"] == str(tmp_path / "cache" / "mise-data")
-
-
-def test_npm_fallback_preserves_composed_python_path(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """npm ensure must prepend onto composed env, not replace PATH via env()."""
-    from maina.backends.npm import NpmBackend
-    from maina.core.protocols import InstallContext
-    from maina.core.registry import Manifest, RequiresSpec
-
-    python_bin = tmp_path / "cache" / "bins" / "python" / "3.14" / "bin"
-    node_bin = tmp_path / "cache" / "bins" / "node" / "latest" / "bin"
-    python_bin.mkdir(parents=True)
-    node_bin.mkdir(parents=True)
-
-    @dataclass
-    class TrackingLanguage:
-        cache_root: Path
-
-        def ensure(self, runtime: str, version: str, **_kw: object) -> Path:
-            return self.cache_root / "bins" / runtime / version / "bin"
-
-        def env(self, runtime: str, version: str, **_kw: object) -> dict[str, str]:
-            # Simulates MiseRuntime.env: rebuilds PATH from a clean base.
-            del runtime, version
-            return {"PATH": "/usr/bin", "MISE_DATA_DIR": "wiped"}
-
-    def fake_which(cmd: str, path: str | None = None) -> str | None:
-        del path
-        return None if cmd == "node" else "/usr/bin/true"
-
-    monkeypatch.setattr("maina.backends.npm.shutil.which", fake_which)
-    env = {"PATH": f"{python_bin}:/usr/bin", "OTHER": "keep"}
-    lang = TrackingLanguage(tmp_path / "cache")
-    ctx = InstallContext(cache_root=tmp_path / "cache", language=lang)
-    manifest = Manifest(
-        id="prettier",
-        data={"cli": "prettier"},
-        requires=RequiresSpec(runtimes={"python": "3.14"}),
-    )
-    NpmBackend._ensure_node_on_path(manifest, env, ctx)
-    assert str(python_bin) in env["PATH"]
-    assert str(node_bin) in env["PATH"]
-    assert env["OTHER"] == "keep"
-    assert env.get("MISE_DATA_DIR") != "wiped"
 
 
 def test_prepare_ids_rejects_explicit_abstract(tmp_path: Path) -> None:
@@ -437,7 +413,7 @@ def test_check_ids_is_batch_resilient_to_a_probe_raising_oserror(tmp_path: Path)
     loop) must land in failures like any other bad id — not escape check_ids
     and blank the report for every other, healthy id."""
 
-    class FlakyBackend:
+    class FlakyBackend(InstallerBackend):
         @property
         def name(self) -> str:
             return "flaky"
@@ -464,70 +440,6 @@ def test_check_ids_is_batch_resilient_to_a_probe_raising_oserror(tmp_path: Path)
     assert "permission denied" in failures["flaky"]
 
 
-def test_npm_install_rejects_out_of_cache_bin(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from maina.backends.npm import NpmBackend
-    from maina.core.errors import InstallError as MainaInstallError
-
-    outside = tmp_path / "global" / "bin" / "tool"
-    outside.parent.mkdir(parents=True)
-    outside.write_text("#!/bin/sh\n", encoding="utf-8")
-    prefix = tmp_path / "cache" / "tools" / "tool" / "1" / "npm"
-    link = prefix / "node_modules" / ".bin" / "tool"
-
-    def fake_npm_install(
-        npm: str, target: Path, pkg_spec: str, env: dict[str, str], **_kw: object
-    ) -> None:
-        del npm, pkg_spec, env
-        link_root = target / "node_modules" / ".bin"
-        link_root.mkdir(parents=True)
-        (link_root / "tool").symlink_to(outside)
-
-    monkeypatch.setattr(NpmBackend, "_npm_install", staticmethod(fake_npm_install))
-    monkeypatch.setattr("maina.backends.npm.shutil.which", lambda *_a, **_k: "/usr/bin/npm")
-    with pytest.raises(MainaInstallError, match="outside the tool cache"):
-        NpmBackend._install_package("tool", "tool", "1", prefix, link, {"PATH": "/usr/bin"})
-
-
-def test_npm_install_accepts_in_cache_bin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from maina.backends.npm import NpmBackend
-
-    prefix = tmp_path / "cache" / "tools" / "tool" / "1" / "npm"
-    link = prefix / "node_modules" / ".bin" / "tool"
-
-    def fake_npm_install(
-        npm: str, target: Path, pkg_spec: str, env: dict[str, str], **_kw: object
-    ) -> None:
-        del npm, pkg_spec, env
-        real = target / "node_modules" / "tool" / "bin" / "tool.js"
-        real.parent.mkdir(parents=True)
-        real.write_text("#!/usr/bin/env node\n", encoding="utf-8")
-        link.parent.mkdir(parents=True)
-        link.symlink_to(real)
-
-    monkeypatch.setattr(NpmBackend, "_npm_install", staticmethod(fake_npm_install))
-    monkeypatch.setattr("maina.backends.npm.shutil.which", lambda *_a, **_k: "/usr/bin/npm")
-    result = NpmBackend._install_package("tool", "tool", "1", prefix, link, {"PATH": "/usr/bin"})
-    assert result == link
-    assert (prefix / "package.json").is_file()
-
-
-def test_npm_install_timeout_is_wrapped_as_install_error(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    import subprocess
-
-    from maina.backends.npm import NpmBackend
-
-    def fake_run(argv: list[str], **_kw: object) -> None:
-        raise subprocess.TimeoutExpired(cmd=argv, timeout=600)
-
-    monkeypatch.setattr("maina.core.subprocess_utils.subprocess.run", fake_run)
-    with pytest.raises(InstallError, match="timed out after"):
-        NpmBackend._npm_install("/usr/bin/npm", tmp_path, "tool@1", {"PATH": "/usr/bin"})
-
-
 def test_resolve_rejects_unsupported_platform(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -552,47 +464,3 @@ def test_resolve_rejects_unsupported_platform(
     prepared, failures = installer.prepare_ids(["maconly"])
     assert prepared == []
     assert list(failures) == ["maconly"]
-
-
-def test_check_searches_the_path_a_pinned_runtime_would_compose(tmp_path: Path) -> None:
-    """A ``path`` tool provided by a ``requires:`` runtime must not read as
-    ``missing`` in a check that ``run`` would pass — ``resolve`` searches the
-    composed PATH, so the probe has to as well. Still side-effect free: the bin
-    dir comes from a lookup that installs nothing.
-    """
-    runtime_bin = tmp_path / "node-bin"
-    runtime_bin.mkdir()
-    exe = runtime_bin / "only-in-the-runtime"
-    exe.write_text("#!/bin/sh\n", encoding="utf-8")
-    exe.chmod(0o755)
-
-    root = tmp_path / "reg"
-    write_yaml(
-        root / "t.yaml",
-        {
-            "cli": "only-in-the-runtime",
-            "install": {"backend": "path"},
-            "requires": {"node": "22"},
-        },
-    )
-
-    installs: list[tuple[str, str]] = []
-
-    class InstalledLanguage(FakeLanguage):
-        def ensure(self, runtime: str, version: str, **_kw: object) -> Path:
-            installs.append((runtime, version))
-            return runtime_bin
-
-        def present_bin_dir(self, runtime: str, version: str) -> Path | None:
-            del runtime, version
-            return runtime_bin
-
-    installer = Installer(
-        cache_root=tmp_path / "cache",
-        language=InstalledLanguage(tmp_path / "cache"),
-        registry=Registry(root),
-        backends=[PathBackend()],
-    )
-    satisfied, missing, failures = installer.check_ids()
-    assert satisfied == ["t"], (missing, failures)
-    assert installs == []  # nothing was provisioned by the check

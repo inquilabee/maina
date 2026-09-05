@@ -17,7 +17,7 @@ except ImportError:  # pragma: no cover - Windows
     _fcntl = None
 
 from maina.core.envfilter import filter_env
-from maina.core.errors import InstallError, ManifestError, UnsupportedPlatformError
+from maina.core.errors import InstallError, ManifestError, RegisterError, UnsupportedPlatformError
 from maina.core.platform import current_platform
 from maina.core.protocols import (
     InstallContext,
@@ -85,6 +85,13 @@ class Installer:
         """
         dest.mkdir(parents=True, exist_ok=True)
         if _fcntl is None:
+            warnings.warn(
+                "install_dir_lock: fcntl is unavailable on this platform (Windows) — "
+                "concurrent prepare() calls have no protection against interleaved writes "
+                "into the same cache directory",
+                RuntimeWarning,
+                stacklevel=2,
+            )
             yield
             return
         lock_path = dest / ".maina-install.lock"
@@ -99,12 +106,26 @@ class Installer:
         self,
         backends: Mapping[str, InstallerBackend] | Sequence[InstallerBackend],
     ) -> None:
-        """Register backends; later entries replace the same ``name``."""
+        """Register backends; later entries replace the same ``name``.
+
+        Each backend must be an :class:`InstallerBackend` subclass, checked
+        here at registration — a custom backend that forgot to subclass it
+        (or left ``resolve``/``name`` unimplemented, which ``InstallerBackend``
+        being an ABC already refuses to instantiate) fails with a clear
+        message now, instead of an ``AttributeError`` the first time a
+        manifest actually dispatches to it.
+        """
         items = cast(
             "list[InstallerBackend]",
             list(backends.values()) if isinstance(backends, Mapping) else list(backends),
         )
         for backend in items:
+            if not isinstance(backend, InstallerBackend):
+                raise RegisterError(
+                    f"{backend!r} is not an InstallerBackend subclass "
+                    "(class Foo(InstallerBackend): ... with `name` and "
+                    "`resolve(manifest, *, version, env, ctx)` implemented)"
+                )
             self._backends[backend.name] = backend
 
     @staticmethod
@@ -189,7 +210,7 @@ class Installer:
             return env
         for runtime, version in pins.items():
             bin_dir = self.language.ensure(runtime, version, base_env=env)
-            env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
+            InstallContext.prepend_path(env, bin_dir)
         env["MISE_DATA_DIR"] = str(self.cache_root / "mise-data")
         return env
 

@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 
 from maina.backends.archive import ArchiveFetcher
 from maina.core.errors import InstallError
 from maina.core.platform import platform_key
+from maina.core.protocols import InstallerBackend
 from maina.core.registry.common import is_unsafe_segment
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from maina.core.protocols import InstallContext
     from maina.core.registry import Manifest
 
@@ -20,7 +23,7 @@ GITHUB_DOWNLOAD_HOSTS = frozenset(
 )
 
 
-class GithubBackend:
+class GithubBackend(InstallerBackend):
     """Download a GitHub release asset into the tool cache (``backend: github``)."""
 
     def __init__(self, fetcher: ArchiveFetcher | None = None) -> None:
@@ -82,7 +85,10 @@ class GithubBackend:
             sha256=manifest.install.sha256.get(key),
             allow_any_executable=manifest.install.allow_any_executable,
         )
-        self._finalize_binary(manifest.id, dest, dest_dir, binary, str(asset))
+        if not dest.is_file():
+            raise InstallError(
+                f"{manifest.id}: downloaded asset but {binary} missing in {dest_dir}"
+            )
         return dest
 
     @staticmethod
@@ -98,27 +104,10 @@ class GithubBackend:
         return repo, binary
 
     @staticmethod
-    def _finalize_binary(
-        tool_id: str,
-        dest: Path,
-        dest_dir: Path,
-        binary: str,
-        asset: str,
-    ) -> None:
-        """Rename bare assets and ensure the binary is executable."""
-        if not dest.is_file():
-            candidate = dest_dir / Path(asset).name
-            if candidate.is_file() and candidate.name != binary:
-                candidate.rename(dest)
-            if not dest.is_file():
-                raise InstallError(
-                    f"{tool_id}: downloaded asset but {binary} missing in {dest_dir}"
-                )
-        ArchiveFetcher.make_executable(dest)
-
-    @staticmethod
     def _release_url(repo: str, asset: str, *, tag: str | None) -> str:
         """Build a GitHub release download URL."""
-        latest = f"https://github.com/{repo}/releases/latest/download/{asset}"
-        pinned = f"https://github.com/{repo}/releases/download/{tag}/{asset}"
+        asset_quoted = quote(asset, safe="")
+        tag_quoted = quote(tag or "", safe="")
+        latest = f"https://github.com/{repo}/releases/latest/download/{asset_quoted}"
+        pinned = f"https://github.com/{repo}/releases/download/{tag_quoted}/{asset_quoted}"
         return pinned if tag and tag != "latest" else latest

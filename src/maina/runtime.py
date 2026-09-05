@@ -42,8 +42,15 @@ class RuntimeSession:
         return self.current
 
     def set(self, rt: Runtime) -> Runtime:
-        """Replace the active Runtime and return it."""
+        """Replace the active Runtime and return it.
+
+        Registers ``rt.close`` at exit too, matching :meth:`get`'s lazy
+        default — otherwise a ``Runtime`` installed explicitly via
+        ``use(rt)`` never gets its ``GithubBackend`` / ``requests.Session``
+        closed, unlike the one ``get()`` builds lazily.
+        """
         self.current = rt
+        atexit.register(rt.close)
         return rt
 
 
@@ -73,8 +80,6 @@ class Runtime:
             registry=self._registry,
             backends=[],
         )
-        if language is not None:
-            self._installer.language = language
 
     @property
     def registry(self) -> Registry:

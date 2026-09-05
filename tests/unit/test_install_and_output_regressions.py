@@ -11,8 +11,9 @@ import pytest
 from helpers import write_yaml
 from maina.backends import PathBackend
 from maina.core.argparser import ArgParser
-from maina.core.errors import InstallError, ManifestError
+from maina.core.errors import ManifestError
 from maina.core.parsers import ParserResolver, builtin_generals
+from maina.core.protocols import InstallerBackend
 from maina.core.registry import Registry
 from maina.installer import Installer
 from maina.runner import ToolRunner
@@ -113,7 +114,7 @@ def test_env_allow_reaches_install_env(tmp_path: Path, monkeypatch: pytest.Monke
     monkeypatch.setenv("MY_SECRET", "leak")
     seen: dict[str, dict[str, str]] = {}
 
-    class RecordingBackend:
+    class RecordingBackend(InstallerBackend):
         name = "rec"
 
         def resolve(
@@ -155,7 +156,7 @@ def test_env_allow_reaches_language_provider(
             del runtime, version, base_env
             return {"PATH": str(self.bin)}
 
-    class NoopBackend:
+    class NoopBackend(InstallerBackend):
         name = "noop"
 
         def resolve(
@@ -182,32 +183,6 @@ def test_env_allow_reaches_language_provider(
     assert recorded is not None
     assert "MY_SECRET" not in recorded
     assert "PATH" in recorded
-
-
-def test_npm_install_uses_ignore_scripts_by_default(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    import maina.core.subprocess_utils as subprocess_utils_mod
-    from maina.backends.npm import NpmBackend
-
-    calls: list[list[str]] = []
-
-    class _Result:
-        returncode = 0
-        stderr = ""
-
-    def fake_run(argv: list[str], **_kw: object) -> _Result:
-        calls.append(list(argv))
-        return _Result()
-
-    monkeypatch.setattr(subprocess_utils_mod.subprocess, "run", fake_run)
-    NpmBackend._npm_install("/usr/bin/npm", tmp_path / "x", "jscpd@1", {"PATH": "/usr/bin"})
-    assert "--ignore-scripts" in calls[0]
-    calls.clear()
-    NpmBackend._npm_install(
-        "/usr/bin/npm", tmp_path / "x", "jscpd@1", {"PATH": "/usr/bin"}, allow_scripts=True
-    )
-    assert "--ignore-scripts" not in calls[0]
 
 
 # --- argv expressiveness, output.from_file, and load-time validation ------------
@@ -404,93 +379,6 @@ def test_cli_json_split_keeps_dashdash_tail() -> None:
     head, tail = split_at_dashdash(["a=1", "--json", "--", "--json"])
     assert head == ["a=1", "--json"]
     assert tail == ["--json"]
-
-
-# --- runner robustness: timeouts, binary output, env composition ---------------
-
-
-def test_locate_binary_needs_the_named_member(tmp_path: Path) -> None:
-    from maina.backends.archive import ArchiveFetcher
-
-    tree = tmp_path / "tree"
-    tree.mkdir()
-    payload = tree / "payload.sh"
-    payload.write_text("#!/bin/sh\necho hi\n", encoding="utf-8")
-    payload.chmod(0o755)
-    # No member named "shellcheck" -> hard error, not "run the lone executable".
-    with pytest.raises(InstallError, match="not in archive"):
-        ArchiveFetcher._locate_binary(tree, "shellcheck")
-    # Opt in explicitly: the lone executable is accepted, with a warning.
-    with pytest.warns(RuntimeWarning, match="allow_any_executable"):
-        found = ArchiveFetcher._locate_binary(tree, "shellcheck", allow_any_executable=True)
-    assert found == payload
-
-
-def test_copy_raw_asset_rejects_unsupported_format(tmp_path: Path) -> None:
-    from maina.backends.archive import ArchiveFetcher
-
-    src = tmp_path / "tool.tar.bz2"
-    src.write_bytes(b"BZh9fake")
-    with pytest.raises(InstallError, match="unsupported asset format"):
-        ArchiveFetcher.copy_raw_asset(src, tmp_path / "out", name="tool.tar.bz2")
-
-
-def test_copy_raw_asset_caps_gz_decompression(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    import gzip
-
-    from maina.backends import archive as archive_mod
-    from maina.backends.archive import ArchiveFetcher
-
-    monkeypatch.setattr(archive_mod, "EXTRACT_MAX_BYTES", 4096)
-    src = tmp_path / "tool.gz"
-    src.write_bytes(gzip.compress(b"\0" * 100_000))  # ~100 KB from a tiny .gz
-    with pytest.raises(InstallError, match="decompresses past"):
-        ArchiveFetcher.copy_raw_asset(src, tmp_path / "out", name="tool.gz")
-
-
-def test_resolve_cache_root_is_absolute() -> None:
-    import pathlib
-
-    root = Runtime.resolve_cache_root(pathlib.Path("rel-cache-xyz"))
-    assert root.is_absolute()
-    root.rmdir()
-
-
-def test_run_bad_cwd_raises_tool_exec_error(tmp_path: Path) -> None:
-    from maina.core.errors import ToolExecError
-
-    reg = make_reg(
-        tmp_path,
-        {
-            "e.yaml": {
-                "cli": "echo",
-                "install": {"backend": "path"},
-                "output": {"success_codes": [0]},
-            }
-        },
-    )
-    runner = ToolRunner(reg.load("e"), installer=path_installer(tmp_path, reg))
-    with pytest.raises(ToolExecError, match="could not run"):
-        runner.run({}, cwd=str(tmp_path / "nope-does-not-exist"))
-
-
-def test_run_without_stdin_does_not_block(tmp_path: Path) -> None:
-    reg = make_reg(
-        tmp_path,
-        {
-            "c.yaml": {
-                "cli": "cat",
-                "install": {"backend": "path"},
-                "output": {"success_codes": [0]},
-            }
-        },
-    )
-    runner = ToolRunner(reg.load("c"), installer=path_installer(tmp_path, reg))
-    result = runner.run({}, timeout=5)
-    assert result.ok
-    assert result.raw == ""
 
 
 # --- introspection: describe(), argv(), and overlay adaptability ---------------

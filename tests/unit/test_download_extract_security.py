@@ -17,6 +17,7 @@ from helpers import write_yaml
 from maina.backends.archive import ArchiveFetcher
 from maina.backends.npm import NpmBackend
 from maina.core.errors import InstallError, MainaError, ToolTimeoutError
+from maina.core.protocols import InstallerBackend
 from maina.core.registry import InstallSpec, Manifest, Registry, RequiresSpec
 from maina.installer import Installer
 from maina.runner import ToolRunner
@@ -65,7 +66,7 @@ class RecordingFetcher(ArchiveFetcher):
         exe.chmod(0o755)
 
 
-class RecordingBackend:
+class RecordingBackend(InstallerBackend):
     def __init__(self) -> None:
         self.seen_env: dict[str, str] | None = None
 
@@ -343,7 +344,7 @@ def test_toolrunner_timeout_raises_tool_timeout_error(tmp_path: Path) -> None:
     )
     manifest = Registry(root).load("sleepy")
 
-    class Pathish:
+    class Pathish(InstallerBackend):
         @property
         def name(self) -> str:
             return "path"
@@ -385,7 +386,7 @@ def test_toolrunner_executor_smoke(tmp_path: Path) -> None:
     )
     manifest = Registry(root).load("echo")
 
-    class Pathish:
+    class Pathish(InstallerBackend):
         @property
         def name(self) -> str:
             return "path"

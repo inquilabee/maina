@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import atexit
 from typing import TYPE_CHECKING
 
 import pytest
@@ -24,6 +25,25 @@ def test_bootstrap_has_parsers_and_no_catalog() -> None:
     assert preferred.parsers.is_general("raw")
     # A caller-supplied catalog is what makes tools loadable.
     assert fixture_runtime().registry.load("jq").cli == "jq"
+
+
+def test_use_registers_atexit_close_for_an_explicit_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Runtime installed explicitly via use(rt) must get its close()
+    registered at exit too — get()'s lazily-built default already did this;
+    set() (what use() calls) did not."""
+    registered: list[object] = []
+    # Patch the real stdlib atexit module directly (imported here too): it's
+    # the same singleton object maina.runtime's own `import atexit` refers
+    # to, so this doesn't need to reach maina.runtime's own namespace at
+    # all — handy since maina/__init__.py's `from maina.runtime import ...
+    # runtime, use` rebinds the `maina.runtime` package attribute to that
+    # function, shadowing the submodule for any dotted-path lookup.
+    monkeypatch.setattr(atexit, "register", registered.append)
+    rt = Runtime()
+    maina.use(rt)
+    assert rt.close in registered
 
 
 def test_runtime_use_isolates() -> None:

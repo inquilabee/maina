@@ -7,6 +7,7 @@ import shutil
 from typing import TYPE_CHECKING
 
 from maina.core.errors import InstallError
+from maina.core.protocols import InstallerBackend
 from maina.core.subprocess_utils import resolve_within, run_or_wrap
 
 if TYPE_CHECKING:
@@ -16,7 +17,7 @@ if TYPE_CHECKING:
     from maina.core.registry import Manifest
 
 
-class NpmBackend:
+class NpmBackend(InstallerBackend):
     """Install an npm package into the tool cache (``install.backend: npm``)."""
 
     @property
@@ -167,7 +168,7 @@ class NpmBackend:
         ]
         if not allow_scripts:
             argv.append("--ignore-scripts")
-        argv.append(pkg_spec)
+        argv.extend(["--", pkg_spec])
         run_or_wrap(
             argv,
             env=env,

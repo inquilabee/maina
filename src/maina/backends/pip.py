@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from maina.core.errors import InstallError
+from maina.core.protocols import InstallerBackend
 from maina.core.subprocess_utils import resolve_within, run_or_wrap
 
 if TYPE_CHECKING:
@@ -17,7 +18,7 @@ if TYPE_CHECKING:
 PYTHON_NAMES = ("python3", "python")
 
 
-class PipBackend:
+class PipBackend(InstallerBackend):
     """Install a Python package into a per-tool venv (``install.backend: pip``).
 
     One venv per tool per version, under the tool's own cache directory — not a
