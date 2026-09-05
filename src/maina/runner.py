@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import contextlib
 import string
 import subprocess
-import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
@@ -16,6 +14,7 @@ from maina.core.envfilter import ESSENTIAL_ENV, filter_env
 from maina.core.errors import ArgError, ToolExecError, ToolOutputError, ToolTimeoutError
 from maina.core.parsers import ParserResolver
 from maina.core.result import ToolResult
+from maina.core.subprocess_utils import OutputCapExceededError, run_capped
 
 if TYPE_CHECKING:
     from maina.core.registry import Manifest
@@ -284,91 +283,34 @@ class ToolRunner:
         text: bool,
     ) -> subprocess.CompletedProcess[Any]:
         """Like ``subprocess.run(capture_output=True)``, but stdout/stderr are
-        each bounded at :data:`RUN_OUTPUT_MAX_BYTES`.
-
-        A tool that floods output used to buffer unbounded into this process
-        (``subprocess.run`` reads to EOF with no size limit). Two daemon
-        threads drain the pipes independently — reading both from the main
-        thread would deadlock once one pipe's OS buffer fills while the other
-        still has unread data. Crossing the cap kills the process and raises
-        :class:`ToolOutputError` (silently truncating and returning a
-        partial result as if the run had finished is exactly the class of
-        silent-wrong-result this codebase treats as a defect elsewhere).
+        each bounded at :data:`RUN_OUTPUT_MAX_BYTES` (see
+        :func:`~maina.core.subprocess_utils.run_capped`): a tool that floods
+        output used to buffer unbounded into this process (``subprocess.run``
+        reads to EOF with no size limit) — silently truncating and returning
+        a partial result as if the run had finished is exactly the class of
+        silent-wrong-result this codebase treats as a defect elsewhere, so
+        crossing the cap kills the process and raises :class:`ToolOutputError`
+        instead.
         """
         stdin_bytes = stdin.encode("utf-8") if isinstance(stdin, str) else stdin
-        proc = subprocess.Popen(
-            argv,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            stdin=subprocess.PIPE if stdin_bytes is not None else subprocess.DEVNULL,
-            cwd=cwd,
-            env=env,
-        )
-        out_buf, err_buf = bytearray(), bytearray()
-        overflowed = threading.Event()
-        out_thread = self._start_drain_thread(proc, proc.stdout, out_buf, overflowed)
-        err_thread = self._start_drain_thread(proc, proc.stderr, err_buf, overflowed)
         try:
-            self._write_stdin(proc, stdin_bytes)
-            returncode = proc.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
-            out_thread.join()
-            err_thread.join()
-            raise
-        out_thread.join()
-        err_thread.join()
-        if overflowed.is_set():
+            completed = run_capped(
+                argv,
+                env=env,
+                cwd=cwd,
+                timeout=timeout,
+                stdin=stdin_bytes,
+                max_bytes=RUN_OUTPUT_MAX_BYTES,
+                chunk_size=DRAIN_CHUNK_SIZE,
+            )
+        except OutputCapExceededError as exc:
             raise ToolOutputError(
-                f"{self.manifest.id}: stdout/stderr exceeded the {RUN_OUTPUT_MAX_BYTES} byte cap",
+                f"{self.manifest.id}: stdout/stderr exceeded the {exc.max_bytes} byte cap",
                 tool=self.manifest.id,
                 command=argv,
-            )
-        return self._completed_process(argv, returncode, out_buf, err_buf, text=text)
-
-    @classmethod
-    def _start_drain_thread(
-        cls,
-        proc: subprocess.Popen[bytes],
-        pipe: Any,
-        buf: bytearray,
-        overflowed: threading.Event,
-    ) -> threading.Thread:
-        """Start a daemon thread draining *pipe* into *buf*, capped.
-
-        One thread per stream: reading stdout and stderr from the main thread
-        would deadlock once one pipe's OS buffer fills while the other still
-        has unread data.
-        """
-        thread = threading.Thread(
-            target=cls._drain_capped, args=(proc, pipe, buf, overflowed), daemon=True
-        )
-        thread.start()
-        return thread
-
-    @staticmethod
-    def _drain_capped(
-        proc: subprocess.Popen[bytes], pipe: Any, buf: bytearray, overflowed: threading.Event
-    ) -> None:
-        """Read *pipe* into *buf*; kill *proc* once the combined cap is crossed."""
-        with contextlib.suppress(OSError, ValueError):  # pipe torn down under us after kill()
-            while chunk := pipe.read(DRAIN_CHUNK_SIZE):
-                if overflowed.is_set():
-                    continue
-                if len(buf) + len(chunk) > RUN_OUTPUT_MAX_BYTES:
-                    overflowed.set()
-                    proc.kill()
-                    continue
-                buf.extend(chunk)
-
-    @staticmethod
-    def _write_stdin(proc: subprocess.Popen[bytes], stdin_bytes: bytes | None) -> None:
-        if stdin_bytes is None or proc.stdin is None:
-            return
-        with contextlib.suppress(BrokenPipeError, OSError):
-            proc.stdin.write(stdin_bytes)
-        proc.stdin.close()
+            ) from exc
+        out_buf, err_buf = bytearray(completed.stdout), bytearray(completed.stderr)
+        return self._completed_process(argv, completed.returncode, out_buf, err_buf, text=text)
 
     @staticmethod
     def _completed_process(
