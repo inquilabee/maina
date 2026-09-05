@@ -159,3 +159,30 @@ real `resolve` would pass. A probe must never install anything.
 Implement `LanguageRuntimeProvider` (`ensure(runtime, version) -> Path` and
 `env(runtime, version) -> dict`) and pass it as `language=`. `MiseRuntime` is
 the default.
+
+## Embedding maina's CLI in your own app
+
+`maina`'s CLI is a reference front end, not the product — the library is. An app
+that wants `myapp validate` usually wants maina's *answers* in its own format,
+which means calling the library and printing the result yourself.
+
+If you do want the commands themselves, mount the Typer app:
+
+```python
+import typer
+import maina
+from maina.cli import app as maina_app
+
+myapp = typer.Typer()
+myapp.add_typer(maina_app, name="tools")   # myapp tools validate
+```
+
+Two things to know:
+
+- The commands resolve their catalog through the **process-wide session**, so
+  point it at your Runtime with `maina.use(rt)` before invoking. That session is
+  not thread-safe; for concurrent use, build your own commands over
+  `Tool(..., runtime=rt)` instead.
+- Help text still says "maina". There is no rebranding hook yet.
+
+`--` passthrough works whether or not your entry point calls `maina.cli.main()`.

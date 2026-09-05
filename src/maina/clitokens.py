@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
@@ -65,14 +66,58 @@ class RunInvocation:
 
     HELP_FLAGS = frozenset({"--help", "-h"})
 
+    @staticmethod
+    def without_first_separator(tokens: list[str]) -> list[str]:
+        """Drop exactly the first ``--``, the way Click does building ``ctx.args``."""
+        out = list(tokens)
+        if "--" in out:
+            del out[out.index("--")]
+        return out
+
+    @classmethod
+    def recover_separator_tokens(cls, tool_id: str | None, ctx_args: list[str]) -> list[str] | None:
+        """This invocation's tokens from ``sys.argv``, with ``--`` still in them.
+
+        ``main()`` captures argv up front, but an app that mounts maina's
+        commands under its own name owns the entry point and never calls it.
+        Click has already dropped the ``--`` from ``ctx.args`` by the time the
+        command runs, so without this an embedder's ``extra`` passthrough is
+        silently parsed as tool kwargs — ``maina run t -- -n`` failing with
+        "'-n' is not a flag".
+
+        Recovered only when the candidate demonstrably belongs to this
+        invocation: dropping its first ``--`` must reproduce exactly what Click
+        passed in. Under a programmatic call (``app(args=[...])``,
+        ``CliRunner``) ``sys.argv`` belongs to the test runner, nothing matches,
+        and the caller falls back.
+        """
+        if tool_id is None:
+            return None
+        expected = [tool_id, *ctx_args]
+        argv = sys.argv[1:]
+        for start in range(len(argv), -1, -1):
+            tail = argv[start:]
+            if "--" in tail and cls.without_first_separator(tail) == expected:
+                return tail
+        return None
+
     @classmethod
     def resolve(
         cls,
         tool_id: str | None,
         ctx_args: list[str],
     ) -> tuple[str | None, list[str], bool]:
-        """Prefer raw argv (keeps ``--``); fall back to Click ``ctx.args``."""
-        raw_after = RAW_ARGV.after_command("run")
+        """Prefer raw argv (keeps ``--``); fall back to Click ``ctx.args``.
+
+        Raw argv comes from :func:`main`'s capture when maina owns the entry
+        point, and is otherwise recovered from ``sys.argv`` so an embedding app
+        gets the same ``--`` handling without having to know about any of this.
+        """
+        captured = RAW_ARGV.after_command("run")
+        # `captured` may legitimately be an empty list (`maina run` with nothing
+        # after it), so this tests for None rather than falsiness.
+        recovered = cls.recover_separator_tokens(tool_id, ctx_args)
+        raw_after = recovered if captured is None else captured
         return cls.parse_raw(raw_after) if raw_after is not None else cls.parse(tool_id, ctx_args)
 
     # Bare maina-side flags, by the ``RunOpts`` field each one sets.

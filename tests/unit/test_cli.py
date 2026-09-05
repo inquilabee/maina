@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from typing import Any
 
 import pytest
@@ -432,3 +433,28 @@ def test_cli_run_env_allow_reaches_the_tool(tmp_path: Any) -> None:
         assert "gone kept" in trimmed.stdout
     finally:
         del os.environ["MAINA_TEST_TRIMMED"], os.environ["MAINA_TEST_KEEP"]
+
+
+def test_extra_passthrough_survives_when_another_app_mounts_maina(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An app that mounts maina's commands under its own name owns the entry
+    point and never calls ``main()``. Click has already dropped the ``--`` by
+    then, so without recovery the tool's own options are parsed as kwargs and
+    ``maina run t -- -n`` fails with "'-n' is not a flag"."""
+    import typer
+
+    root = tmp_path / "reg"
+    write_yaml(root / "echoer.yaml", {"cli": "echo", "args": {"words": {"positional": True}}})
+    maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root], use_env=False))
+
+    host = typer.Typer(add_completion=False, pretty_exceptions_enable=False)
+    host.add_typer(app, name="tools")
+    monkeypatch.setattr(
+        sys, "argv", ["doctor", "tools", "run", "echoer", "--dry-run", "words=a", "--", "-n"]
+    )
+    result = CliRunner().invoke(
+        host, ["tools", "run", "echoer", "--dry-run", "words=a", "--", "-n"]
+    )
+    assert result.exit_code == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == "echo a -n"

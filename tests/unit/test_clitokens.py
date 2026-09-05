@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 import typer
 
@@ -82,3 +84,37 @@ def test_mixing_pairs_and_plain_tokens_errors_in_either_order() -> None:
         RunArgParser.parse(["env=plain", "env.K=V"])
     with pytest.raises(typer.BadParameter, match=r"already given env\.key=value pairs"):
         RunArgParser.parse(["env.K=V", "env=plain"])
+
+
+def test_without_first_separator_mirrors_click() -> None:
+    """Click drops exactly the first ``--`` when it builds ``ctx.args``."""
+    drop = RunInvocation.without_first_separator
+    assert drop(["a", "--", "-n"]) == ["a", "-n"]
+    assert drop(["a", "--", "-n", "--", "-e"]) == ["a", "-n", "--", "-e"]
+    assert drop(["a", "-n"]) == ["a", "-n"]
+
+
+def test_separator_recovery_finds_this_invocation_in_sys_argv(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An app that mounts maina's commands owns the entry point and never calls
+    ``main()``, so the ``--`` has to be recovered from the real argv."""
+    monkeypatch.setattr(sys, "argv", ["doctor", "tools", "run", "echoer", "words=a", "--", "-n"])
+    recovered = RunInvocation.recover_separator_tokens("echoer", ["words=a", "-n"])
+    assert recovered == ["echoer", "words=a", "--", "-n"]
+
+
+def test_separator_recovery_declines_an_argv_that_is_not_this_invocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Under ``app(args=[...])`` / ``CliRunner``, ``sys.argv`` is the test
+    runner's. Nothing may be recovered from it."""
+    monkeypatch.setattr(sys, "argv", ["pytest", "-q", "--", "tests/unit"])
+    assert RunInvocation.recover_separator_tokens("echoer", ["words=a", "-n"]) is None
+
+
+def test_separator_recovery_is_skipped_without_a_tool_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["maina", "run", "--", "-n"])
+    assert RunInvocation.recover_separator_tokens(None, ["-n"]) is None

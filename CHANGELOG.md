@@ -99,88 +99,124 @@
 
 ### CLI
 
+- **`--` passthrough now survives when another app mounts maina's commands.**
+  `maina run t -- -n` worked, but the same invocation through an app that added
+  maina's Typer app under its own name failed with `'-n' is not a flag`: Click
+  drops the separator from `ctx.args`, and only `maina.cli.main()` captured the
+  raw argv it was recovered from. The tokens are now also recovered from
+  `sys.argv`, accepted only when dropping their first `--` reproduces exactly
+  what Click passed in — so a programmatic call (`app(args=[...])`,
+  `CliRunner`), where `sys.argv` belongs to the test runner, still falls back.
+
 - `maina --version` / `maina.__version__`.
+
 - Bad manifests / unknown ids print one line and exit 2 (no Rich traceback).
+
 - Non-success tool run exits 1 (2 stays "bad usage").
+
 - `maina run <id> --` runs a no-required-args tool; `key:=value` forces a
   literal string value.
+
 - `maina run <id> --dry-run key=value …` prints the argv that would run
   (argv[0] is the bare `cli` name) and exits without executing.
+
 - `maina run` passes the tool's **stderr through on success** too — a linter's
   warnings and a deprecation notice were previously dropped with no way to get
   them back.
+
 - `maina run --stdin` feeds the process's stdin to the tool, so the CLI can be
   piped into (`cat x.json | maina run jq --stdin filter=.`). Without it the tool
   still gets `/dev/null`, so one that reads stdin never blocks on a terminal.
+
 - `maina run --env-allow=NAME[,NAME...]` (repeatable) — the CLI spelling of
   `run(env_allow=...)`, which `docs/security.md` recommends and which had no CLI
   surface at all.
+
 - `maina run e env.K=V env=plain` now raises the mirror of the error the
   opposite token order already gave, instead of a confusing complaint about the
   pairs shape that never mentioned the conflicting tokens.
+
 - `maina validate` accepts any well-formed `{os}-{arch}` asset key, not only the
   six with an arch alias: an armv7l / ppc64le / s390x / riscv64 catalog could not
   pass its own lint even though the download would succeed. An unnormalised
   spelling (`linux-amd64`) and an OS maina never emits (`darwin-arm64`) are still
   rejected, now with a message saying which to use.
+
 - `maina validate` rejects an `output.from_file` placeholder naming a
   `type: flag` arg — flags are never interpolated, so the template could never
   resolve — and every problem it reports names the manifest file.
+
 - `maina validate [TOOLS...]` loads every manifest (or the named ids) and
   reports each error without aborting — a catalog lint step.
+
 - `maina describe <id> [--json]` prints a tool's manifest as data
   (`Tool.describe()`), so a catalog is consumable from the shell.
+
 - `maina schema` prints a Draft 2020-12 JSON Schema for the manifest,
   generated from the loader's own key sets (`build_manifest_schema()`, also
   published at `docs/maina-manifest.schema.json`). Point an editor at it with a
   `# yaml-language-server: $schema=` header for validation while authoring.
+
 - `maina run` reaches more of `Tool.run`: `--timeout=<s>` / `--cwd=<dir>`
   options, and `arg.subkey=value` tokens that build a `type: pairs` dict
   (`env.K=V env.A=B`).
+
 - `maina clean [TOOLS...]` deletes cached installs; `maina prepare --force`
   wipes a tool's cache before re-preparing it. `Installer.clean_ids()`.
   `--force` now needs explicit ids (a bare `prepare --force` no longer wipes the
   whole tool cache) and is rejected alongside `--check`. A named `maina clean`
   / `--force` deletes only that id's `<cli>/<version>` dir, not every version
   and identity under the `cli`; an abstract / `cli`-less id is rejected.
+
 - `maina validate` goes past "does it load": a concrete manifest must have a
   `cli:` (a `cli`-less one is inheritance-only — mark it `abstract: true`); a
   `github` backend must carry `repo` + `assets`; every `output.from_file`
   placeholder must name a declared arg. These used to surface only at install
   / run time.
+
 - `maina prepare` (no ids, or several) is batch-resilient: one tool that fails
   to install no longer aborts the rest or discards the record of what already
   installed. It prints `prepared: <id>` / `failed: <id>: <message>` and exits
   non-zero if anything failed. `Installer.prepare_ids()` returns
   `(prepared, failures)`.
+
 - `maina run <id>` with no arguments, for a tool that needs none, prints a
   hint to run it as `maina run <id> --`.
+
 - A `base.yaml` with no `cli:` is inheritance-only: `maina list` no longer
   shows a phantom `base`, `maina prepare` skips it instead of dying with
   `manifest 'base' missing cli`, and `maina validate` reports it `ok`.
   `Manifest.has_cli`.
+
 - `examples/catalog/` — a worked catalog covering the `github` and `npm`
   backends, `output.from_file`, and a subcommand family, with an offline
   `demo.py`.
+
 - A `parsers_dirs` module whose stem shadows a built-in parser (`json.py`)
   warns; two `parsers/*.py` files with the same stem get distinct
   `sys.modules` names.
+
 - `prepare --check` on a tool with an unknown `install.backend` now errors
   (a manifest bug) instead of reporting it "missing".
+
 - `run(text=False, stdin="…")` encodes the string rather than raising a bare
   `TypeError`.
+
 - `prepare --check` for a `path`-backed tool provided by a `requires:` runtime
   now searches the PATH a real run would compose (the pinned runtime's bin dir
   plus the ambient PATH), instead of reporting `missing` for a tool `run`
   resolves fine. Still side-effect free: the bin dir comes from a lookup that
   installs nothing (`InstallContext.probe_path`, `MiseRuntime.present_bin_dir`).
+
 - `Registry.refresh()` drops the per-root scan index, so a manifest written into
   an already-registered root becomes visible to `list` / `validate` / `prepare`
   in a long-lived process — and loadable, which for an id only the tree scan can
   resolve (`fam/my-tool.yaml`) it previously was not.
+
 - Parsed manifest YAML is memoized per file against its own mtime and size, so
   repeated `Tool(id)` construction and `maina list` over a large catalog stop
   re-parsing every layer. An edit in place is still picked up with no refresh.
+
 - `output.allow_stale_report: true` opts out of the report-mtime check for an
   incremental tool that leaves an unchanged report alone, or a filesystem whose
   mtime clock is offset from the host's. The 2 s window (previously documented
