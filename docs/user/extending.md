@@ -173,18 +173,32 @@ different versions, add private tools, or tweak `args` defaults.
 
 ## Custom install backends
 
-A backend is any object with a `name` property and a `resolve(...)` method
-matching the `InstallerBackend` protocol:
+Yes — a client can add a new installer/backend without forking maina.
+`InstallerBackend` is a real `ABC` (not a structural `Protocol`): subclass it
+explicitly and implement `name` and `resolve(...)`; `register_backends`
+checks `isinstance` at registration time, so a backend that forgot to
+subclass it fails immediately with a clear `RegisterError`, not a confusing
+`AttributeError` the first time a manifest dispatches to it:
 
 ```python
-class MyBackend:
+from maina.core.protocols import InstallerBackend
+
+class MyBackend(InstallerBackend):
     @property
     def name(self) -> str:
-        return "mybackend"
+        return "mybackend"   # dispatch key — matches install.backend: mybackend
 
     def resolve(self, manifest, *, version, env, ctx):
         exe = ...  # obtain / locate the executable
         return str(exe), ctx.prepend_path(env, exe.parent)
+```
+
+```python
+app = maina.register(
+    maina.Runtime.preferred(),
+    registry_dirs=["tools"],       # a manifest with install: {backend: mybackend}
+    installers=[MyBackend()],
+)
 ```
 
 `ctx` is an `InstallContext` (cache root, language provider,
