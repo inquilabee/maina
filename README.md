@@ -26,8 +26,6 @@ Full documentation is in [`docs/`](docs/index.md) (built with MkDocs):
 [quickstart](docs/user/quickstart.md), [manifest schema](docs/user/manifests.md),
 [install backends](docs/user/backends.md), [parsers](docs/user/parsers.md),
 [extending maina](docs/user/extending.md), [architecture](docs/architecture.md).
-Design notes: `adr/0001-registry-first-tool-runtime.md`,
-`adr/0002-runtime-register-extendibility.md`.
 
 ## Extendibility
 

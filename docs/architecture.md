@@ -1,7 +1,5 @@
 # Architecture
 
-Two decisions shape maina. Fuller write-ups live in `adr/` in the source tree.
-
 ## Registry-first tool runtime
 
 The registry — a tree of YAML manifests — is the single source of truth for
