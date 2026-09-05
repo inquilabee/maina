@@ -60,7 +60,8 @@ exact list is `ESSENTIAL_ENV` in `src/maina/core/envfilter.py`. A tool that over
 `MainaError`, not an `InstallError`); a runtime provisioning failure raises
 `RuntimeProvisionError` (subclasses `InstallError`).
 
-`requires:` pins and the `npm` backend need [mise](https://mise.jdx.dev/). If
+`requires:` pins and the `npm` backend need [mise](https://mise.jdx.dev/) (the
+`pip` backend only when it carries a `python` pin). If
 `mise` is not on `PATH`, maina will not run the `mise.run` installer unless you
 set `MAINA_ALLOW_MISE_BOOTSTRAP=1`; otherwise it raises `RuntimeProvisionError`.
 
@@ -116,7 +117,7 @@ A download whose SHA-256 does not match is rejected before `chmod +x`.
   manifest's top-level `output:` block.
 - An intermediate family surface can be callable with empty args on purpose
   (`git remote` lists remotes).
-- See `examples/catalog/` for a worked catalog (`github`, `npm`,
+- See `examples/catalog/` for a worked catalog (`github`, `npm`, `pip`,
   `output.from_file`, a subcommand family), `examples/local_tool/` for an
   overlay registry, and `examples/parsers_dirs/` for a custom parser.
 

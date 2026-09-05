@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from maina.backends import GithubBackend, NpmBackend, PathBackend
+from maina.backends import GithubBackend, NpmBackend, PathBackend, PipBackend
 from maina.core.errors import RegisterError
 from maina.core.parsers import ParserResolver, builtin_generals
 from maina.core.registry import Registry
@@ -155,7 +155,7 @@ class Runtime:
         register(
             rt,
             parsers=builtin_generals(),
-            installers=[PathBackend(), GithubBackend(), NpmBackend()],
+            installers=[PathBackend(), GithubBackend(), NpmBackend(), PipBackend()],
             language=language or MiseRuntime(cache_root=rt.cache_root),
         )
         if dirs := cls._preferred_registry_dirs(registry_dirs, use_env=use_env, discover=discover):

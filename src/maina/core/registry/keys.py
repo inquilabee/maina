@@ -68,6 +68,7 @@ INSTALL_KEYS = frozenset(
         "package",
         "sha256",
         "allow_scripts",
+        "allow_sdist",
         "allow_any_executable",
     }
 )

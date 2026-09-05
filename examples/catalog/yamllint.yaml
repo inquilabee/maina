@@ -1,0 +1,12 @@
+# A pip tool: installed into a venv of its own, wheels only.
+# `cli` is the console script; `install.package` is the distribution.
+cli: yamllint
+version: 1.38.0
+install: {backend: pip, package: yamllint}
+args:
+  path: {positional: true, required: true, repeat: true, type: path}
+  format: {flag: -f, choices: [parsable, standard, github], default: parsable}
+  strict: {flag: --strict, type: flag}
+output:
+  # 1 = lint findings; still a successful run
+  success_codes: [0, 1]

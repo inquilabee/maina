@@ -181,26 +181,28 @@ install:
 
 | Field | Backends | Meaning |
 | --- | --- | --- |
-| `backend` | all | `path` (default), `github`, `npm`, or a registered custom name. |
+| `backend` | all | `path` (default), `github`, `npm`, `pip`, or a registered custom name. |
 | `repo` | `github` | `owner/name` GitHub repository (validated at load). |
 | `assets` | `github` | Platform key (`linux-x86_64`, `macos-arm64`, ...) to release asset name (each a single safe path segment). |
 | `binary` | `github` | Executable name inside the asset. Defaults to `cli`. `npm` ignores it and always links `node_modules/.bin/<cli>`, so for an npm package whose bin name differs from the package name, `cli:` must be the **bin** name and `package:` the package name. |
 | `tag` | `github` | Release tag (a single safe path segment). Defaults to `version`. `latest` resolves the newest release **once**: the download is cached under that tag, so later runs keep using it until `maina clean <id>`. Pin a real tag for a reproducible catalog. |
 | `sha256` | `github` | Optional platform key to hex digest. A mismatch aborts before `chmod +x`. |
-| `package` | `npm` | npm package name — validated at load (`@scope/name` allowed). Defaults to `cli`. |
+| `package` | `npm`, `pip` | Package name to install. For `npm`, validated at load (`@scope/name` allowed). For `pip`, the distribution that provides the `cli:` console script. Defaults to `cli`. |
 | `allow_scripts` | `npm` | `true` lets `npm install` run the package's lifecycle scripts. Default `false` (`--ignore-scripts`). |
+| `allow_sdist` | `pip` | `true` lets pip build a source distribution, which executes the package's own `setup.py`. Default `false` (`--only-binary=:all:`) — the pip analogue of `allow_scripts`. |
 | `allow_any_executable` | `github` | `true` lets extraction fall back to the archive's single executable member when no member is named `binary`. Default `false` — otherwise a missing named member is a hard error, so maina never runs a binary the manifest did not name. |
 
 `.tar.gz`, `.tar.xz`, `.zip`, `.gz`, `.xz`, and bare-binary assets are all
 handled. Archive members that escape the destination are rejected.
 
-The `github` / `npm` cache directory is keyed by `cli` + `version` **and** a
+The `github` / `npm` / `pip` cache directory is keyed by `cli` + `version` **and** a
 hash of `repo` / `tag` / `assets` / `sha256` / `package` / `binary` /
-`allow_scripts` / `allow_any_executable` **and the `requires:` runtime pins**,
+`allow_scripts` / `allow_sdist` / `allow_any_executable` **and the `requires:`
+runtime pins**,
 so two manifests that share `cli` + `version` but fetch or unpack different
 things never collide and a changed digest pin forces a fresh download. The
 runtime pins are part of the key because an npm package is built against the
-Node that installed it — the cost is that bumping an unrelated pin also forces
+Node that installed it and a pip venv is built by one interpreter — the cost is that bumping an unrelated pin also forces
 a re-download for a `github` tool.
 
 ## requires

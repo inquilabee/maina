@@ -36,7 +36,7 @@ SCHEMA_ID = (
 # Built-in ``install.backend`` names. A test cross-checks this against
 # ``Runtime.preferred().installer.backend_names`` so a new shipped backend
 # forces an update here.
-BUILTIN_BACKENDS = ("github", "npm", "path")
+BUILTIN_BACKENDS = ("github", "npm", "path", "pip")
 
 # ``{os}-{arch}`` by shape, not by enum: a host maina has no arch alias for
 # (armv7l, ppc64le, s390x, riscv64) reaches the installer with exactly that key,
@@ -116,6 +116,7 @@ INSTALL_PROPERTIES: dict[str, dict[str, Any]] = {
         },
     },
     "allow_scripts": {"type": "boolean"},
+    "allow_sdist": {"type": "boolean"},
     "allow_any_executable": {"type": "boolean"},
 }
 

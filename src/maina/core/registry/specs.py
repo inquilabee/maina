@@ -252,6 +252,7 @@ class InstallSpec:
     package: str | None = None
     sha256: dict[str, str] = field(default_factory=dict)
     allow_scripts: bool = False
+    allow_sdist: bool = False
     allow_any_executable: bool = False
 
     @classmethod
@@ -279,6 +280,9 @@ class InstallSpec:
             allow_scripts=require_bool(
                 raw.get("allow_scripts"), field_name="install.allow_scripts", tool_id=tool_id
             ),
+            allow_sdist=require_bool(
+                raw.get("allow_sdist"), field_name="install.allow_sdist", tool_id=tool_id
+            ),
             allow_any_executable=require_bool(
                 raw.get("allow_any_executable"),
                 field_name="install.allow_any_executable",
@@ -303,6 +307,7 @@ class InstallSpec:
                 self.package,
                 self.binary,
                 self.allow_scripts,
+                self.allow_sdist,
                 self.allow_any_executable,
                 extra,
             )

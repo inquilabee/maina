@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
 # Backends that key their cache by tool identity (repo/tag/asset/sha256), not
 # just cli+version.
-IDENTITY_BACKENDS = frozenset({"github", "npm"})
+IDENTITY_BACKENDS = frozenset({"github", "npm", "pip"})
 
 
 class Installer:
@@ -117,10 +117,11 @@ class Installer:
     def _cache_version(manifest: Manifest) -> str:
         """Cache dir segment: ``<version>`` or ``<version>-<identity8>``.
 
-        github / npm tools include a short hash of repo/tag/asset/sha256/package
-        **and the ``requires:`` runtime pins** (an npm build depends on the node
-        version), so two manifests that share cli+version but differ in *what*
-        they fetch or build do not collide.
+        github / npm / pip tools include a short hash of repo/tag/asset/sha256/
+        package **and the ``requires:`` runtime pins** (an npm build depends on
+        the node version; a pip venv is built by one interpreter), so two
+        manifests that share cli+version but differ in *what* they fetch, build,
+        or run on do not collide.
         """
         version = manifest.version or "default"
         if manifest.install.backend not in IDENTITY_BACKENDS:

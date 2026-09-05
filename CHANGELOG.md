@@ -430,9 +430,36 @@ First tagged release.
 
 ### Install backends
 
+- **New `pip` backend** (`install.backend: pip`) installs a pinned Python
+  package into a **venv of its own** under
+  `<cache>/tools/<cli>/<version>-<hash>/pip/` and resolves its console script.
+  One venv per tool, never a shared environment: two tools whose dependencies
+  disagree cannot break each other, and adding a tool cannot change what an
+  existing one resolves.
+
+  - `version:` is required — an unpinned lint tool changes its findings under
+    you.
+  - `cli:` is the console script, `install.package:` the distribution providing
+    it (they differ more often than for npm).
+  - Source distributions are refused by default (`--only-binary=:all:`):
+    building an sdist runs the package's own `setup.py` with the composed
+    environment, the same exposure npm lifecycle scripts carry. Opt in with
+    `install.allow_sdist: true` — the pip analogue of `allow_scripts`.
+  - The package index is never manifest-settable; a manifest must not be able to
+    redirect where code comes from.
+  - `requires: {python: "3.13"}` puts one tool on its own interpreter,
+    provisioned through mise like any other runtime, while the rest of the
+    catalog follows the host. With no pin nothing is provisioned. A pin is never
+    satisfied by whatever `python3` is on `PATH` — that would silently build the
+    venv on the wrong interpreter — and it is folded into the cache-directory
+    hash, so two tools on different interpreters get different venvs.
+  - `prepare --check` probes the entry point without installing.
+
 - `path`, `github` (release assets, optional `sha256`), `npm`.
+
 - Language runtimes (Node) provisioned through mise, only when a manifest
   declares `requires:` or the `npm` backend needs Node.
+
 - `platforms:` enforced at resolve; unsupported hosts fail up front.
 
 ### Result and safety

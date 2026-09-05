@@ -64,6 +64,51 @@ install:
   package: markdownlint-cli
 ```
 
+## `pip`
+
+Installs a pinned Python package into a **venv of its own** under
+`<cache>/tools/<cli>/<version>-<hash>/pip/`, and resolves the console script in
+its `bin/`. One venv per tool, never a shared environment — two tools whose
+dependencies disagree cannot break each other, and adding a tool cannot alter
+what an existing one resolves.
+
+```yaml
+install:
+  backend: pip
+  package: yamllint      # defaults to cli
+```
+
+`version:` is required: an unpinned lint tool changes its findings under you.
+
+`cli:` is the **console script** to run and `package:` is the distribution that
+provides it — they differ more often than for npm (`cli: ruff`, but a package
+whose scripts are named something else needs both spelled out).
+
+**Source distributions are refused by default.** Building an sdist executes the
+package's own `setup.py` with the composed environment — the same exposure npm
+lifecycle scripts carry — so the install runs `--only-binary=:all:` unless the
+manifest opts in with `install.allow_sdist: true`. The package index is never
+manifest-settable; a manifest must not be able to redirect where code comes from.
+
+### Pinning the interpreter
+
+With no `requires:` pin the venv is built from the interpreter running maina, so
+a catalog that does not care provisions nothing. Pin one, and it is provisioned
+through mise like any other runtime:
+
+```yaml
+cli: deadcode
+version: 2.4.1
+install: {backend: pip, package: deadcode}
+requires: {python: "3.13"}     # this tool only; the rest follow the host
+```
+
+A pin is never satisfied by whatever `python3` happens to be on `PATH` — that
+would silently build the venv on the wrong interpreter, which is the one thing
+the pin exists to prevent. The pin is also folded into the cache directory hash,
+so two tools on different interpreters get different venvs rather than racing
+for one.
+
 ## Language runtimes (mise)
 
 Runtime provisioning sits behind the `LanguageRuntimeProvider` protocol;
@@ -72,11 +117,12 @@ bootstraps a private copy into the cache (needs `curl` and `sh`). Failures raise
 `RuntimeProvisionError` (a subclass of `InstallError`).
 
 Only tools that declare `requires:` — or the `npm` backend — touch mise. Static
-binaries never do.
+binaries never do, and `pip` only does when it carries a `python` pin.
 
 ## Probing without side effects
 
 `Installer.is_satisfied(manifest)` and `Installer.check_ids()` report install
 state without downloading or calling mise. Each shipped backend implements a
-`probe(...)` method (`PATH` lookup, cached-file check, npm link check). The
+`probe(...)` method (`PATH` lookup, cached-file check, npm link check, pip
+entry-point check). The
 `maina prepare --check` command is the CLI front for this.

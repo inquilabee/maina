@@ -157,6 +157,9 @@
         "allow_scripts": {
           "type": "boolean"
         },
+        "allow_sdist": {
+          "type": "boolean"
+        },
         "assets": {
           "type": "object",
           "propertyNames": {
@@ -184,7 +187,8 @@
           "examples": [
             "github",
             "npm",
-            "path"
+            "path",
+            "pip"
           ]
         },
         "binary": {
