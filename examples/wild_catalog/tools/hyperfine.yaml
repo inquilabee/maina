@@ -1,0 +1,21 @@
+# github .tar.gz asset. Command-line benchmarking (Rust, sharkdp/hyperfine).
+# Confirmed live against v1.20.0 (2026-09-05), including a real benchmark run:
+# https://github.com/sharkdp/hyperfine/releases/tag/v1.20.0
+cli: hyperfine
+version: 1.20.0
+install:
+  backend: github
+  repo: sharkdp/hyperfine
+  tag: v1.20.0
+  binary: hyperfine
+  assets:
+    linux-x86_64: hyperfine-v1.20.0-x86_64-unknown-linux-gnu.tar.gz
+    macos-arm64: hyperfine-v1.20.0-aarch64-apple-darwin.tar.gz
+args:
+  command_to_run: {positional: true, required: true}
+  warmup: {flag: --warmup}
+  min_runs: {flag: --min-runs}
+  export_json: {flag: --export-json, type: path}
+output:
+  success_codes: [0]
+parser: text

@@ -1,0 +1,21 @@
+# github .tar.gz asset. Readable git diff viewer (Rust, dandavison/delta —
+# published as git-delta, binary/repo cli name is delta). Confirmed live
+# against 0.19.2 (2026-09-05):
+# https://github.com/dandavison/delta/releases/tag/0.19.2
+cli: delta
+version: 0.19.2
+install:
+  backend: github
+  repo: dandavison/delta
+  tag: 0.19.2
+  binary: delta
+  assets:
+    linux-x86_64: delta-0.19.2-x86_64-unknown-linux-gnu.tar.gz
+    macos-arm64: delta-0.19.2-aarch64-apple-darwin.tar.gz
+args:
+  # Reads a diff from stdin (e.g. `git diff | delta`); no positional needed.
+  side_by_side: {flag: --side-by-side, type: flag}
+  line_numbers: {flag: --line-numbers, type: flag}
+output:
+  success_codes: [0]
+parser: text

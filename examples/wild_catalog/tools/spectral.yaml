@@ -1,0 +1,25 @@
+# npm backend — the one non-github tool in this catalog, to exercise that
+# install path too. OpenAPI/AsyncAPI linter (Node, @stoplight/spectral-cli —
+# bin name differs from the package name). Confirmed live (2026-09-05):
+# `npm view @stoplight/spectral-cli version bin`.
+cli: spectral
+version: 6.16.3
+# spectral has one real command (lint is not the default — bare `spectral
+# <file>` errors with "Unknown argument"); pin it so callers don't repeat it.
+subcommand: lint
+# No requires.node pin: an explicit pin always goes through mise (even if a
+# Node is already on PATH), while npm's own backend already falls back to
+# whatever node it finds on PATH first, only reaching for mise if none exists.
+install:
+  backend: npm
+  package: "@stoplight/spectral-cli"
+args:
+  # A real lint needs --ruleset (spectral ships no default rules); left for
+  # the caller since this catalog has no OpenAPI doc + ruleset pair to lint.
+  documents: {positional: true, repeat: true, type: path}
+  ruleset: {flag: --ruleset}
+  format: {flag: --format}
+  fail_severity: {flag: --fail-severity}
+output:
+  success_codes: [0]
+parser: text

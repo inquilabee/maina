@@ -1,0 +1,24 @@
+# github .tar.gz asset. Vulnerability/misconfig scanner (Go, aquasecurity/trivy).
+# Assets confirmed live against the v0.74.0 release (2026-09-05):
+# https://github.com/aquasecurity/trivy/releases/tag/v0.74.0
+cli: trivy
+version: 0.74.0
+install:
+  backend: github
+  repo: aquasecurity/trivy
+  tag: v0.74.0
+  binary: trivy
+  assets:
+    linux-x86_64: trivy_0.74.0_Linux-64bit.tar.gz
+    macos-arm64: trivy_0.74.0_macOS-ARM64.tar.gz
+args:
+  # e.g. command=fs, target=. for a real filesystem scan (downloads a vuln DB
+  # on first use — left out of the offline-friendly demo run on purpose).
+  command: {positional: true, order: 0, description: "trivy subcommand (fs, image, config, ...)"}
+  target: {positional: true, type: path, order: 1}
+  severity: {flag: --severity}
+  format: {flag: --format}
+  quiet: {flag: --quiet, type: flag}
+output:
+  success_codes: [0, 1] # 1 = findings, still a successful scan
+parser: text

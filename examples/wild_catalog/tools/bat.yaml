@@ -1,0 +1,21 @@
+# github .tar.gz asset. `cat` with syntax highlighting (Rust, sharkdp/bat).
+# Confirmed live against v0.26.1 (2026-09-05):
+# https://github.com/sharkdp/bat/releases/tag/v0.26.1
+cli: bat
+version: 0.26.1
+install:
+  backend: github
+  repo: sharkdp/bat
+  tag: v0.26.1
+  binary: bat
+  assets:
+    linux-x86_64: bat-v0.26.1-x86_64-unknown-linux-gnu.tar.gz
+    macos-arm64: bat-v0.26.1-aarch64-apple-darwin.tar.gz
+args:
+  # No path: reads stdin, so a caller can highlight a string without a temp file.
+  path: {positional: true, type: path}
+  language: {flag: --language}
+  plain: {flag: --plain, type: flag}
+output:
+  success_codes: [0]
+parser: text

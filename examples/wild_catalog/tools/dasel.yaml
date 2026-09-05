@@ -1,0 +1,24 @@
+# github bare-binary assets (no archive) — ArchiveFetcher.copy_raw_asset
+# handles this the same way it handles a .tar.gz/.zip, just no extraction step.
+# Query/edit JSON/YAML/TOML/XML/CSV with one selector syntax (Go,
+# TomWright/dasel). Confirmed live against v3.11.2 (2026-09-05), including the
+# v3 selector syntax (no leading '.', unlike v1/v2):
+# https://github.com/TomWright/dasel/releases/tag/v3.11.2
+cli: dasel
+version: 3.11.2
+install:
+  backend: github
+  repo: TomWright/dasel
+  tag: v3.11.2
+  binary: dasel
+  assets:
+    linux-x86_64: dasel_linux_amd64
+    macos-arm64: dasel_darwin_arm64
+args:
+  selector: {positional: true, required: true}
+  in_format: {flag: -i}
+  out_format: {flag: -o}
+  compact: {flag: --compact, type: flag}
+output:
+  success_codes: [0]
+parser: text

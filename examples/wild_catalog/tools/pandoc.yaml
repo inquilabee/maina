@@ -1,0 +1,22 @@
+# github asset naming flips arch/os order between platforms (linux-amd64 vs
+# arm64-macOS) — an explicit assets: map, not asset_template, on purpose.
+# Universal document converter (Haskell, jgm/pandoc). Confirmed live against
+# the 3.11 release (2026-09-05): https://github.com/jgm/pandoc/releases/tag/3.11
+cli: pandoc
+version: "3.11"
+install:
+  backend: github
+  repo: jgm/pandoc
+  tag: "3.11"
+  binary: pandoc
+  assets:
+    linux-x86_64: pandoc-3.11-linux-amd64.tar.gz
+    macos-arm64: pandoc-3.11-arm64-macOS.zip
+args:
+  # No input: reads stdin, so a caller can convert a string without a temp file.
+  input: {positional: true, type: path}
+  from_format: {flag: --from}
+  to_format: {flag: --to}
+output:
+  success_codes: [0]
+parser: text

@@ -1,0 +1,22 @@
+# github .tar.gz asset. Changelog generator from conventional commits (Rust,
+# orhun/git-cliff). Confirmed live against v2.14.1 (2026-09-05):
+# https://github.com/orhun/git-cliff/releases/tag/v2.14.1
+cli: git-cliff
+version: 2.14.1
+install:
+  backend: github
+  repo: orhun/git-cliff
+  tag: v2.14.1
+  binary: git-cliff
+  assets:
+    linux-x86_64: git-cliff-2.14.1-x86_64-unknown-linux-gnu.tar.gz
+    macos-arm64: git-cliff-2.14.1-aarch64-apple-darwin.tar.gz
+args:
+  # A real changelog needs a git repo with tags/commits (--repository <path>);
+  # left for the caller since none exists in this offline-friendly demo.
+  repository: {flag: --repository, type: path}
+  unreleased: {flag: --unreleased, type: flag}
+  tag: {flag: --tag}
+output:
+  success_codes: [0]
+parser: text

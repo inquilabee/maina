@@ -1,0 +1,22 @@
+# github .tar.gz / .zip assets. GitHub's own CLI (Go, cli/cli). Confirmed live
+# against v2.100.0 (2026-09-05):
+# https://github.com/cli/cli/releases/tag/v2.100.0
+cli: gh
+version: 2.100.0
+install:
+  backend: github
+  repo: cli/cli
+  tag: v2.100.0
+  binary: gh
+  assets:
+    linux-x86_64: gh_2.100.0_linux_amd64.tar.gz
+    macos-arm64: gh_2.100.0_macOS_arm64.zip
+args:
+  # e.g. command=repo, args=[view, owner/name, --json, name] for a real call —
+  # unauthenticated API calls are rate-limited, so the demo just checks --version.
+  command: {positional: true, order: 0}
+  target: {positional: true, order: 1}
+  json_fields: {flag: --json}
+output:
+  success_codes: [0]
+parser: text
