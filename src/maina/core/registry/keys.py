@@ -83,6 +83,7 @@ INSTALL_KEYS = frozenset(
         "binary",
         "tag",
         "package",
+        "entry",
         "sha256",
         "allow_scripts",
         "allow_sdist",

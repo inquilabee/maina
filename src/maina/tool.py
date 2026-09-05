@@ -106,6 +106,7 @@ class Tool:
                 "binary": m.install.binary,
                 "tag": m.install.tag,
                 "package": m.install.package,
+                "entry": m.install.entry,
                 "sha256": dict(m.install.sha256),
                 "allow_scripts": m.install.allow_scripts,
                 "allow_any_executable": m.install.allow_any_executable,

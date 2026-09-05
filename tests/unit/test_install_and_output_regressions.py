@@ -426,6 +426,7 @@ def test_tool_describe_is_json_safe(tmp_path: Path) -> None:
         "binary",
         "tag",
         "package",
+        "entry",
         "sha256",
         "allow_scripts",
         "allow_any_executable",

@@ -44,6 +44,7 @@ class InstallSpec:
     binary: str | None = None
     tag: str | None = None
     package: str | None = None
+    entry: str | None = None
     sha256: dict[str, str] = field(default_factory=dict)
     allow_scripts: bool = False
     allow_sdist: bool = False
@@ -84,6 +85,7 @@ class InstallSpec:
                 raw.get("tag"), field_name="install.tag", tool_id=tool_id, allow_none=True
             ),
             package=cls._parse_package(raw.get("package"), tool_id=tool_id),
+            entry=cls._parse_entry(raw.get("entry"), tool_id=tool_id),
             sha256=cls._parse_sha256(raw.get("sha256"), tool_id=tool_id),
             allow_scripts=require_bool(
                 raw.get("allow_scripts"), field_name="install.allow_scripts", tool_id=tool_id
@@ -144,6 +146,16 @@ class InstallSpec:
         if not cls._NPM_NAME_RE.match(text):
             raise manifest_error(tool_id, f"install.package {text!r} is not a valid npm name")
         return text
+
+    @staticmethod
+    def _parse_entry(raw: Any, *, tool_id: str) -> str | None:
+        """Parse ``install.entry`` (the ``script`` backend's file/dir ref).
+
+        Just a well-formed string here — path-safety (no ``..``/absolute, must
+        resolve inside the registry root) is checked at load time once the
+        declaring layer's root is known; see ``Registry._resolve_entry_path``.
+        """
+        return None if raw is None else scalar_str(raw, field_name="install.entry", tool_id=tool_id)
 
     @staticmethod
     def _parse_repo(raw: Any, *, tool_id: str) -> str | None:

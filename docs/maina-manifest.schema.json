@@ -226,10 +226,15 @@
             "github",
             "npm",
             "path",
-            "pip"
+            "pip",
+            "script"
           ]
         },
         "binary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "entry": {
           "type": "string",
           "minLength": 1
         },

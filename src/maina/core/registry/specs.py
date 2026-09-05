@@ -349,6 +349,7 @@ class Manifest:
     subcommands: list[str] = field(default_factory=list)
     path: Path | None = None
     parser_path: Path | None = None
+    entry_path: Path | None = None
     install: InstallSpec = field(default_factory=InstallSpec)
     args: dict[str, ArgSpec] = field(default_factory=dict)
     output: OutputSpec = field(default_factory=OutputSpec)

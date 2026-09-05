@@ -19,10 +19,15 @@ from .keys import BASE_TOOL_ID, IGNORED_MANIFEST_KEYS
 from .merge import merge_maps
 from .requires import RequiresSpec
 from .specs import Manifest, OutputSpec, parse_args_map
-from .validate import MAX_YAML_ANCHORS, count_yaml_anchors, validate_parser_ref, validate_top_level
+from .validate import (
+    MAX_YAML_ANCHORS,
+    count_yaml_anchors,
+    validate_relative_ref,
+    validate_top_level,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
 
 class Registry:
@@ -170,8 +175,21 @@ class Registry:
             merged.pop(key, None)
         validate_top_level(tid, merged)
 
-        decl_path, decl_root = self._parser_declaring_layer(chain, merged.get("parser"))
+        decl_path, decl_root = self._declaring_layer(
+            chain, lambda d: d.get("parser") == merged.get("parser")
+        )
         parser_path = self._resolve_parser_path(decl_path, decl_root, merged.get("parser"))
+
+        install_spec = InstallSpec.from_mapping(merged.get("install"), tool_id=tid)
+        entry_path = None
+        if install_spec.backend == "script":
+            entry_decl_path, entry_decl_root = self._declaring_layer(
+                chain, lambda d: (d.get("install") or {}).get("entry") == install_spec.entry
+            )
+            entry_path = self._resolve_entry_path(
+                entry_decl_path, entry_decl_root, install_spec.entry
+            )
+
         return Manifest(
             id=tid,
             # Registry.load caches and reuses this instance across calls; a
@@ -181,24 +199,26 @@ class Registry:
             subcommands=subcommands,
             path=leaf_path,
             parser_path=parser_path,
-            install=InstallSpec.from_mapping(merged.get("install"), tool_id=tid),
+            entry_path=entry_path,
+            install=install_spec,
             args=self.parse_args_map(merged.get("args"), tool_id=tid),
             output=OutputSpec.from_mapping(merged.get("output"), tool_id=tid),
             requires=RequiresSpec.from_mapping(merged.get("requires"), tool_id=tid),
         )
 
     @staticmethod
-    def _parser_declaring_layer(
-        chain: list[tuple[str, Path, Path, dict[str, Any]]], parser: Any
+    def _declaring_layer(
+        chain: list[tuple[str, Path, Path, dict[str, Any]]],
+        matches: Callable[[dict[str, Any]], bool],
     ) -> tuple[Path, Path]:
-        """``(manifest path, owning root)`` of the layer that set ``parser:``.
+        """``(manifest path, owning root)`` of the layer for which *matches* is true.
 
-        A ``parsers/*.py`` ref resolves against the family of the manifest that
-        *declared* it, not the leaf — otherwise a parent's parser is unreachable
-        from a child in another family.
+        A family-relative ref (``parser:``, ``install.entry``) resolves against
+        the family of the manifest that *declared* it, not the leaf — otherwise
+        a parent's ref is unreachable from a child in another family.
         """
         for _cid, path, root, data in reversed(chain):
-            if data.get("parser") == parser:
+            if matches(data):
                 return path, root
         return chain[-1][1], chain[-1][2]
 
@@ -366,26 +386,63 @@ class Registry:
         raise ManifestError(f"no registry entry for {tid!r} under {roots}")
 
     @staticmethod
+    def _resolve_family_or_root_ref(
+        decl_path: Path, decl_root: Path, ref: str, *, family_dirname: str
+    ) -> Path:
+        """Resolve *ref* to an absolute path: a bare name under the declaring
+        layer's family *family_dirname*/, or a ``/``-containing path under its
+        registry root. Raises ``ManifestError`` if it would escape that base
+        (the resolved path is exec'd, so a manifest must not point it outside
+        its registry root)."""
+        base = (
+            decl_root
+            if "/" in ref
+            else registry_ids.family_dir(decl_path, decl_root, family_dirname)
+        )
+        candidate = base / ref
+        if not candidate.resolve().is_relative_to(base.resolve()):
+            raise ManifestError(f"{ref!r} escapes {base}")
+        return candidate
+
+    @staticmethod
     def _resolve_parser_path(
         decl_path: Path,
         decl_root: Path,
         parser: Any,
     ) -> Path | None:
-        """Resolve a ``*.py`` parser: a bare filename under the declaring layer's
-        family ``parsers/``, or a ``/``-containing path under its registry root —
-        either way, never outside that root (the resolved file is ``exec``'d)."""
+        """Resolve a ``*.py`` parser ref — see ``validate_relative_ref``."""
         if not parser or not isinstance(parser, str):
             return None
         if not parser.endswith(".py"):
             return None
-        validate_parser_ref(parser)
-        base = decl_root if "/" in parser else registry_ids.family_parsers_dir(decl_path, decl_root)
-        candidate = base / parser
-        if not candidate.resolve().is_relative_to(base.resolve()):
-            raise ManifestError(f"parser {parser!r} escapes {base}")
+        validate_relative_ref(parser, kind="parser")
+        candidate = Registry._resolve_family_or_root_ref(
+            decl_path, decl_root, parser, family_dirname="parsers"
+        )
         if candidate.is_file():
             return candidate
-        raise ManifestError(f"parser {parser!r} not found under {base}")
+        raise ManifestError(f"parser {parser!r} not found under {candidate.parent}")
+
+    @staticmethod
+    def _resolve_entry_path(
+        decl_path: Path,
+        decl_root: Path,
+        entry: Any,
+    ) -> Path | None:
+        """Resolve an ``install.entry`` ref — see ``validate_relative_ref``.
+
+        A single file or a directory (a script package); the ``script`` install
+        backend decides which shape it is and how to run it at resolve time.
+        """
+        if not entry or not isinstance(entry, str):
+            return None
+        validate_relative_ref(entry, kind="script entry")
+        candidate = Registry._resolve_family_or_root_ref(
+            decl_path, decl_root, entry, family_dirname="scripts"
+        )
+        if candidate.is_file() or candidate.is_dir():
+            return candidate
+        raise ManifestError(f"script entry {entry!r} not found under {candidate.parent}")
 
     def _load_raw_yaml(self, path: Path) -> dict[str, Any]:
         """Load a single YAML manifest file, memoized on its own mtime + size.

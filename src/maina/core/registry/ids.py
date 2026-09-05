@@ -12,19 +12,20 @@ if TYPE_CHECKING:
 
 UNSAFE_ID_SEGMENTS = frozenset({"", ".", ".."})
 ID_SUFFIXES = (".yaml", ".yml")
+FAMILY_DIR_NAMES = frozenset({"parsers", "scripts"})
 
 
 def is_manifest_path(rel: Path) -> bool:
     """True when *rel* (a path relative to a registry root) is a tool manifest.
 
-    Excludes ``parsers/`` modules and anything under a dot-directory
-    (``.github/``, ``.git/``, …) so a registry root that is also a repo
-    checkout does not surface CI workflows as tool ids.
+    Excludes ``parsers/`` / ``scripts/`` contents and anything under a
+    dot-directory (``.github/``, ``.git/``, …) so a registry root that is
+    also a repo checkout does not surface CI workflows as tool ids.
     """
     parts = rel.parts
     return (
         rel.suffix in ID_SUFFIXES
-        and "parsers" not in parts
+        and FAMILY_DIR_NAMES.isdisjoint(parts)
         and all(not part.startswith(".") for part in parts)
     )
 
@@ -96,16 +97,17 @@ def fast_candidate_path(root: Path, tool_id: str) -> Path | None:
     return None
 
 
-def family_parsers_dir(leaf_path: Path, leaf_root: Path) -> Path:
-    """Nearest parsers/ directory walking up from the leaf toward its root."""
+def family_dir(leaf_path: Path, leaf_root: Path, name: str) -> Path:
+    """Nearest *name*/ directory (``"parsers"``, ``"scripts"``) walking up from
+    the leaf toward its root."""
     current = leaf_path.parent
     resolved_root = leaf_root.resolve()
     while True:
-        parsers = current / "parsers"
-        if parsers.is_dir():
-            return parsers
+        candidate = current / name
+        if candidate.is_dir():
+            return candidate
         if current.resolve() == resolved_root or current.parent == current:
-            return parsers
+            return candidate
         current = current.parent
 
 

@@ -116,24 +116,27 @@ def validate_platforms(tid: str, platforms: Any) -> None:
         raise manifest_error(tid, f"platforms {unknown} not in {{{allowed}}}")
 
 
-def validate_parser_ref(parser: str) -> None:
-    """A parser ref is a relative path — no ``..``, no absolute path.
+def validate_relative_ref(ref: str, *, kind: str) -> None:
+    """A ``parser:`` / ``install.entry`` ref is a relative path — no ``..``, no
+    absolute path.
 
     A bare filename (``add.py``) resolves under the declaring manifest's family
-    ``parsers/`` directory; a ``/``-containing path (``shared/util.py``) resolves
-    under the manifest's registry root instead (see ``Registry._resolve_parser_path``).
-    Either way the resolved file is ``exec``'d, so a manifest must not be able to
-    point it outside its registry root.
+    directory (``parsers/`` or ``scripts/``); a ``/``-containing path
+    (``shared/util.py``) resolves under the manifest's registry root instead
+    (see ``Registry._resolve_family_or_root_ref``). Either way the resolved
+    path is exec'd, so a manifest must not be able to point it outside its
+    registry root. *kind* names the ref in the error message (``"parser"``,
+    ``"script entry"``).
     """
-    parts = parser.replace("\\", "/").split("/")
+    parts = ref.replace("\\", "/").split("/")
     if (
-        parser != parser.strip()
-        or "\x00" in parser
-        or parser.startswith("/")
+        ref != ref.strip()
+        or "\x00" in ref
+        or ref.startswith("/")
         or ".." in parts
-        or Path(parser).is_absolute()
+        or Path(ref).is_absolute()
     ):
-        raise ManifestError(f"parser {parser!r} must be a relative path with no '..' segments")
+        raise ManifestError(f"{kind} {ref!r} must be a relative path with no '..' segments")
 
 
 def count_yaml_anchors(text: str) -> int:
