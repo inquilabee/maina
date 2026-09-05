@@ -50,3 +50,7 @@ site/
 
 # reviewer / scratch notes
 notes/
+.agents/
+
+# powerhouse agent process (plans, memory, decisions, reviews)
+.powerhouse/
