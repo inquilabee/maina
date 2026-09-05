@@ -7,11 +7,11 @@ import shlex
 import sys
 import warnings
 from contextlib import contextmanager
-from string import Formatter
 from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 
+from maina import catalog_validate
 from maina.clitokens import (
     RAW_ARGV,
     RunOpts,
@@ -20,9 +20,7 @@ from maina.clitokens import (
     split_at_dashdash,
     split_maina_opts,
 )
-from maina.clitokens import (
-    resolve as resolve_run_invocation,
-)
+from maina.clitokens import resolve as resolve_run_invocation
 from maina.core.errors import (
     AbstractToolError,
     ArgError,
@@ -30,13 +28,21 @@ from maina.core.errors import (
     MainaError,
     ManifestError,
 )
-from maina.core.platform import platform_key_problem
-from maina.core.registry import BASE_TOOL_ID, RESERVED_RUN_PARAMS, build_manifest_schema
+from maina.core.registry import RESERVED_RUN_PARAMS, build_manifest_schema
 from maina.runtime import runtime
 from maina.tool import Tool
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
+
+    # typer vendors its own click fork; `Context.parent` is declared against
+    # that base class, not the `typer.Context` subclass, so a helper that
+    # accepts either (see echo_typer_help) has to type against the base.
+    from typer._click.core import Context as ClickContext
+
     from maina.core.result import ToolResult
+    from maina.installer import Installer
 
 app = typer.Typer(
     name="maina",
@@ -54,13 +60,13 @@ app = typer.Typer(
 )
 
 
-def echo_typer_help(ctx: Any) -> None:
+def echo_typer_help(ctx: ClickContext) -> None:
     """Print Typer/Click help for ``ctx`` (no registry tool catalog)."""
     typer.echo(ctx.get_help())
 
 
 @contextmanager
-def rendered_warnings() -> Any:
+def rendered_warnings() -> Iterator[None]:
     """Catch a ``RuntimeWarning`` from the registry/installer (a skipped
     broken manifest, a same-root id collision, ...) and print it as a plain
     ``warning: ...`` line on stderr, instead of the raw
@@ -149,20 +155,12 @@ def validate(
     ``ok:`` / ``error:`` per id and exits non-zero if any failed.
     """
     rt = runtime()
-    if tools:
-        ids = tools
-    else:
-        # iter_ids() also warns about a same-root id collision; validate
-        # already reports that as its own error: line below, so don't repeat it.
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", RuntimeWarning)
-            ids = rt.registry.iter_ids()
-    if not ids:
+    duplicate_files, problems = catalog_validate.validate_ids(rt, tools)
+    if not problems and not duplicate_files:
         typer.echo("no manifests registered")
         return
-    failed = emit_duplicate_id_errors(rt)
-    for tid in sorted(ids):
-        problem = validate_one(rt, tid)
+    failed = emit_duplicate_id_errors(duplicate_files)
+    for tid, problem in problems.items():
         if problem is None:
             typer.echo(f"ok: {tid}")
         else:
@@ -173,77 +171,14 @@ def validate(
         raise typer.Exit(1)
 
 
-def emit_duplicate_id_errors(rt: Any) -> int:
+def emit_duplicate_id_errors(duplicate_files: dict[str, list[Path]]) -> int:
     """Print an ``error:`` line per same-root id collision; return how many."""
     count = 0
-    for tid, paths in sorted(rt.registry.duplicate_ids().items()):
+    for tid, paths in sorted(duplicate_files.items()):
         files = ", ".join(str(p) for p in paths)
         typer.echo(f"error: {tid}: derived from {len(paths)} manifests: {files}", err=True)
         count += 1
     return count
-
-
-NO_CLI_PROBLEM = "no cli: set (add cli: <name>, or abstract: true for an extends-only base)"
-
-
-def validate_one(rt: Any, tid: str) -> str | None:
-    """A one-line problem string for *tid*, or ``None`` when it is fine."""
-    try:
-        manifest = Tool(tid, runtime=rt).manifest  # loads + checks parser
-    except MainaError as exc:
-        return str(exc)
-    if not manifest.has_cli:
-        inheritance_only = manifest.abstract or manifest.id == BASE_TOOL_ID
-        return None if inheritance_only else located(NO_CLI_PROBLEM, manifest)
-    return located(concrete_problem(manifest, rt), manifest)
-
-
-def located(problem: str | None, manifest: Any) -> str | None:
-    """A static problem with the manifest file it was found in appended.
-
-    A load error already names its own files; these checks run on the merged
-    manifest, where the id alone is a derived name and not something to open.
-    """
-    unlocatable = problem is None or manifest.path is None
-    return problem if unlocatable else f"{problem} (in {manifest.path})"
-
-
-def concrete_problem(manifest: Any, rt: Any) -> str | None:
-    """Problems in a concrete (has-``cli``) manifest, or ``None``."""
-    found = install_problem(manifest, rt) or from_file_problem(manifest)
-    return None if manifest.abstract else found
-
-
-def install_problem(manifest: Any, rt: Any) -> str | None:
-    """Static problems in a manifest's ``install:`` block, or ``None``."""
-    install = manifest.install
-    if install.backend not in rt.installer.backend_names:
-        known = ", ".join(sorted(rt.installer.backend_names)) or "none"
-        return f"install backend {install.backend!r} is not registered (known: {known})"
-    if install.backend == "github" and not (install.repo and install.has_assets()):
-        return "install.backend: github needs repo: and assets: (or asset_template:)"
-    keys = sorted(set(install.assets) | set(install.sha256))
-    if bad := [problem for key in keys if (problem := platform_key_problem(key))]:
-        return f"install.assets/sha256 platform keys: {'; '.join(bad)}"
-    return None
-
-
-def from_file_problem(manifest: Any) -> str | None:
-    """An ``output.from_file`` template that can never resolve, or ``None``."""
-    template = manifest.output.from_file
-    if not template:
-        return None
-    fields = {field for _lit, field, _spec, _conv in Formatter().parse(template) if field}
-    if undeclared := sorted(fields - {"cwd", *manifest.args}):
-        return f"output.from_file names non-arg placeholder(s): {', '.join(undeclared)}"
-    # The runner only interpolates scalars, so a flag never substitutes — the
-    # template is statically unresolvable, not merely unresolved on some runs.
-    if flags := sorted(f for f in fields if f in manifest.args and manifest.args[f].type == "flag"):
-        return (
-            "output.from_file placeholder(s) name a type: flag arg, which never "
-            f"interpolates: {', '.join(flags)}"
-        )
-    return None
 
 
 @app.command()
@@ -341,7 +276,7 @@ def emit_prepare_outcome(prepared: list[str], failures: dict[str, str]) -> None:
         raise typer.Exit(1)
 
 
-def emit_check(installer: Any, tools: list[str] | None) -> None:
+def emit_check(installer: Installer, tools: list[str] | None) -> None:
     """``prepare --check``: print each id's state and exit non-zero if any
     missing or errored — one bad manifest never blanks the rest of the report.
     """
@@ -423,7 +358,9 @@ def dispatch_run(resolved_id: str, tokens: list[str], opts: RunOpts) -> None:
     elif opts.as_json and result.parsed is None:
         echo_stderr("note: --json output is null (no parser: configured, or it returned None)")
     if not result.ok:
-        # Docs contract: exit 1 = tool ran and failed; 2 = bad usage / unknown id.
+        # Docs contract (docs/cli.md): 2 is a usage error (bad id / manifest /
+        # args); everything else that stops the run, including a tool that
+        # ran and failed, is 1.
         raise typer.Exit(1)
     # A parse failure under --json (the caller asked for parsed output and got
     # none) is itself a failure.

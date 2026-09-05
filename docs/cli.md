@@ -73,8 +73,12 @@ maina run curl --env-allow=NETRC url=https://example.com
 that tool's manifest help. To run a tool that has **no required arguments**,
 pass an explicit empty separator: `maina run <tool_id> --`.
 
-Exit codes: `0` on success, `1` when the tool ran but reported a non-success
-code, `2` for an unknown id, a bad manifest, or bad arguments.
+Exit codes: `0` on success, `2` for an unknown id, a bad manifest, or bad
+arguments. `1` covers everything else that stopped the run without being a
+usage error: the tool ran and reported a non-success code, but also an
+install failure, a provisioning failure, a timeout, or the process failing
+to spawn at all — anything maina's own error hierarchy raises that isn't one
+of the `2`-mapped usage errors above.
 
 `maina --version` prints the installed version.
 

@@ -64,6 +64,24 @@ def test_cli_validate_catches_static_manifest_bugs(tmp_path: Any) -> None:
     assert "ok: base" in result.stdout
 
 
+def test_validate_ids_is_callable_as_a_library_without_the_cli(tmp_path: Any) -> None:
+    """maina validate's checks are also Runtime.validate_ids(rt, ...) — a
+    caller embedding maina programmatically gets the same answer without
+    shelling out to the CLI and parsing its text output."""
+    from maina.catalog_validate import validate_ids
+
+    root = tmp_path / "reg"
+    write_yaml(root / "good.yaml", {"cli": "echo", "install": {"backend": "path"}})
+    write_yaml(root / "badbackend.yaml", {"cli": "x", "install": {"backend": "gihtub"}})
+    rt = Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root], use_env=False)
+    duplicate_files, problems = validate_ids(rt)
+    assert duplicate_files == {}
+    assert problems["good"] is None
+    bad = problems["badbackend"]
+    assert bad is not None
+    assert "backend 'gihtub' is not registered" in bad
+
+
 def test_cli_prepare_is_batch_resilient(tmp_path: Any) -> None:
     root = tmp_path / "reg"
     write_yaml(root / "aaa.yaml", {"cli": "true", "install": {"backend": "path"}})
