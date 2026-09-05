@@ -9,7 +9,7 @@ closed.
 
 `maina schema` prints a Draft 2020-12 JSON Schema for the manifest shape,
 generated from the same key sets the loader validates against. The published
-copy is [`maina-manifest.schema.json`](maina-manifest.schema.json). Point an
+copy is [`maina-manifest.schema.json`](../maina-manifest.schema.json). Point an
 editor at it with a header line:
 
 ```yaml

@@ -1,4 +1,7 @@
-# maina
+# ![maina](docs/images/maina-mark.svg) maina
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.11.4+](https://img.shields.io/badge/python-3.11.4%2B-blue.svg)](pyproject.toml)
 
 Call non-Python CLIs from Python. You describe a tool once in a YAML manifest;
 `Tool(name)` loads it, installs/resolves the executable, maps keyword arguments
@@ -20,9 +23,9 @@ print(result.raw, result.parsed)
 ```
 
 Full documentation is in [`docs/`](docs/index.md) (built with MkDocs):
-[quickstart](docs/quickstart.md), [manifest schema](docs/manifests.md),
-[install backends](docs/backends.md), [parsers](docs/parsers.md),
-[extending maina](docs/extending.md), [architecture](docs/architecture.md).
+[quickstart](docs/user/quickstart.md), [manifest schema](docs/user/manifests.md),
+[install backends](docs/user/backends.md), [parsers](docs/user/parsers.md),
+[extending maina](docs/user/extending.md), [architecture](docs/architecture.md).
 Design notes: `adr/0001-registry-first-tool-runtime.md`,
 `adr/0002-runtime-register-extendibility.md`.
 
@@ -210,4 +213,4 @@ passed as strings. Top-level YAML `name:` is decoration and ignored; `platforms:
 A registered registry directory is trusted code — it can ship a `parsers/*.py`
 that maina imports and runs in-process, and `Runtime.preferred()` honours
 `$MAINA_REGISTRY` unless you pass `use_env=False`. See
-[docs/security.md](docs/security.md).
+[docs/user/security.md](docs/user/security.md).

@@ -33,11 +33,11 @@ markdown_extensions:
   - pymdownx.superfences
 nav:
   - Home: index.md
-  - Quickstart: quickstart.md
-  - CLI: cli.md
-  - Manifest schema: manifests.md
-  - Install backends: backends.md
-  - Parsers: parsers.md
-  - Extending maina: extending.md
-  - Security model: security.md
+  - Quickstart: user/quickstart.md
+  - CLI: user/cli.md
+  - Manifest schema: user/manifests.md
+  - Install backends: user/backends.md
+  - Parsers: user/parsers.md
+  - Extending maina: user/extending.md
+  - Security model: user/security.md
   - Architecture: architecture.md

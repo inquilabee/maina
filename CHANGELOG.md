@@ -53,7 +53,7 @@
   `requires: { node: null }`).
 - `cli` / `install.binary` also reject a leading `-` and shell-glob
   metacharacters.
-- New [Security model](docs/security.md) page: a registry root is trusted
+- New [Security model](docs/user/security.md) page: a registry root is trusted
   code; `use_env=False` opts a library out of `$MAINA_REGISTRY`.
 - tar extraction requires the data filter (Python 3.11.4+), validates
   symlink/hardlink targets, and wraps `TarError` as `InstallError`; the

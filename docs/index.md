@@ -39,10 +39,11 @@ runtime, so no hand-written wrapper is needed.
 
 ## Next
 
-- [Quickstart](quickstart.md) — install, first tool, the CLI.
-- [Manifest schema](manifests.md) — every field a registry entry can set.
-- [Install backends](backends.md) — `path`, `github`, `npm`, and mise runtimes.
-- [Extending maina](extending.md) — add tools, parsers, and backends without a
-  fork.
-- [Security model](security.md) — a registry root is trusted code; what
+- [Quickstart](user/quickstart.md) — install, first tool, the CLI.
+- [Manifest schema](user/manifests.md) — every field a registry entry can set.
+- [Install backends](user/backends.md) — `path`, `github`, `npm`, and mise
+  runtimes.
+- [Extending maina](user/extending.md) — add tools, parsers, and backends
+  without a fork.
+- [Security model](user/security.md) — a registry root is trusted code; what
   `env_allow` and `use_env=False` do.
