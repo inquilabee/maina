@@ -387,7 +387,7 @@ def test_cli_run_no_arg_tool_with_dashdash(
     ``CliRunner`` calls the Typer app directly, bypassing that capture — Click
     then has already dropped the ``--`` with no way to tell "nothing after
     run noargs" apart from "an explicit, empty --" (see
-    RunInvocation.recover_separator_tokens). A CliRunner-based version of this
+    recover_separator_tokens). A CliRunner-based version of this
     test would pass for the wrong reason: exit_code == 0 from the help path,
     not from the tool actually running.
     """

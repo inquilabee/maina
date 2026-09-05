@@ -304,7 +304,7 @@ def test_cli_emit_result_prints_raw_by_default(capsys: pytest.CaptureFixture[str
 
 
 def test_cli_run_coercion_is_type_aware(tmp_path: Path) -> None:
-    from maina.cli import RunArgParser
+    from maina.clitokens import parse_run_tokens
 
     reg = make_reg(
         tmp_path,
@@ -321,7 +321,7 @@ def test_cli_run_coercion_is_type_aware(tmp_path: Path) -> None:
     )
     schema = reg.load("demo").args
     flags = frozenset(name for name, spec in schema.items() if spec.type == "flag")
-    kwargs, _ = RunArgParser.parse(["count=1", "silent=1"], flag_names=flags)
+    kwargs, _ = parse_run_tokens(["count=1", "silent=1"], flag_names=flags)
     assert kwargs == {"count": "1", "silent": True}
 
 

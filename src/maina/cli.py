@@ -14,10 +14,14 @@ import typer
 
 from maina.clitokens import (
     RAW_ARGV,
-    RunArgParser,
-    RunInvocation,
     RunOpts,
+    is_empty,
+    parse_run_tokens,
     split_at_dashdash,
+    split_maina_opts,
+)
+from maina.clitokens import (
+    resolve as resolve_run_invocation,
 )
 from maina.core.errors import (
     AbstractToolError,
@@ -390,16 +394,16 @@ def run(
     ``maina run <tool_id>`` and ``... --help`` print that tool's registry help.
     ``--dry-run`` prints the argv that would run and exits without running it.
     """
-    resolved_id, tokens, wants_help = RunInvocation.resolve(tool_id, list(ctx.args))
+    resolved_id, tokens, wants_help = resolve_run_invocation(tool_id, list(ctx.args))
     if resolved_id is None:
         echo_typer_help(ctx)
         raise typer.Exit(0)
-    if wants_help or RunInvocation.is_empty(tokens):
+    if wants_help or is_empty(tokens):
         emit_tool_help(resolved_id)
         raise typer.Exit(0)
     # Only the head (before `--`) is maina's; `--json` after `--` is the tool's.
     head, tail = split_at_dashdash(tokens)
-    opts, head = RunInvocation.split_maina_opts(head)
+    opts, head = split_maina_opts(head)
     tokens = head if tail is None else [*head, "--", *tail]
     dispatch_run(resolved_id, tokens, opts)
 
@@ -431,7 +435,7 @@ def dry_run_argv(resolved_id: str, tokens: list[str]) -> list[str]:
     """Build the argv a run would execute (argv[0] is the bare ``cli`` name)."""
     try:
         tool = Tool(resolved_id)
-        kwargs, extra = RunArgParser.parse(tokens, flag_names=flag_names_for(tool))
+        kwargs, extra = parse_run_tokens(tokens, flag_names=flag_names_for(tool))
         return tool.argv(**reserved_safe_kwargs(kwargs, extra=extra))
     except (ManifestError, AbstractToolError, ArgError) as exc:
         typer.echo(str(exc), err=True)
@@ -458,7 +462,7 @@ def run_tool_tokens(resolved_id: str, tokens: list[str], *, opts: RunOpts) -> To
     """Build argv from CLI tokens and run the tool, mapping errors to exit codes."""
     try:
         tool = Tool(resolved_id)
-        kwargs, extra = RunArgParser.parse(tokens, flag_names=flag_names_for(tool))
+        kwargs, extra = parse_run_tokens(tokens, flag_names=flag_names_for(tool))
         call_kwargs = reserved_safe_kwargs(
             kwargs,
             extra=extra,

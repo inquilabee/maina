@@ -1,12 +1,33 @@
-"""``maina run`` token parsing: RunInvocation, RunArgParser, RawArgv, RunOpts."""
+"""``maina run`` token parsing: invocation resolution, run-arg parsing, RunOpts.
+
+Pure transforms with no accumulating state — plain functions, not classes
+wearing every method as a ``@staticmethod``/``@classmethod``. ``RawArgv`` stays
+a class: it is a real lifecycle owner holding mutable capture/clear state.
+"""
 
 from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
-from typing import Any, ClassVar
+from typing import Any
 
 import typer
+
+HELP_FLAGS = frozenset({"--help", "-h"})
+
+# Bare maina-side flags, by the ``RunOpts`` field each one sets.
+BOOL_OPTS: dict[str, str] = {
+    "--json": "as_json",
+    "--dry-run": "dry_run",
+    "--stdin": "stdin",
+}
+MAINA_FLAGS = frozenset(BOOL_OPTS)
+# ``--name=value`` maina-side options, by the ``RunOpts`` field each one sets.
+VALUE_OPTS: dict[str, str] = {
+    "--timeout=": "timeout",
+    "--cwd=": "cwd",
+    "--env-allow=": "env_allow",
+}
 
 
 def split_at_dashdash(tokens: list[str]) -> tuple[list[str], list[str] | None]:
@@ -34,7 +55,15 @@ class RunOpts:
 
 
 class RawArgv:
-    """Capture process argv before Click drops the ``--`` separator."""
+    """Capture process argv before Click drops the ``--`` separator.
+
+    Not thread-safe: ``RAW_ARGV`` is one process-wide instance, so concurrent
+    ``main()`` calls from different threads can interleave ``capture()`` /
+    ``clear()`` and cross-contaminate each other's recovered ``--`` tokens.
+    Mirrors the same caveat ``Runtime``'s process-wide session already
+    documents — run each concurrent invocation in its own process, or avoid
+    ``main()`` entirely and drive ``Tool(..., runtime=rt)`` directly.
+    """
 
     def __init__(self) -> None:
         self._argv: list[str] | None = None
@@ -61,277 +90,247 @@ class RawArgv:
 RAW_ARGV = RawArgv()
 
 
-class RunInvocation:
-    """Normalize ``run`` argv: tool id, payload tokens, and help intent."""
+def without_first_separator(tokens: list[str]) -> list[str]:
+    """Drop exactly the first ``--``, the way Click does building ``ctx.args``."""
+    out = list(tokens)
+    if "--" in out:
+        del out[out.index("--")]
+    return out
 
-    HELP_FLAGS = frozenset({"--help", "-h"})
 
-    @staticmethod
-    def without_first_separator(tokens: list[str]) -> list[str]:
-        """Drop exactly the first ``--``, the way Click does building ``ctx.args``."""
-        out = list(tokens)
-        if "--" in out:
-            del out[out.index("--")]
-        return out
+def recover_separator_tokens(tool_id: str | None, ctx_args: list[str]) -> list[str] | None:
+    """This invocation's tokens from ``sys.argv``, with ``--`` still in them.
 
-    @classmethod
-    def recover_separator_tokens(cls, tool_id: str | None, ctx_args: list[str]) -> list[str] | None:
-        """This invocation's tokens from ``sys.argv``, with ``--`` still in them.
+    ``main()`` captures argv up front, but an app that mounts maina's
+    commands under its own name owns the entry point and never calls it.
+    Click has already dropped the ``--`` from ``ctx.args`` by the time the
+    command runs, so without this an embedder's ``extra`` passthrough is
+    silently parsed as tool kwargs — ``maina run t -- -n`` failing with
+    "'-n' is not a flag".
 
-        ``main()`` captures argv up front, but an app that mounts maina's
-        commands under its own name owns the entry point and never calls it.
-        Click has already dropped the ``--`` from ``ctx.args`` by the time the
-        command runs, so without this an embedder's ``extra`` passthrough is
-        silently parsed as tool kwargs — ``maina run t -- -n`` failing with
-        "'-n' is not a flag".
-
-        Recovered only when the candidate demonstrably belongs to this
-        invocation: dropping its first ``--`` must reproduce exactly what Click
-        passed in. Under a programmatic call (``app(args=[...])``,
-        ``CliRunner``) ``sys.argv`` belongs to the test runner, nothing matches,
-        and the caller falls back.
-        """
-        if tool_id is None:
-            return None
-        expected = [tool_id, *ctx_args]
-        argv = sys.argv[1:]
-        for start in range(len(argv), -1, -1):
-            tail = argv[start:]
-            if "--" in tail and cls.without_first_separator(tail) == expected:
-                return tail
+    Recovered only when the candidate demonstrably belongs to this
+    invocation: dropping its first ``--`` must reproduce exactly what Click
+    passed in. Under a programmatic call (``app(args=[...])``,
+    ``CliRunner``) ``sys.argv`` belongs to the test runner, nothing matches,
+    and the caller falls back.
+    """
+    if tool_id is None:
         return None
+    expected = [tool_id, *ctx_args]
+    argv = sys.argv[1:]
+    for start in range(len(argv), -1, -1):
+        tail = argv[start:]
+        if "--" in tail and without_first_separator(tail) == expected:
+            return tail
+    return None
 
-    @classmethod
-    def resolve(
-        cls,
-        tool_id: str | None,
-        ctx_args: list[str],
-    ) -> tuple[str | None, list[str], bool]:
-        """Prefer raw argv (keeps ``--``); fall back to Click ``ctx.args``.
 
-        Raw argv comes from :func:`main`'s capture when maina owns the entry
-        point, and is otherwise recovered from ``sys.argv`` so an embedding app
-        gets the same ``--`` handling without having to know about any of this.
-        """
-        captured = RAW_ARGV.after_command("run")
-        # `captured` may legitimately be an empty list (`maina run` with nothing
-        # after it), so this tests for None rather than falsiness.
-        recovered = cls.recover_separator_tokens(tool_id, ctx_args)
-        raw_after = recovered if captured is None else captured
-        return cls.parse_raw(raw_after) if raw_after is not None else cls.parse(tool_id, ctx_args)
+def resolve(tool_id: str | None, ctx_args: list[str]) -> tuple[str | None, list[str], bool]:
+    """Prefer raw argv (keeps ``--``); fall back to Click ``ctx.args``.
 
-    # Bare maina-side flags, by the ``RunOpts`` field each one sets.
-    BOOL_OPTS: ClassVar[dict[str, str]] = {
-        "--json": "as_json",
-        "--dry-run": "dry_run",
-        "--stdin": "stdin",
-    }
-    MAINA_FLAGS = frozenset(BOOL_OPTS)
-    # ``--name=value`` maina-side options, by the ``RunOpts`` field each one sets.
-    VALUE_OPTS: ClassVar[dict[str, str]] = {
-        "--timeout=": "timeout",
-        "--cwd=": "cwd",
-        "--env-allow=": "env_allow",
-    }
+    Raw argv comes from :func:`main`'s capture when maina owns the entry
+    point, and is otherwise recovered from ``sys.argv`` so an embedding app
+    gets the same ``--`` handling without having to know about any of this.
+    """
+    captured = RAW_ARGV.after_command("run")
+    # `captured` may legitimately be an empty list (`maina run` with nothing
+    # after it), so this tests for None rather than falsiness.
+    recovered = recover_separator_tokens(tool_id, ctx_args)
+    raw_after = recovered if captured is None else captured
+    return parse_raw(raw_after) if raw_after is not None else parse_invocation(tool_id, ctx_args)
 
-    @classmethod
-    def split_maina_opts(cls, head: list[str]) -> tuple[RunOpts, list[str]]:
-        """Pull the maina-side options out of *head*; the rest are the tool's
-        ``key=value`` tokens.
 
-        These are maina's own knobs (``--json``, ``--dry-run``, ``--stdin``,
-        ``--timeout=``, ``--cwd=``, ``--env-allow=``), never the tool's — the
-        tool's own options go after ``--``.
-        """
-        found: dict[str, Any] = {}
-        rest = [tok for tok in head if not cls._take_opt(found, tok)]
-        return RunOpts(**found), rest
+def split_maina_opts(head: list[str]) -> tuple[RunOpts, list[str]]:
+    """Pull the maina-side options out of *head*; the rest are the tool's
+    ``key=value`` tokens.
 
-    @classmethod
-    def _take_opt(cls, found: dict[str, Any], tok: str) -> bool:
-        """Fold one maina-side option into *found*; False when it is a tool token."""
-        if field := cls.BOOL_OPTS.get(tok):
-            found[field] = True
+    These are maina's own knobs (``--json``, ``--dry-run``, ``--stdin``,
+    ``--timeout=``, ``--cwd=``, ``--env-allow=``), never the tool's — the
+    tool's own options go after ``--``.
+    """
+    found: dict[str, Any] = {}
+    rest = [tok for tok in head if not take_opt(found, tok)]
+    return RunOpts(**found), rest
+
+
+def take_opt(found: dict[str, Any], tok: str) -> bool:
+    """Fold one maina-side option into *found*; False when it is a tool token."""
+    if field := BOOL_OPTS.get(tok):
+        found[field] = True
+        return True
+    for prefix, name in VALUE_OPTS.items():
+        if tok.startswith(prefix):
+            found[name] = opt_value(name, tok.removeprefix(prefix), found)
             return True
-        for prefix, name in cls.VALUE_OPTS.items():
-            if tok.startswith(prefix):
-                found[name] = cls._opt_value(name, tok.removeprefix(prefix), found)
-                return True
-        return False
-
-    @classmethod
-    def _opt_value(cls, field: str, text: str, found: dict[str, Any]) -> Any:
-        """Parse one ``--name=value`` option; ``--env-allow`` accumulates."""
-        if field == "timeout":
-            return cls._opt_float(text)
-        if field != "env_allow":
-            return text
-        names = tuple(part for part in text.split(",") if part)
-        return (*(found.get("env_allow") or ()), *names)
-
-    @staticmethod
-    def _opt_float(text: str) -> float:
-        try:
-            return float(text)
-        except ValueError as exc:
-            raise typer.BadParameter(f"{text!r}: --timeout needs a number of seconds") from exc
-
-    @classmethod
-    def _lift_lead_flag(
-        cls, tool_id: str | None, tokens: list[str]
-    ) -> tuple[str | None, list[str]]:
-        """`maina run --json --dry-run <id> …` — move every leading maina flag
-        written before the id past it, not just the first one.
-
-        Mirrors the same "find the first non-flag token" scan
-        :meth:`parse_raw` already uses for the raw-argv recovery path, applied
-        here to ``[tool_id, *tokens]`` — a single swap left a second leading
-        flag (whatever Click bound as the id after the first swap) stuck in
-        the id position.
-        """
-        if not isinstance(tool_id, str) or tool_id not in cls.MAINA_FLAGS:
-            return tool_id, tokens
-        combined: list[str] = [tool_id, *tokens]
-        split = next(
-            (i for i, tok in enumerate(combined) if tok not in cls.MAINA_FLAGS), len(combined)
-        )
-        if split == len(combined):
-            return tool_id, tokens
-        lead, rest = combined[:split], combined[split:]
-        return rest[0], [*lead, *rest[1:]]
-
-    @classmethod
-    def parse_raw(cls, after_run: list[str]) -> tuple[str | None, list[str], bool]:
-        """Parse tokens captured after the ``run`` command name.
-
-        A maina flag (``--json`` / ``--dry-run``) written *before* the tool id
-        is relocated into the token stream so it is not read as the id.
-        """
-        split = next(
-            (i for i, tok in enumerate(after_run) if tok not in cls.MAINA_FLAGS), len(after_run)
-        )
-        lead, rest = after_run[:split], after_run[split:]
-        if not rest:
-            return None, [], False
-        tid, tokens, wants_help = cls.parse(rest[0], rest[1:])
-        return tid, [*lead, *tokens], wants_help
-
-    @classmethod
-    def parse(
-        cls,
-        tool_id: str | None,
-        tokens: list[str],
-    ) -> tuple[str | None, list[str], bool]:
-        """Return ``(tool_id, tokens, wants_help)`` with help flags stripped from the head."""
-        if tool_id in cls.HELP_FLAGS:
-            tool_id = None
-        tool_id, tokens = cls._lift_lead_flag(tool_id, tokens)
-        head, tail = split_at_dashdash(tokens)
-        if tail is not None:
-            wants_help = any(t in cls.HELP_FLAGS for t in head)
-            head = [t for t in head if t not in cls.HELP_FLAGS]
-            # Preserve ``--`` in the token stream for RunArgParser / is_empty.
-            return tool_id, [*head, "--", *tail], wants_help
-        # Click drops ``--``; only treat sole help flags as help requests.
-        wants_help = all(t in cls.HELP_FLAGS for t in tokens) if tokens else False
-        return tool_id, ([] if wants_help else tokens), wants_help
-
-    @staticmethod
-    def is_empty(tokens: list[str]) -> bool:
-        """True only when nothing was passed at all.
-
-        A bare ``maina run <id>`` prints help; ``maina run <id> --`` explicitly
-        runs the tool with no arguments (for surfaces with no required args).
-        """
-        return not tokens
+    return False
 
 
-class RunArgParser:
-    """Parse CLI tokens into Tool.run kwargs and optional extra argv."""
+def opt_value(field: str, text: str, found: dict[str, Any]) -> Any:
+    """Parse one ``--name=value`` option; ``--env-allow`` accumulates."""
+    if field == "timeout":
+        return opt_float(text)
+    if field != "env_allow":
+        return text
+    names = tuple(part for part in text.split(",") if part)
+    return (*(found.get("env_allow") or ()), *names)
 
-    @classmethod
-    def parse(
-        cls,
-        tokens: list[str],
-        *,
-        flag_names: frozenset[str] = frozenset(),
-    ) -> tuple[dict[str, Any], list[str] | None]:
-        """Split tokens into kwargs and optional extra passthrough after ``--``.
 
-        ``true``/``yes``/``1``/``0``/… are coerced to booleans only for args the
-        manifest declares as ``type: flag``; every other value stays a string.
-        ``key:=value`` forces the literal string regardless.
-        """
-        kw_tokens, extra = split_at_dashdash(tokens)
-        kwargs: dict[str, Any] = {}
-        for token in kw_tokens:
-            if token:
-                cls._parse_token(kwargs, token, flag_names=flag_names)
-        return kwargs, extra
+def opt_float(text: str) -> float:
+    try:
+        return float(text)
+    except ValueError as exc:
+        raise typer.BadParameter(f"{text!r}: --timeout needs a number of seconds") from exc
 
-    @classmethod
-    def _parse_token(
-        cls, kwargs: dict[str, Any], token: str, *, flag_names: frozenset[str]
-    ) -> None:
-        """Fold one ``key=value`` / ``key:=value`` / bare-flag token into *kwargs*."""
-        eq, colon_eq = token.find("="), token.find(":=")
-        if colon_eq != -1 and (eq == -1 or colon_eq < eq):  # key:=value forces a literal string
-            key, value = token[:colon_eq], token[colon_eq + 2 :]
-            cls._require_key(token, key)
-            cls._assign(kwargs, key, value=value)
+
+def lift_lead_flag(tool_id: str | None, tokens: list[str]) -> tuple[str | None, list[str]]:
+    """`maina run --json --dry-run <id> …` — move every leading maina flag
+    written before the id past it, not just the first one.
+
+    Mirrors the same "find the first non-flag token" scan :func:`parse_raw`
+    already uses for the raw-argv recovery path, applied here to
+    ``[tool_id, *tokens]`` — a single swap left a second leading flag
+    (whatever Click bound as the id after the first swap) stuck in the id
+    position.
+    """
+    if not isinstance(tool_id, str) or tool_id not in MAINA_FLAGS:
+        return tool_id, tokens
+    combined: list[str] = [tool_id, *tokens]
+    split = next((i for i, tok in enumerate(combined) if tok not in MAINA_FLAGS), len(combined))
+    if split == len(combined):
+        return tool_id, tokens
+    lead, rest = combined[:split], combined[split:]
+    return rest[0], [*lead, *rest[1:]]
+
+
+def parse_raw(after_run: list[str]) -> tuple[str | None, list[str], bool]:
+    """Parse tokens captured after the ``run`` command name.
+
+    A maina flag (``--json`` / ``--dry-run``) written *before* the tool id
+    is relocated into the token stream so it is not read as the id.
+    """
+    split = next((i for i, tok in enumerate(after_run) if tok not in MAINA_FLAGS), len(after_run))
+    lead, rest = after_run[:split], after_run[split:]
+    if not rest:
+        return None, [], False
+    tid, tokens, wants_help = parse_invocation(rest[0], rest[1:])
+    return tid, [*lead, *tokens], wants_help
+
+
+def parse_invocation(
+    tool_id: str | None,
+    tokens: list[str],
+) -> tuple[str | None, list[str], bool]:
+    """Return ``(tool_id, tokens, wants_help)`` with help flags stripped from the head."""
+    if tool_id in HELP_FLAGS:
+        tool_id = None
+    tool_id, tokens = lift_lead_flag(tool_id, tokens)
+    head, tail = split_at_dashdash(tokens)
+    if tail is not None:
+        wants_help = any(t in HELP_FLAGS for t in head)
+        head = [t for t in head if t not in HELP_FLAGS]
+        # Preserve ``--`` in the token stream for parse_run_tokens / is_empty.
+        return tool_id, [*head, "--", *tail], wants_help
+    # Click drops ``--``; only treat sole help flags as help requests.
+    wants_help = all(t in HELP_FLAGS for t in tokens) if tokens else False
+    return tool_id, ([] if wants_help else tokens), wants_help
+
+
+def is_empty(tokens: list[str]) -> bool:
+    """True only when nothing was passed at all.
+
+    A bare ``maina run <id>`` prints help; ``maina run <id> --`` explicitly
+    runs the tool with no arguments (for surfaces with no required args).
+    """
+    return not tokens
+
+
+def parse_run_tokens(
+    tokens: list[str],
+    *,
+    flag_names: frozenset[str] = frozenset(),
+) -> tuple[dict[str, Any], list[str] | None]:
+    """Split tokens into kwargs and optional extra passthrough after ``--``.
+
+    ``true``/``yes``/``1``/``0``/… are coerced to booleans only for args the
+    manifest declares as ``type: flag``; every other value stays a string.
+    ``key:=value`` forces the literal string regardless.
+    """
+    kw_tokens, extra = split_at_dashdash(tokens)
+    kwargs: dict[str, Any] = {}
+    for token in kw_tokens:
+        if token:
+            parse_token(kwargs, token, flag_names=flag_names)
+    return kwargs, extra
+
+
+def parse_token(kwargs: dict[str, Any], token: str, *, flag_names: frozenset[str]) -> None:
+    """Fold one ``key=value`` / ``key:=value`` / bare-flag token into *kwargs*."""
+    eq, colon_eq = token.find("="), token.find(":=")
+    if colon_eq != -1 and (eq == -1 or colon_eq < eq):  # key:=value forces a literal string
+        key, value = token[:colon_eq], token[colon_eq + 2 :]
+        require_key(token, key)
+        if "." in key:  # arg.subkey:=value -> a pairs dict, literal value
+            assign_pair(kwargs, token, key, value)
             return
-        if eq != -1:
-            key, value = token[:eq], token[eq + 1 :]
-            cls._require_key(token, key)
-            if "." in key:  # arg.subkey=value -> a pairs dict
-                arg, _, sub = key.partition(".")
-                cls._require_key(token, arg)
-                bucket = kwargs.setdefault(arg, {})
-                if not isinstance(bucket, dict):
-                    raise typer.BadParameter(
-                        f"{arg!r} was already given a plain value; use only {arg}.key=value tokens"
-                    )
-                bucket[sub] = value
-                return
-            cls._assign(kwargs, key, value=cls._coerce(value) if key in flag_names else value)
+        assign(kwargs, key, value=value)
+        return
+    if eq != -1:
+        key, value = token[:eq], token[eq + 1 :]
+        require_key(token, key)
+        if "." in key:  # arg.subkey=value -> a pairs dict
+            assign_pair(kwargs, token, key, value)
             return
-        if token not in flag_names:
-            raise typer.BadParameter(f"{token!r} is not a flag; pass it as {token}=<value>")
-        cls._assign(kwargs, token, value=True)
+        assign(kwargs, key, value=coerce(value) if key in flag_names else value)
+        return
+    if token not in flag_names:
+        raise typer.BadParameter(f"{token!r} is not a flag; pass it as {token}=<value>")
+    assign(kwargs, token, value=True)
 
-    @staticmethod
-    def _require_key(token: str, key: str) -> None:
-        if not key:
-            raise typer.BadParameter(f"invalid run token: {token!r}")
 
-    @staticmethod
-    def _assign(kwargs: dict[str, Any], key: str, *, value: Any) -> None:
-        """Set or append a kwarg; repeated keys become lists.
-
-        A key already built up from ``key.sub=value`` pairs rejects a later plain
-        ``key=value`` — the mirror of the error the opposite order already gives,
-        rather than a ``[dict, "plain"]`` list the arg parser can only complain
-        about in terms that never mention the conflicting tokens.
-        """
-        if key not in kwargs:
-            kwargs[key] = value
-            return
-        existing = kwargs[key]
-        if isinstance(existing, dict):
-            raise typer.BadParameter(
-                f"{key!r} was already given {key}.key=value pairs; drop the plain {key}=... token"
-            )
-        if isinstance(existing, list):
-            existing.append(value)
-        else:
-            kwargs[key] = [existing, value]
-
-    @staticmethod
-    def _coerce(value: str) -> Any:
-        """Coerce common boolean spellings; leave other values as strings."""
-        lowered = value.lower()
-        return (
-            True
-            if lowered in {"true", "yes", "1"}
-            else (False if lowered in {"false", "no", "0"} else value)
+def assign_pair(kwargs: dict[str, Any], token: str, key: str, value: str) -> None:
+    """``arg.subkey=value`` / ``arg.subkey:=value`` -> fold *value* into a pairs dict."""
+    arg, _, sub = key.partition(".")
+    require_key(token, arg)
+    bucket = kwargs.setdefault(arg, {})
+    if not isinstance(bucket, dict):
+        raise typer.BadParameter(
+            f"{arg!r} was already given a plain value; use only {arg}.key=value tokens"
         )
+    bucket[sub] = value
+
+
+def require_key(token: str, key: str) -> None:
+    if not key:
+        raise typer.BadParameter(f"invalid run token: {token!r}")
+
+
+def assign(kwargs: dict[str, Any], key: str, *, value: Any) -> None:
+    """Set or append a kwarg; repeated keys become lists.
+
+    A key already built up from ``key.sub=value`` pairs rejects a later plain
+    ``key=value`` — the mirror of the error the opposite order already gives,
+    rather than a ``[dict, "plain"]`` list the arg parser can only complain
+    about in terms that never mention the conflicting tokens.
+    """
+    if key not in kwargs:
+        kwargs[key] = value
+        return
+    existing = kwargs[key]
+    if isinstance(existing, dict):
+        raise typer.BadParameter(
+            f"{key!r} was already given {key}.key=value pairs; drop the plain {key}=... token"
+        )
+    if isinstance(existing, list):
+        existing.append(value)
+    else:
+        kwargs[key] = [existing, value]
+
+
+def coerce(value: str) -> Any:
+    """Coerce common boolean spellings; leave other values as strings."""
+    lowered = value.lower()
+    return (
+        True
+        if lowered in {"true", "yes", "1"}
+        else (False if lowered in {"false", "no", "0"} else value)
+    )
