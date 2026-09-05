@@ -367,23 +367,25 @@ class Registry:
 
     @staticmethod
     def _resolve_parser_path(
-        leaf_path: Path,
-        leaf_root: Path,
+        decl_path: Path,
+        decl_root: Path,
         parser: Any,
     ) -> Path | None:
-        """Resolve a ``*.py`` parser under the winning leaf's family ``parsers/``."""
+        """Resolve a ``*.py`` parser: a bare filename under the declaring layer's
+        family ``parsers/``, or a ``/``-containing path under its registry root —
+        either way, never outside that root (the resolved file is ``exec``'d)."""
         if not parser or not isinstance(parser, str):
             return None
         if not parser.endswith(".py"):
             return None
         validate_parser_ref(parser)
-        family_parsers = registry_ids.family_parsers_dir(leaf_path, leaf_root)
-        candidate = family_parsers / parser
-        if not candidate.resolve().is_relative_to(family_parsers.resolve()):
-            raise ManifestError(f"parser {parser!r} escapes {family_parsers}")
+        base = decl_root if "/" in parser else registry_ids.family_parsers_dir(decl_path, decl_root)
+        candidate = base / parser
+        if not candidate.resolve().is_relative_to(base.resolve()):
+            raise ManifestError(f"parser {parser!r} escapes {base}")
         if candidate.is_file():
             return candidate
-        raise ManifestError(f"parser {parser!r} not found under {family_parsers}")
+        raise ManifestError(f"parser {parser!r} not found under {base}")
 
     def _load_raw_yaml(self, path: Path) -> dict[str, Any]:
         """Load a single YAML manifest file, memoized on its own mtime + size.

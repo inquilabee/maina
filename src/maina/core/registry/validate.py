@@ -117,10 +117,13 @@ def validate_platforms(tid: str, platforms: Any) -> None:
 
 
 def validate_parser_ref(parser: str) -> None:
-    """A ``parsers/`` ref is a plain relative filename — no ``..``, no abs path.
+    """A parser ref is a relative path — no ``..``, no absolute path.
 
-    The resolved file is ``exec``'d, so a manifest must not be able to point
-    it outside the family ``parsers/`` directory.
+    A bare filename (``add.py``) resolves under the declaring manifest's family
+    ``parsers/`` directory; a ``/``-containing path (``shared/util.py``) resolves
+    under the manifest's registry root instead (see ``Registry._resolve_parser_path``).
+    Either way the resolved file is ``exec``'d, so a manifest must not be able to
+    point it outside its registry root.
     """
     parts = parser.replace("\\", "/").split("/")
     if (
@@ -130,7 +133,7 @@ def validate_parser_ref(parser: str) -> None:
         or ".." in parts
         or Path(parser).is_absolute()
     ):
-        raise ManifestError(f"parser {parser!r} must be a plain relative filename under parsers/")
+        raise ManifestError(f"parser {parser!r} must be a relative path with no '..' segments")
 
 
 def count_yaml_anchors(text: str) -> int:

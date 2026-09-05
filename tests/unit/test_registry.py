@@ -159,6 +159,37 @@ def test_parser_ref_outside_parsers_dir_rejected(tmp_path: Path, evil: str) -> N
         Registry(root).load("t")
 
 
+def test_parser_ref_with_slash_resolves_under_registry_root(tmp_path: Path) -> None:
+    """A ``/``-containing ``parser:`` ref resolves against the registry root,
+    not the declaring manifest's own nearest family ``parsers/`` — so a shared
+    parser elsewhere under the root is reachable without being forced into
+    that one directory."""
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "sub" / "t.yaml",
+        {"cli": "t", "install": {"backend": "path"}, "parser": "shared/parsers/util.py"},
+    )
+    (root / "shared" / "parsers").mkdir(parents=True)
+    (root / "shared" / "parsers" / "util.py").write_text(
+        "def parse(raw, result):\n    return raw\n"
+    )
+    manifest = Registry(root).load("sub-t")
+    assert manifest.parser_path == root / "shared" / "parsers" / "util.py"
+
+
+def test_bare_filename_parser_ref_still_uses_family_dir(tmp_path: Path) -> None:
+    """A bare filename (no ``/``) keeps resolving via the nearest family
+    ``parsers/`` — unchanged default, root-relative is opt-in via a ``/``."""
+    root = tmp_path / "reg"
+    write_yaml(root / "t.yaml", {"cli": "t", "install": {"backend": "path"}, "parser": "ok.py"})
+    (root / "parsers").mkdir()
+    (root / "parsers" / "ok.py").write_text("def parse(raw, result):\n    return raw\n")
+    # A same-named file at the root must NOT shadow the family one.
+    (root / "ok.py").write_text("def parse(raw, result):\n    return 'wrong'\n")
+    manifest = Registry(root).load("t")
+    assert manifest.parser_path == root / "parsers" / "ok.py"
+
+
 @pytest.mark.parametrize("line", ["on: push", "yes: 1", "42: x"])
 def test_non_string_yaml_key_is_a_clean_manifest_error(tmp_path: Path, line: str) -> None:
     # YAML 1.1 turns `on:` / `yes:` into booleans; the loader must not TypeError.
