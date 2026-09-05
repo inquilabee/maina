@@ -29,7 +29,7 @@ from .keys import (
     TOP_LEVEL_KEYS,
     VALID_PLATFORMS,
 )
-from .merge import ManifestMerge
+from .merge import merge_maps
 from .requires import RequiresSpec
 from .specs import Manifest, OutputSpec, parse_args_map
 
@@ -145,7 +145,7 @@ class Registry:
                 layer["requires"] = RequiresSpec.layer_for_merge(layer["requires"], tool_id=cid)
             if (seg := layer.get("subcommand")) is not None and str(seg) != "":
                 subcommands.append(str(seg))
-            merged = ManifestMerge.merge_maps(merged, layer) if merged else layer
+            merged = merge_maps(merged, layer) if merged else layer
             merged.pop("extends", None)
             merged.pop("subcommand", None)
 
@@ -385,9 +385,8 @@ class Registry:
         return path, root
 
     def _locate(self, root: Path, tid: str) -> Path | None:
-        """Like :func:`registry_ids.manifest_path_in`, but a scan-fallback miss
-        is answered from a per-root index built once (not a fresh ``rglob`` per
-        id) — the fast candidates alone stay a plain, cheap retry."""
+        """Fast split-on-``-`` candidates first; a miss falls back to a
+        per-root scan index built once (not a fresh ``rglob`` per id)."""
         if (path := registry_ids.fast_candidate_path(root, tid)) is not None:
             return path
         return self._root_scan_index(root).get(tid)
@@ -405,7 +404,7 @@ class Registry:
         if key not in self._scan_index:
             index: dict[str, Path] = {}
             for tid, path in self._root_id_paths(root):
-                index.setdefault(tid, path)  # first match wins, like scan_for_id
+                index.setdefault(tid, path)  # first match wins (sorted-rglob order)
             self._scan_index[key] = index
         return self._scan_index[key]
 

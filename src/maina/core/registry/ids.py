@@ -82,21 +82,10 @@ def id_candidate_paths(root: Path, tool_id: str, parts: list[str]) -> Iterator[P
         yield root.joinpath(*parts, parts[-1]).with_suffix(suffix)
 
 
-def scan_for_id(root: Path, tool_id: str) -> Path | None:
-    """Walk *root* for the manifest whose derived id equals *tool_id*."""
-    if not root.is_dir():
-        return None
-    for path in sorted(root.rglob("*")):
-        rel = path.relative_to(root)
-        if is_manifest_path(rel) and yaml_path_to_id(path, root) == tool_id:
-            return path
-    return None
-
-
 def fast_candidate_path(root: Path, tool_id: str) -> Path | None:
     """The split-on-``-`` guesses for *tool_id* under *root* — no directory
     walk, so this is cheap enough to retry per lookup. ``None`` on a miss (the
-    id may still resolve via a tree scan; see :func:`scan_for_id`)."""
+    id may still resolve via a tree scan; see ``Registry._root_scan_index``)."""
     parts = tool_id.split("-")
     if not parts or any(part in UNSAFE_ID_SEGMENTS for part in parts):
         return None
@@ -105,18 +94,6 @@ def fast_candidate_path(root: Path, tool_id: str) -> Path | None:
         if candidate.is_file() and candidate.resolve().is_relative_to(root_resolved):
             return candidate
     return None
-
-
-def manifest_path_in(root: Path, tool_id: str) -> Path | None:
-    """Resolve a hyphen registry id under one root, or None if missing.
-
-    Tries the fast split-on-``-`` candidates first, then falls back to scanning
-    the tree so a hyphenated filename in a subdirectory (``family/my-tool.yaml``
-    → id ``family-my-tool``) still resolves. Callers doing this for many ids in
-    the same root (``Registry``) should prefer a cached id→path index over
-    repeating the tree scan per miss — see ``Registry._locate``.
-    """
-    return fast_candidate_path(root, tool_id) or scan_for_id(root, tool_id)
 
 
 def family_parsers_dir(leaf_path: Path, leaf_root: Path) -> Path:
@@ -143,22 +120,3 @@ def iter_yaml_id_paths(root: Path) -> list[tuple[str, Path]]:
         if root.is_dir()
         else []
     )
-
-
-def iter_yaml_ids(root: Path) -> list[str]:
-    """Collect registry ids from YAML files under one root (skip parsers/, dot-dirs)."""
-    return [tid for tid, _path in iter_yaml_id_paths(root)]
-
-
-def duplicate_ids(root: Path) -> dict[str, list[Path]]:
-    """Ids derived from more than one manifest file under *root*.
-
-    A **same-root** collision (e.g. ``kubectl/get.yaml`` and ``kubectl-get.yaml``
-    both deriving id ``kubectl-get``) silently shadows one file with the other —
-    unlike an id repeated *across* roots, which is the designed overlay
-    precedence (later root wins) and not a collision.
-    """
-    by_id: dict[str, list[Path]] = {}
-    for tid, path in iter_yaml_id_paths(root):
-        by_id.setdefault(tid, []).append(path)
-    return {tid: paths for tid, paths in by_id.items() if len(paths) > 1}
