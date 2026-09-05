@@ -1,0 +1,13 @@
+# path backend, not github — git is realistically always already installed;
+# nobody fetches it as a release asset. The one path-backend manifest in this
+# catalog (every other tool here is github/npm) — a real, common case the
+# rest of wild_catalog doesn't otherwise exercise.
+cli: git
+install:
+  backend: path
+args:
+  command: {positional: true, required: true}
+  repo_path: {flag: -C, type: path}
+output:
+  success_codes: [0]
+parser: text

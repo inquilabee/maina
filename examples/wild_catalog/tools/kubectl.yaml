@@ -1,0 +1,18 @@
+# path backend — kubectl binaries aren't GitHub release assets (Kubernetes
+# hosts them on dl.k8s.io, not github.com/githubusercontent.com), and like
+# git/docker it's realistically already installed wherever it's used.
+# tests/fixtures/registry/kubectl/ has a narrower subcommand-family example
+# (kubectl-get, kubectl-apply via extends); this is a standalone flat
+# manifest matching wild_catalog's own command-positional style instead.
+cli: kubectl
+install:
+  backend: path
+args:
+  # order: -1 forces the subcommand right after `kubectl`, before -f/--dry-run
+  # (both are per-subcommand options here, same reasoning as docker.yaml).
+  command: {positional: true, required: true, order: -1}
+  filename: {flag: -f, type: path}
+  dry_run: {flag: --dry-run}
+output:
+  success_codes: [0]
+parser: text

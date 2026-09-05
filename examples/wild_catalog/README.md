@@ -2,26 +2,36 @@
 
 Not a curated, shipped catalog (`docs/product/vision.md` is explicit: maina
 ships no tool catalog) — a dev-time check that the engine actually works
-against real, popular, non-Python-implemented CLIs over the network, not just
-this repo's own fixtures. Every one of the 27 tools below really installs and
-does real, meaningful work through maina — a real lint finding, a real diff,
-a real HTTP response, a real encrypted round trip — not a bare `--version`
-check. Nothing in this directory is exercised by the test suite.
+against real, popular, non-Python-implemented CLIs over the network and the
+local machine, not just this repo's own fixtures. Every one of the 30 tools
+below really resolves/installs and does real, meaningful work through maina
+— a real lint finding, a real diff, a real HTTP response, a real encrypted
+round trip — not a bare `--version` check (`kubectl` is the one exception:
+it skips gracefully with a clear message when it isn't on `PATH` and no
+cluster is assumed, rather than faking a pass). Nothing in this directory is
+exercised by the test suite.
 
 ```text
 examples/wild_catalog/
-  tools/                 # 27 manifests, one per tool (see table below)
+  tools/                 # 30 manifests, one per tool (see table below)
   demo.py
 ```
 
 24 `github`-backend manifests (covering `.tar.gz`, `.zip`, and bare-binary
-release assets — `ArchiveFetcher`'s different extraction paths) and 3 `npm`
-manifests. Release asset names and CLI flags were read live against each
+release assets — `ArchiveFetcher`'s different extraction paths), 3 `npm`
+manifests, and 3 `path`-backend manifests (`git`, `docker`, `kubectl` —
+realistically always already installed, never fetched as a release asset;
+the one corner of the install-backend surface the other 27 tools don't
+exercise). Release asset names and CLI flags were read live against each
 project's current release / npm package on 2026-09-05 (see the comment atop
 each manifest) — pins will need bumping later like any dependency.
 `examples/wild_catalog/tools` is allowlisted against this repo's
 folder-breadth gate (`.shipgate/allowlists/folder-breadth.yaml`) — a flat
-one-manifest-per-tool catalog, not application code sprawl.
+one-manifest-per-tool catalog, not application code sprawl. That allowlist
+file lives under `.shipgate/`, which this repo gitignores entirely as
+personal/local state, so the entry does not travel with a fresh clone or CI
+— re-add it (or restructure `tools/` into subdirectories, which would change
+every tool's registry id) if the gate blocks a commit.
 
 | Tool | Backend | Category | Real demo call |
 | --- | --- | --- | --- |
@@ -51,6 +61,9 @@ one-manifest-per-tool catalog, not application code sprawl.
 | spectral | npm | API lint | lint a real inline OpenAPI doc |
 | commitlint | npm | git/vcs | lint a real conventional-commit message |
 | stylelint | npm | CI/lint | lint real CSS |
+| git | path | git/vcs | real `log` against this repo's own history |
+| docker | path | containers | real `docker ps` (read-only — may run on a shared machine) |
+| kubectl | path | containers | real client-side dry-run apply, or a clean skip if absent |
 
 ```python
 from pathlib import Path
@@ -62,4 +75,5 @@ app.tool("dasel").run(selector="name", in_format="json", stdin='{"name": "maina"
 
 Run (needs network — downloads ~27 real binaries/packages into
 `~/.cache/maina`, reused on later runs; grype's first run is the one
-intentionally slow step): `uv run python examples/wild_catalog/demo.py`
+intentionally slow step; `git`/`docker`/`kubectl` resolve from `PATH`
+instead): `uv run python examples/wild_catalog/demo.py`

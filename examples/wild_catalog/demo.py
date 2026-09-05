@@ -1,22 +1,29 @@
-"""Install and run 27 real, non-Python-implemented CLIs through maina.
+"""Install and run 30 real, non-Python-implemented CLIs through maina.
 
 Unlike examples/catalog/ (which stays offline on purpose), every tool here
-actually downloads and does real work over the network — this is the "does
-the engine work on real CLIs, not just our own fixtures" check, not a
-curated, shipped catalog (see docs/product/vision.md: maina ships no tool
-catalog). Every call below does something meaningful with its own output
-(a real lint finding, a real diff, a real HTTP response, a real encrypted
-round trip) rather than a bare --version check.
+actually downloads (or resolves from PATH) and does real work over the
+network or the local machine — this is the "does the engine work on real
+CLIs, not just our own fixtures" check, not a curated, shipped catalog (see
+docs/product/vision.md: maina ships no tool catalog). Every call below does
+something meaningful with its own output (a real lint finding, a real diff,
+a real HTTP response, a real encrypted round trip) rather than a bare
+--version check.
 
 Network access (github.com, registry.npmjs.org, api.github.com) and a Node
 on PATH are required; nothing here is exercised by the test suite
-(deliberately). grype's first run downloads a vulnerability database (~40s), then
-caches it — the one intentionally slow step.
+(deliberately). grype's first run downloads a vulnerability database (~40s),
+then caches it — the one intentionally slow step. git/docker/kubectl use the
+path backend (realistically always already installed, never fetched) rather
+than github/npm like every other tool here; docker's demo is read-only
+(docker ps) since this may run on a shared machine with real containers;
+kubectl's demo is skipped with a clear message if it isn't on PATH (no
+cluster is assumed either — the demo only does a client-side dry run).
 """
 
 from __future__ import annotations
 
 import re
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -165,6 +172,20 @@ def main() -> None:
         script = tmp_path / "script.js"
         script.write_text("export default function() { let x = 1 + 1; }\n")
         run(app, "k6", command="run", script=str(script), vus="1", iterations="1")
+
+        # --- already-installed, path-backend tools --------------------------------
+        run(app, "git", command="log", repo_path=str(REPO_ROOT), extra=["--oneline", "-n", "3"])
+        run(app, "docker", command="ps", format="{{.Names}}")
+
+        if shutil.which("kubectl"):
+            k8s_manifest = tmp_path / "pod.yaml"
+            k8s_manifest.write_text(
+                "apiVersion: v1\nkind: Pod\nmetadata:\n  name: demo\nspec:\n"
+                "  containers:\n    - name: demo\n      image: alpine:3.18\n"
+            )
+            run(app, "kubectl", command="apply", filename=str(k8s_manifest), dry_run="client")
+        else:
+            print(f"{'kubectl':14} skipped (not on PATH — no cluster assumed either)")
 
 
 if __name__ == "__main__":

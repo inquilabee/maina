@@ -1,0 +1,15 @@
+# path backend — docker is a daemon-backed CLI, never fetched as a release
+# asset for local use. The demo only runs read-only commands (docker ps) —
+# this catalog runs on a real, possibly shared machine with real containers.
+cli: docker
+install:
+  backend: path
+args:
+  # order: -1 forces the subcommand right after `docker` — --format etc. are
+  # per-subcommand options here, unlike git's -C which is a global pre-command
+  # flag (see git.yaml), so the two manifests need opposite arg ordering.
+  command: {positional: true, required: true, order: -1}
+  format: {flag: --format}
+output:
+  success_codes: [0]
+parser: text
