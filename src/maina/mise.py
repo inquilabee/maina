@@ -45,20 +45,32 @@ class MiseRuntime:
         """Start from the caller's trimmed env, else the full ``os.environ``."""
         return dict(base_env) if base_env is not None else os.environ.copy()
 
-    def mise_bin(self, *, base_env: dict[str, str] | None = None) -> Path:
-        """Locate mise on PATH or under the maina cache."""
+    def _cached_mise_path(self) -> Path:
+        return self.cache_root / "mise" / "bin" / "mise"
+
+    def _mise_present(self) -> Path | None:
+        """mise's binary path if already resolvable on PATH or in the cache.
+
+        No install, no bootstrap — the one presence check both :meth:`mise_bin`
+        and :meth:`present_bin_dir` need, kept in one place so it cannot drift
+        into two independently-maintained copies.
+        """
         if found := shutil.which("mise"):
             return Path(found)
-        cached = self.cache_root / "mise" / "bin" / "mise"
-        if cached.is_file():
-            return cached
+        cached = self._cached_mise_path()
+        return cached if cached.is_file() else None
+
+    def mise_bin(self, *, base_env: dict[str, str] | None = None) -> Path:
+        """Locate mise on PATH or under the maina cache."""
+        if (found := self._mise_present()) is not None:
+            return found
         if os.environ.get(BOOTSTRAP_ENV, "").strip() not in {"1", "true", "yes"}:
             raise RuntimeProvisionError(
                 "mise is required to provision a language runtime but was not found "
                 f"on PATH. Install mise, or set {BOOTSTRAP_ENV}=1 to let maina run "
                 "the mise.run installer (curl | sh)."
             )
-        return self._bootstrap_mise(cached, base_env)
+        return self._bootstrap_mise(self._cached_mise_path(), base_env)
 
     def ensure(self, runtime: str, version: str, *, base_env: dict[str, str] | None = None) -> Path:
         """Ensure a mise-managed language runtime is installed; return its bin dir."""
@@ -108,21 +120,19 @@ class MiseRuntime:
         can compose the PATH a real run would see without provisioning anything.
         ``None`` means "not installed here", never "installing it failed".
 
-        This check on mise's own presence is *not* redundant with
-        ``mise_bin()``'s identical-looking one, despite appearances: when
-        ``MAINA_ALLOW_MISE_BOOTSTRAP`` is set in the environment (plausible in
-        CI), calling ``mise_bin()`` directly when mise is absent would run the
-        real ``curl | sh`` bootstrap — exactly the side effect this probe must
-        never have. Returning ``None`` here first means ``mise_bin()`` (and
-        its bootstrap branch) is only ever reached when mise already resolves.
+        Resolves mise's own path via :meth:`_mise_present` and never calls
+        :meth:`mise_bin`, so the ``curl | sh`` bootstrap branch is structurally
+        unreachable from this probe — not merely avoided by call order — even
+        when ``MAINA_ALLOW_MISE_BOOTSTRAP`` is set in the environment
+        (plausible in CI).
         """
-        cached = (self.cache_root / "mise" / "bin" / "mise").is_file()
-        if not shutil.which("mise") and not cached:
+        mise = self._mise_present()
+        if mise is None:
             return None
         env = os.environ.copy()
         env["MISE_DATA_DIR"] = str(self.data_dir)
         try:
-            return self._mise_which(self.mise_bin(), f"{runtime}@{version}", runtime, env)
+            return self._mise_which(mise, f"{runtime}@{version}", runtime, env)
         except RuntimeProvisionError:
             return None
 
