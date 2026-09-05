@@ -151,8 +151,9 @@ class Tool:
         environment forwarded to the tool to essentials plus the named keys
         (see :meth:`maina.runner.ToolRunner.run`); ``env={...}`` overlays extra
         variables for this call; ``stdin`` is written to the tool's stdin;
-        ``text=False`` returns ``bytes`` in ``result.raw`` and skips the parser
-        (for a tool that emits binary on stdout). Pass a manifest arg whose name
+        ``text=False`` returns ``bytes`` in ``result.raw_bytes`` (``result.raw``
+        stays a lossy-decoded text view) and skips the parser (for a tool that
+        emits binary on stdout). Pass a manifest arg whose name
         collides with one of these parameters (``parser``, ``timeout``, ``cwd``
         …) via ``args={...}``.
         """

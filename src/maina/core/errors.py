@@ -42,6 +42,20 @@ class ToolExecError(MainaError):
         self.command = command
 
 
+class ToolOutputError(MainaError):
+    """A tool subprocess's stdout/stderr exceeded the collection cap.
+
+    A *run*-phase failure like :class:`ToolTimeoutError`: the process started
+    and was killed once its combined output crossed the limit, rather than
+    being silently truncated and returned as if it had finished normally.
+    """
+
+    def __init__(self, message: str, *, tool: str, command: list[str]) -> None:
+        super().__init__(message)
+        self.tool = tool
+        self.command = command
+
+
 class InstallError(MainaError):
     """Tool or runtime install/resolve failed."""
 

@@ -16,6 +16,7 @@ from maina.core.errors import (
     RuntimeProvisionError,
     ToolExecError,
     ToolExitError,
+    ToolOutputError,
     ToolTimeoutError,
     UnsupportedPlatformError,
 )
@@ -60,6 +61,7 @@ __all__ = [
     "Tool",
     "ToolExecError",
     "ToolExitError",
+    "ToolOutputError",
     "ToolResult",
     "ToolRunner",
     "ToolTimeoutError",

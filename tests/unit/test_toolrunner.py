@@ -11,7 +11,7 @@ import pytest
 
 from helpers import fixture_runtime, write_yaml
 from maina.backends import PathBackend
-from maina.core.errors import ToolTimeoutError
+from maina.core.errors import ToolOutputError, ToolTimeoutError
 from maina.core.parsers import ParserResolver, builtin_generals
 from maina.core.registry import Registry
 from maina.installer import Installer
@@ -144,6 +144,23 @@ def test_toolrunner_timeout_kwarg(tmp_path: Path) -> None:
         runner.run({"seconds": "30"}, timeout=0.05)
     assert excinfo.value.tool == "sleep"
     assert excinfo.value.timeout == pytest.approx(0.05)
+
+
+def test_toolrunner_stdout_over_the_cap_is_killed_not_silently_truncated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A tool that floods stdout used to buffer unbounded into this process —
+    it must now be killed once the cap is crossed, raising ToolOutputError,
+    not returned as a truncated-but-apparently-successful result."""
+    import maina.runner as runner_mod
+
+    monkeypatch.setattr(runner_mod, "RUN_OUTPUT_MAX_BYTES", 4096)
+    root = tmp_path / "reg"
+    write_yaml(root / "flood.yaml", {"cli": "yes", "install": {"backend": "path"}})
+    registry = Registry(root)
+    runner = ToolRunner(registry.load("flood"), installer=path_installer(tmp_path, registry))
+    with pytest.raises(ToolOutputError, match="exceeded the 4096 byte cap"):
+        runner.run({}, timeout=10)
 
 
 def test_toolrunner_text_false_returns_bytes_and_skips_parser(tmp_path: Path) -> None:

@@ -18,6 +18,11 @@
   (previously they re-read the full `os.environ`).
 - `mise`'s runtime-resolution fallback shell-quotes the runtime name
   (`command -v <runtime>`), closing a shell-metacharacter path.
+- A tool's stdout/stderr are now capped (`RUN_OUTPUT_MAX_BYTES`, 64 MiB each) —
+  the actual last uncapped input path: `subprocess.run(capture_output=True)`
+  read to EOF with no limit, so a tool that floods output buffered unbounded
+  into this process. Crossing the cap kills the process and raises
+  `ToolOutputError` rather than returning a silently truncated result.
 - More of the manifest is validated at load: `requires:` keys must match
   `[A-Za-z0-9_.+-]+`, `install.package` must be a valid npm name (scoped ok),
   and `install.tag` must be a single safe path segment.

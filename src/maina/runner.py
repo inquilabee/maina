@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import string
 import subprocess
+import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
@@ -11,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from maina.core.argparser import ArgParser
 from maina.core.envfilter import ESSENTIAL_ENV, filter_env
-from maina.core.errors import ArgError, ToolExecError, ToolTimeoutError
+from maina.core.errors import ArgError, ToolExecError, ToolOutputError, ToolTimeoutError
 from maina.core.parsers import ParserResolver
 from maina.core.result import ToolResult
 
@@ -23,10 +25,13 @@ if TYPE_CHECKING:
 Executor = Callable[..., subprocess.CompletedProcess[Any]]
 
 # Cap on an ``output.from_file`` report slurped into memory (download / extract
-# have their own caps). A tool's stdout/stderr is NOT capped — `_execute` uses
-# `subprocess.run(capture_output=True)`, so a tool that floods stdout still
-# buffers unbounded into this process.
+# have their own caps).
 REPORT_MAX_BYTES = 64 * 1024 * 1024
+# Cap on stdout/stderr collected from the tool subprocess itself — a tool that
+# floods output is killed and raises ToolOutputError instead of buffering
+# unbounded into this process (see ToolRunner._run_capped).
+RUN_OUTPUT_MAX_BYTES = 64 * 1024 * 1024
+DRAIN_CHUNK_SIZE = 64 * 1024
 
 __all__ = ["ESSENTIAL_ENV", "Executor", "ToolRunner"]
 
@@ -77,9 +82,10 @@ class ToolRunner:
         ``env`` overlays extra ``NAME: value`` pairs for this call (after the
         trim, before the manifest's own ``env`` block); the manifest block still
         wins a key collision. ``stdin`` is written to the tool's stdin. With
-        ``text=False`` ``result.raw`` / ``result.stderr`` are ``bytes`` and
-        neither the parser nor ``output.from_file`` runs — for a tool that emits
-        an archive, image, or other binary on stdout.
+        ``text=False``, ``result.raw_bytes`` / ``result.stderr_bytes`` hold the
+        raw bytes (``result.raw`` / ``result.stderr`` stay lossy-decoded text
+        views) and neither the parser nor ``output.from_file`` runs — for a
+        tool that emits an archive, image, or other binary on stdout.
         """
         self._check_env(env)
         # Materialise env_allow once — it is consumed twice (install-phase and
@@ -197,8 +203,46 @@ class ToolRunner:
         stdin: str | bytes | None,
         text: bool,
     ) -> subprocess.CompletedProcess[Any]:
-        """Run the subprocess, mapping a timeout / spawn failure to a MainaError."""
-        run = self._executor or subprocess.run
+        """Run the subprocess, mapping a timeout / spawn failure to a MainaError.
+
+        The real (non test-injected) path bounds stdout/stderr collection via
+        :meth:`_run_capped`; an injected ``executor`` (test-only) keeps calling
+        ``subprocess.run``'s own ``capture_output=True`` contract unchanged.
+        """
+        if self._executor is not None:
+            return self._execute_via(
+                self._executor, argv, env=env, cwd=cwd, timeout=timeout, stdin=stdin, text=text
+            )
+        try:
+            return self._run_capped(argv, env=env, cwd=cwd, timeout=timeout, stdin=stdin, text=text)
+        except subprocess.TimeoutExpired as exc:
+            raise ToolTimeoutError(
+                f"{self.manifest.id} timed out after {timeout}s",
+                tool=self.manifest.id,
+                timeout=float(timeout or 0.0),
+                command=argv,
+            ) from exc
+        except OSError as exc:
+            raise ToolExecError(
+                f"{self.manifest.id}: could not run {argv[0]}: {exc}",
+                tool=self.manifest.id,
+                command=argv,
+            ) from exc
+
+    def _execute_via(
+        self,
+        run: Executor,
+        argv: list[str],
+        *,
+        env: dict[str, str],
+        cwd: str | None,
+        timeout: float | None,
+        stdin: str | bytes | None,
+        text: bool,
+    ) -> subprocess.CompletedProcess[Any]:
+        """The pre-cap ``subprocess.run``-shaped call, used only for the test
+        ``executor=`` injection point — real execution goes through
+        :meth:`_run_capped` instead."""
         run_kwargs: dict[str, Any] = {
             "check": False,
             "capture_output": True,
@@ -209,8 +253,6 @@ class ToolRunner:
         }
         if text:
             run_kwargs |= {"encoding": "utf-8", "errors": "replace"}
-        # Default to no stdin so a tool that reads stdin does not block on the
-        # caller's terminal; opt in with stdin=.
         if stdin is None:
             run_kwargs["stdin"] = subprocess.DEVNULL
         else:
@@ -230,6 +272,114 @@ class ToolRunner:
                 tool=self.manifest.id,
                 command=argv,
             ) from exc
+
+    def _run_capped(
+        self,
+        argv: list[str],
+        *,
+        env: dict[str, str],
+        cwd: str | None,
+        timeout: float | None,
+        stdin: str | bytes | None,
+        text: bool,
+    ) -> subprocess.CompletedProcess[Any]:
+        """Like ``subprocess.run(capture_output=True)``, but stdout/stderr are
+        each bounded at :data:`RUN_OUTPUT_MAX_BYTES`.
+
+        A tool that floods output used to buffer unbounded into this process
+        (``subprocess.run`` reads to EOF with no size limit). Two daemon
+        threads drain the pipes independently — reading both from the main
+        thread would deadlock once one pipe's OS buffer fills while the other
+        still has unread data. Crossing the cap kills the process and raises
+        :class:`ToolOutputError` (silently truncating and returning a
+        partial result as if the run had finished is exactly the class of
+        silent-wrong-result this codebase treats as a defect elsewhere).
+        """
+        stdin_bytes = stdin.encode("utf-8") if isinstance(stdin, str) else stdin
+        proc = subprocess.Popen(
+            argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.PIPE if stdin_bytes is not None else subprocess.DEVNULL,
+            cwd=cwd,
+            env=env,
+        )
+        out_buf, err_buf = bytearray(), bytearray()
+        overflowed = threading.Event()
+        out_thread = self._start_drain_thread(proc, proc.stdout, out_buf, overflowed)
+        err_thread = self._start_drain_thread(proc, proc.stderr, err_buf, overflowed)
+        try:
+            self._write_stdin(proc, stdin_bytes)
+            returncode = proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            out_thread.join()
+            err_thread.join()
+            raise
+        out_thread.join()
+        err_thread.join()
+        if overflowed.is_set():
+            raise ToolOutputError(
+                f"{self.manifest.id}: stdout/stderr exceeded the {RUN_OUTPUT_MAX_BYTES} byte cap",
+                tool=self.manifest.id,
+                command=argv,
+            )
+        return self._completed_process(argv, returncode, out_buf, err_buf, text=text)
+
+    @classmethod
+    def _start_drain_thread(
+        cls,
+        proc: subprocess.Popen[bytes],
+        pipe: Any,
+        buf: bytearray,
+        overflowed: threading.Event,
+    ) -> threading.Thread:
+        """Start a daemon thread draining *pipe* into *buf*, capped.
+
+        One thread per stream: reading stdout and stderr from the main thread
+        would deadlock once one pipe's OS buffer fills while the other still
+        has unread data.
+        """
+        thread = threading.Thread(
+            target=cls._drain_capped, args=(proc, pipe, buf, overflowed), daemon=True
+        )
+        thread.start()
+        return thread
+
+    @staticmethod
+    def _drain_capped(
+        proc: subprocess.Popen[bytes], pipe: Any, buf: bytearray, overflowed: threading.Event
+    ) -> None:
+        """Read *pipe* into *buf*; kill *proc* once the combined cap is crossed."""
+        with contextlib.suppress(OSError, ValueError):  # pipe torn down under us after kill()
+            while chunk := pipe.read(DRAIN_CHUNK_SIZE):
+                if overflowed.is_set():
+                    continue
+                if len(buf) + len(chunk) > RUN_OUTPUT_MAX_BYTES:
+                    overflowed.set()
+                    proc.kill()
+                    continue
+                buf.extend(chunk)
+
+    @staticmethod
+    def _write_stdin(proc: subprocess.Popen[bytes], stdin_bytes: bytes | None) -> None:
+        if stdin_bytes is None or proc.stdin is None:
+            return
+        with contextlib.suppress(BrokenPipeError, OSError):
+            proc.stdin.write(stdin_bytes)
+        proc.stdin.close()
+
+    @staticmethod
+    def _completed_process(
+        argv: list[str], returncode: int, out_buf: bytearray, err_buf: bytearray, *, text: bool
+    ) -> subprocess.CompletedProcess[Any]:
+        stdout: Any = bytes(out_buf)
+        stderr: Any = bytes(err_buf)
+        if text:
+            stdout = stdout.decode("utf-8", "replace")
+            stderr = stderr.decode("utf-8", "replace")
+        return subprocess.CompletedProcess(argv, returncode, stdout, stderr)
 
     def _apply_from_file(
         self, result: ToolResult, kwargs: dict[str, Any], cwd: str | None, started_wall: float
