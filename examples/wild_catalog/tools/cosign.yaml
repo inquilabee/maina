@@ -1,0 +1,19 @@
+# github bare-binary assets. Container image signing/verification (Go,
+# sigstore/cosign). Confirmed live against v3.1.3 (2026-09-05):
+# https://github.com/sigstore/cosign/releases/tag/v3.1.3
+cli: cosign
+version: 3.1.3
+install:
+  backend: github
+  repo: sigstore/cosign
+  tag: v3.1.3
+  binary: cosign
+  assets:
+    linux-x86_64: cosign-linux-amd64
+    macos-arm64: cosign-darwin-arm64
+args:
+  command: {positional: true, order: 0}
+  target: {positional: true, order: 1}
+output:
+  success_codes: [0]
+parser: text

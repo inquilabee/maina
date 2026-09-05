@@ -1,0 +1,20 @@
+# github .tar.gz asset. Structural (syntax-aware) diff (Rust, Wilfred/difftastic
+# — repo/project name is "difftastic", the binary itself is "difft"). Confirmed
+# live against 0.70.0 (2026-09-05):
+# https://github.com/Wilfred/difftastic/releases/tag/0.70.0
+cli: difftastic
+version: 0.70.0
+install:
+  backend: github
+  repo: Wilfred/difftastic
+  tag: 0.70.0
+  binary: difft
+  assets:
+    linux-x86_64: difft-x86_64-unknown-linux-gnu.tar.gz
+    macos-arm64: difft-aarch64-apple-darwin.tar.gz
+args:
+  old_file: {positional: true, required: true, type: path, order: 0}
+  new_file: {positional: true, required: true, type: path, order: 1}
+output:
+  success_codes: [0]
+parser: text

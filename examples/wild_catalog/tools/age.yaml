@@ -1,0 +1,24 @@
+# github .tar.gz asset. Modern file encryption (Go, FiloSottile/age).
+# Confirmed live against v1.3.2 (2026-09-05):
+# https://github.com/FiloSottile/age/releases/tag/v1.3.2
+cli: age
+version: 1.3.2
+install:
+  backend: github
+  repo: FiloSottile/age
+  tag: v1.3.2
+  binary: age
+  assets:
+    linux-x86_64: age-v1.3.2-linux-amd64.tar.gz
+    macos-arm64: age-v1.3.2-darwin-arm64.tar.gz
+args:
+  # Real round trip: encrypt with recipient=<age1...pubkey>, armor=true,
+  # stdin=plaintext; decrypt with decrypt=true, identity=<keyfile>, stdin=ciphertext.
+  recipient: {flag: -r}
+  identity: {flag: -i, type: path}
+  armor: {flag: -a, type: flag}
+  decrypt: {flag: -d, type: flag}
+  output: {flag: -o, type: path}
+output:
+  success_codes: [0]
+parser: text

@@ -12,10 +12,11 @@ install:
     linux-x86_64: gh_2.100.0_linux_amd64.tar.gz
     macos-arm64: gh_2.100.0_macOS_arm64.zip
 args:
-  # e.g. command=repo, args=[view, owner/name, --json, name] for a real call —
-  # unauthenticated API calls are rate-limited, so the demo just checks --version.
+  # Real call: command=api, target=repos/<owner>/<repo>, jq=.full_name — a
+  # public, unauthenticated call, no gh auth login needed.
   command: {positional: true, order: 0}
   target: {positional: true, order: 1}
+  jq: {flag: --jq}
   json_fields: {flag: --json}
 output:
   success_codes: [0]

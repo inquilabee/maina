@@ -1,0 +1,19 @@
+# github .zip asset. Terraform linter (Go, terraform-linters/tflint).
+# Confirmed live against v0.64.0 (2026-09-05):
+# https://github.com/terraform-linters/tflint/releases/tag/v0.64.0
+cli: tflint
+version: 0.64.0
+install:
+  backend: github
+  repo: terraform-linters/tflint
+  tag: v0.64.0
+  binary: tflint
+  assets:
+    linux-x86_64: tflint_linux_amd64.zip
+    macos-arm64: tflint_darwin_arm64.zip
+args:
+  chdir: {flag: --chdir, type: path}
+  format: {flag: --format}
+output:
+  success_codes: [0, 2] # 2 = lint issues found, still a successful run
+parser: text

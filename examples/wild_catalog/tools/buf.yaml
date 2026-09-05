@@ -1,0 +1,19 @@
+# github bare-binary assets. Protobuf lint/format/breaking-change detection
+# (Go, bufbuild/buf). Confirmed live against v1.72.0 (2026-09-05):
+# https://github.com/bufbuild/buf/releases/tag/v1.72.0
+cli: buf
+version: 1.72.0
+install:
+  backend: github
+  repo: bufbuild/buf
+  tag: v1.72.0
+  binary: buf
+  assets:
+    linux-x86_64: buf-Linux-x86_64
+    macos-arm64: buf-Darwin-arm64
+args:
+  command: {positional: true, order: 0}
+  target: {positional: true, order: 1}
+output:
+  success_codes: [0, 100] # 100 = lint issues found, still a successful run
+parser: text

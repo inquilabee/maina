@@ -1,0 +1,22 @@
+# github .tar.gz asset. Go linter aggregator (Go, golangci/golangci-lint).
+# Confirmed live against v2.13.2 (2026-09-05):
+# https://github.com/golangci/golangci-lint/releases/tag/v2.13.2
+cli: golangci-lint
+version: 2.13.2
+install:
+  backend: github
+  repo: golangci/golangci-lint
+  tag: v2.13.2
+  binary: golangci-lint
+  assets:
+    linux-x86_64: golangci-lint-2.13.2-linux-amd64.tar.gz
+    macos-arm64: golangci-lint-2.13.2-darwin-arm64.tar.gz
+args:
+  # Real, offline call: command=linters (lists configured linters — actually
+  # linting a module needs a Go toolchain, not available in every environment
+  # this catalog might run in, so this is the meaningful check that doesn't).
+  command: {positional: true, order: 0}
+  path: {positional: true, order: 1}
+output:
+  success_codes: [0, 1] # 1 = lint issues found, still a successful run
+parser: text

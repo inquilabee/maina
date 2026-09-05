@@ -1,0 +1,21 @@
+# github .tar.gz asset. SBOM/image vulnerability scanner (Go, anchore/grype).
+# Confirmed live against v0.118.0 (2026-09-05):
+# https://github.com/anchore/grype/releases/tag/v0.118.0
+cli: grype
+version: 0.118.0
+install:
+  backend: github
+  repo: anchore/grype
+  tag: v0.118.0
+  binary: grype
+  assets:
+    linux-x86_64: grype_0.118.0_linux_amd64.tar.gz
+    macos-arm64: grype_0.118.0_darwin_arm64.tar.gz
+args:
+  # First run downloads a vulnerability DB (~40s here) — cached after that.
+  target: {positional: true}
+  quiet: {flag: -q, type: flag}
+  output: {flag: -o}
+output:
+  success_codes: [0, 1] # 1 = vulnerabilities found, still a successful scan
+parser: text

@@ -1,0 +1,19 @@
+# github .tar.gz asset. GitHub Actions workflow linter (Go, rhysd/actionlint).
+# Confirmed live against v1.7.12 (2026-09-05):
+# https://github.com/rhysd/actionlint/releases/tag/v1.7.12
+cli: actionlint
+version: 1.7.12
+install:
+  backend: github
+  repo: rhysd/actionlint
+  tag: v1.7.12
+  binary: actionlint
+  assets:
+    linux-x86_64: actionlint_1.7.12_linux_amd64.tar.gz
+    macos-arm64: actionlint_1.7.12_darwin_arm64.tar.gz
+args:
+  path: {positional: true, type: path, repeat: true}
+  format: {flag: -format}
+output:
+  success_codes: [0, 1] # 1 = lint issues found, still a successful run
+parser: text

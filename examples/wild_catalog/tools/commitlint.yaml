@@ -1,0 +1,17 @@
+# npm backend. Conventional-commit message linter (Node, @commitlint/cli —
+# bin name differs from the package name). Confirmed live (2026-09-05):
+# `npm view @commitlint/cli version bin`. Reads the message from stdin;
+# --default-config opts into commitlint's built-in rules (empty by default)
+# so a real lint works without a separate @commitlint/config-conventional
+# package this manifest would have no way to also install.
+cli: commitlint
+version: 21.2.2
+install:
+  backend: npm
+  package: "@commitlint/cli"
+args:
+  default_config: {flag: --default-config, type: flag}
+  config: {flag: --config, type: path}
+output:
+  success_codes: [0]
+parser: text

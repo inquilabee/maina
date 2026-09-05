@@ -1,0 +1,23 @@
+# github bare-binary assets. Encrypted secrets in YAML/JSON/ENV files (Go,
+# getsops/sops). Confirmed live against v3.13.3 (2026-09-05):
+# https://github.com/getsops/sops/releases/tag/v3.13.3
+cli: sops
+version: 3.13.3
+install:
+  backend: github
+  repo: getsops/sops
+  tag: v3.13.3
+  binary: sops
+  assets:
+    linux-x86_64: sops-v3.13.3.linux.amd64
+    macos-arm64: sops-v3.13.3.darwin.arm64
+args:
+  # Real encrypt: encrypt=true, age_recipient=<age1...pubkey>, file=<path>,
+  # with SOPS_AGE_KEY_FILE set via Tool.run(env=...) — see age-keygen.yaml.
+  file: {positional: true, type: path}
+  decrypt: {flag: --decrypt, type: flag}
+  encrypt: {flag: --encrypt, type: flag}
+  age_recipient: {flag: --age}
+output:
+  success_codes: [0]
+parser: text

@@ -1,0 +1,19 @@
+# github .tar.gz asset. `du` replacement with a visual tree (Rust,
+# bootandy/dust). Confirmed live against v1.2.5 (2026-09-05):
+# https://github.com/bootandy/dust/releases/tag/v1.2.5
+cli: dust
+version: 1.2.5
+install:
+  backend: github
+  repo: bootandy/dust
+  tag: v1.2.5
+  binary: dust
+  assets:
+    linux-x86_64: dust-v1.2.5-x86_64-unknown-linux-gnu.tar.gz
+    macos-arm64: dust-v1.2.5-aarch64-apple-darwin.tar.gz
+args:
+  path: {positional: true, type: path}
+  depth: {flag: -d}
+output:
+  success_codes: [0]
+parser: text

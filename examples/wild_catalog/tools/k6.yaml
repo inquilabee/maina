@@ -1,0 +1,26 @@
+# github .tar.gz / .zip assets. Load testing tool (Go, grafana/k6). Swapped
+# in for helm (see plan Design: helm's GitHub release assets are .asc
+# signatures only, real archives live on get.helm.sh, an unsupported host).
+# Confirmed live against v2.2.0 (2026-09-05):
+# https://github.com/grafana/k6/releases/tag/v2.2.0
+cli: k6
+version: 2.2.0
+install:
+  backend: github
+  repo: grafana/k6
+  tag: v2.2.0
+  binary: k6
+  assets:
+    linux-x86_64: k6-v2.2.0-linux-amd64.tar.gz
+    macos-arm64: k6-v2.2.0-macos-arm64.zip
+args:
+  # Real run: command=run, script=<path with no HTTP calls>, vus=1, iterations=1
+  # — a script that makes real network calls needs no extra flags either way.
+  command: {positional: true, order: 0}
+  script: {positional: true, type: path, order: 1}
+  vus: {flag: --vus}
+  iterations: {flag: --iterations}
+  duration: {flag: --duration}
+output:
+  success_codes: [0]
+parser: text

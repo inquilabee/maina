@@ -1,0 +1,20 @@
+# github .tar.gz asset. Terminal Markdown renderer (Go, charmbracelet/glow).
+# Confirmed live against v3.0.0 (2026-09-05):
+# https://github.com/charmbracelet/glow/releases/tag/v3.0.0
+cli: glow
+version: 3.0.0
+install:
+  backend: github
+  repo: charmbracelet/glow
+  tag: v3.0.0
+  binary: glow
+  assets:
+    linux-x86_64: glow_3.0.0_Linux_x86_64.tar.gz
+    macos-arm64: glow_3.0.0_Darwin_arm64.tar.gz
+args:
+  # "-" reads from stdin.
+  source: {positional: true}
+  width: {flag: --width}
+output:
+  success_codes: [0]
+parser: text

@@ -16,6 +16,7 @@ args:
   # Reads a diff from stdin (e.g. `git diff | delta`); no positional needed.
   side_by_side: {flag: --side-by-side, type: flag}
   line_numbers: {flag: --line-numbers, type: flag}
+  no_gitconfig: {flag: --no-gitconfig, type: flag}
 output:
   success_codes: [0]
 parser: text

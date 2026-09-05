@@ -1,0 +1,20 @@
+# github .tar.gz asset. SBOM generator (Go, anchore/syft). Confirmed live
+# against v1.51.1 (2026-09-05):
+# https://github.com/anchore/syft/releases/tag/v1.51.1
+cli: syft
+version: 1.51.1
+install:
+  backend: github
+  repo: anchore/syft
+  tag: v1.51.1
+  binary: syft
+  assets:
+    linux-x86_64: syft_1.51.1_linux_amd64.tar.gz
+    macos-arm64: syft_1.51.1_darwin_arm64.tar.gz
+args:
+  target: {positional: true, required: true}
+  output: {flag: -o}
+  quiet: {flag: --quiet, type: flag}
+output:
+  success_codes: [0]
+parser: text

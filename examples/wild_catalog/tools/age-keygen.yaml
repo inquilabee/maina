@@ -1,0 +1,19 @@
+# Same release tarball as age.yaml, different binary — generates the keypair
+# age.yaml and sops.yaml's demo calls actually use for a real encrypt/decrypt
+# round trip. Confirmed live against v1.3.2 (2026-09-05):
+# https://github.com/FiloSottile/age/releases/tag/v1.3.2
+cli: age-keygen
+version: 1.3.2
+install:
+  backend: github
+  repo: FiloSottile/age
+  tag: v1.3.2
+  binary: age-keygen
+  assets:
+    linux-x86_64: age-v1.3.2-linux-amd64.tar.gz
+    macos-arm64: age-v1.3.2-darwin-arm64.tar.gz
+args:
+  output: {flag: -o, type: path, required: true}
+output:
+  success_codes: [0]
+parser: text

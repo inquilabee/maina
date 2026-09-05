@@ -1,0 +1,13 @@
+# npm backend. CSS/SCSS linter (Node, stylelint). Confirmed live (2026-09-05):
+# `npm view stylelint version bin`.
+cli: stylelint
+version: 17.15.0
+install:
+  backend: npm
+  package: stylelint
+args:
+  files: {positional: true, repeat: true, type: path}
+  config: {flag: --config, type: path}
+output:
+  success_codes: [0, 2] # 2 = lint issues found, still a successful run
+parser: text

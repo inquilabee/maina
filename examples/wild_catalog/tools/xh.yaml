@@ -1,0 +1,21 @@
+# github .tar.gz asset. Friendly curl/httpie-like HTTP client (Rust,
+# ducaale/xh). Confirmed live against v0.26.2 (2026-09-05); linux asset is
+# the musl build (no -gnu variant published):
+# https://github.com/ducaale/xh/releases/tag/v0.26.2
+cli: xh
+version: 0.26.2
+install:
+  backend: github
+  repo: ducaale/xh
+  tag: v0.26.2
+  binary: xh
+  assets:
+    linux-x86_64: xh-v0.26.2-x86_64-unknown-linux-musl.tar.gz
+    macos-arm64: xh-v0.26.2-aarch64-apple-darwin.tar.gz
+args:
+  method: {positional: true, order: 0}
+  url: {positional: true, required: true, order: 1}
+  print: {flag: --print}
+output:
+  success_codes: [0]
+parser: text

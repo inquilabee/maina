@@ -1,0 +1,21 @@
+# github .tar.gz asset — linux-x86_64 only. Modern `ls` replacement (Rust,
+# eza-community/eza). Confirmed live against v0.23.5 (2026-09-05): no macOS
+# release asset exists (Mac install is via Homebrew), unlike every other
+# manifest in this catalog which covers both platforms — a deliberate gap,
+# not an oversight. https://github.com/eza-community/eza/releases/tag/v0.23.5
+cli: eza
+version: 0.23.5
+install:
+  backend: github
+  repo: eza-community/eza
+  tag: v0.23.5
+  binary: eza
+  assets:
+    linux-x86_64: eza_x86_64-unknown-linux-gnu.tar.gz
+args:
+  path: {positional: true, type: path}
+  long: {flag: -l, type: flag}
+  all: {flag: -a, type: flag}
+output:
+  success_codes: [0]
+parser: text

@@ -12,10 +12,12 @@ install:
     linux-x86_64: trivy_0.74.0_Linux-64bit.tar.gz
     macos-arm64: trivy_0.74.0_macOS-ARM64.tar.gz
 args:
-  # e.g. command=fs, target=. for a real filesystem scan (downloads a vuln DB
-  # on first use — left out of the offline-friendly demo run on purpose).
+  # command=fs, target=<dir> with scanners=misconfig runs fully offline (bundled
+  # policies, no vuln DB download) — that's what the demo actually runs.
+  # scanners=vuln instead pulls a CVE database on first use.
   command: {positional: true, order: 0, description: "trivy subcommand (fs, image, config, ...)"}
   target: {positional: true, type: path, order: 1}
+  scanners: {flag: --scanners}
   severity: {flag: --severity}
   format: {flag: --format}
   quiet: {flag: --quiet, type: flag}
