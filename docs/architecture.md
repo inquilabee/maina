@@ -37,9 +37,13 @@ Everything registers through the **same** `register(rt, ...)` call.
 — but **no tool catalog**. maina ships the engine and the manifest contract;
 catalogs belong to the consumer.
 
-Contracts are protocols: `InstallerBackend`, `LanguageRuntimeProvider`,
-`Parser`. A plugin implements the protocol structurally and is passed to
-`register(...)`; no maina source edit, no subclassing.
+`LanguageRuntimeProvider` and `Parser` are structural `Protocol`s — a plugin
+satisfies them by shape alone, no subclassing. `InstallerBackend` is a real
+`ABC`: a backend declares conformance by explicit inheritance, and Python
+enforces it at instantiation (a subclass missing `resolve`/`name` fails with a
+clear `TypeError` instead of an `AttributeError` the first time a manifest
+dispatches to it). Either way, a plugin is just passed to `register(...)` — no
+maina source edit.
 
 The process-wide session (`use`, bare `register`, `runtime()`) is a convenience
 for scripts and is not thread-safe. Libraries and concurrent code pass an

@@ -358,9 +358,9 @@ def dispatch_run(resolved_id: str, tokens: list[str], opts: RunOpts) -> None:
     elif opts.as_json and result.parsed is None:
         echo_stderr("note: --json output is null (no parser: configured, or it returned None)")
     if not result.ok:
-        # Docs contract (docs/cli.md): 2 is a usage error (bad id / manifest /
-        # args); everything else that stops the run, including a tool that
-        # ran and failed, is 1.
+        # Docs contract (docs/user/cli.md): 2 is a usage error (bad id /
+        # manifest / args); everything else that stops the run, including a
+        # tool that ran and failed, is 1.
         raise typer.Exit(1)
     # A parse failure under --json (the caller asked for parsed output and got
     # none) is itself a failure.
