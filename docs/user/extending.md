@@ -114,6 +114,36 @@ Consumers pick it up with `Runtime.preferred(discover=True)` — it registers
 every installed `maina.registries` catalog (env `MAINA_REGISTRY` first, then
 discovered, then explicit `registry_dirs`; later wins).
 
+## Extending someone else's catalog
+
+`extends:` resolves its parent id across **every** registered root, not just
+the child manifest's own — so an app can add its own overlay manifest that
+`extends:` a tool from a vendor catalog it doesn't own, as long as both
+`registry_dirs` are registered on the same `Runtime` (whether the vendor
+catalog was published via an entry point, above, or just handed to you as a
+directory):
+
+```python
+app = maina.register(
+    maina.Runtime.preferred(discover=True),   # picks up acme's published catalog
+    registry_dirs=["my_overlay"],             # your own additions
+)
+```
+
+```yaml
+# my_overlay/acme-tool-verbose.yaml
+extends: acme-tool     # a tool from the acme catalog above, not your own
+args:
+  verbose: {flag: --verbose, type: flag}   # a flag acme's own manifest never declared
+```
+
+`args:` (and `install:`, `env:`, `output:`, `requires:`) merge **per field**
+down an `extends` chain (see [inheritance](manifests.md#inheritance)) — your
+overlay only needs to name the one new arg, not repeat everything the vendor
+manifest already declared. The same applies to overriding one field of an
+inherited arg, or pinning one extra `install.sha256` platform digest, without
+touching anything else the vendor manifest set.
+
 `register(...)` with no Runtime mutates the process-wide session instead:
 
 ```python
