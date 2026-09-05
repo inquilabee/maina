@@ -46,6 +46,22 @@ def test_run_invocation_strips_help_before_extra() -> None:
     assert tokens == ["--", "--help"]
 
 
+def test_run_invocation_lifts_every_leading_maina_flag_not_just_one() -> None:
+    """``run --dry-run --json <id> ...`` used to only lift the first flag, so
+    the second one was left stuck in the id position (the id itself becomes
+    e.g. ``"--json"``, and the real id is lost as an ordinary token)."""
+    tool_id, tokens, wants_help = RunInvocation.parse(
+        "--dry-run", ["--json", "jqish", "filter=.name"]
+    )
+    assert tool_id == "jqish"
+    assert wants_help is False
+    assert set(tokens) == {"--dry-run", "--json", "filter=.name"}
+    opts, rest = RunInvocation.split_maina_opts(tokens)
+    assert opts.dry_run is True
+    assert opts.as_json is True
+    assert rest == ["filter=.name"]
+
+
 def test_run_argparser_raw_string_form() -> None:
     kwargs, _extra = RunArgParser.parse(["count:=1", "flag=1"], flag_names=frozenset({"flag"}))
     assert kwargs["count"] == "1"

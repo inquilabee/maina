@@ -185,4 +185,12 @@ Two things to know:
   `Tool(..., runtime=rt)` instead.
 - Help text still says "maina". There is no rebranding hook yet.
 
-`--` passthrough works whether or not your entry point calls `maina.cli.main()`.
+`--` passthrough (`myapp tools run t -- -n`) is recovered from the real process
+argv, so it works when your entry point runs under a normal `python -m myapp ...`
+/ console-script invocation — you do not need to call `maina.cli.main()`
+yourself. It is **not** recovered when something dispatches the mounted app
+programmatically with a synthetic argv list instead of the real one (Click's
+`CliRunner` in tests, or your own `app(args=[...])` call) — Click has already
+dropped the `--` from its own args by the time maina's code runs, and there is
+no real process argv left to recover it from. Test your own `--` handling
+through a real subprocess invocation of your entry point, not `CliRunner`.

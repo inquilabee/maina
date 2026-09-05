@@ -377,16 +377,32 @@ def test_cli_run_surfaces_parse_error(tmp_path: Any) -> None:
     assert "parse error" in result.stderr
 
 
-def test_cli_run_no_arg_tool_with_dashdash(tmp_path: Any) -> None:
+def test_cli_run_no_arg_tool_with_dashdash(
+    tmp_path: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Bare ``run noargs`` prints help; ``run noargs --`` explicitly runs it.
+
+    Exercised through ``main()``, not ``CliRunner.invoke(app, ...)``: only
+    ``main()`` captures raw argv before Click strips ``--`` from ``ctx.args``.
+    ``CliRunner`` calls the Typer app directly, bypassing that capture — Click
+    then has already dropped the ``--`` with no way to tell "nothing after
+    run noargs" apart from "an explicit, empty --" (see
+    RunInvocation.recover_separator_tokens). A CliRunner-based version of this
+    test would pass for the wrong reason: exit_code == 0 from the help path,
+    not from the tool actually running.
+    """
     root = tmp_path / "reg"
-    write_yaml(root / "noargs.yaml", {"cli": "true", "install": {"backend": "path"}})
+    write_yaml(
+        root / "noargs.yaml",
+        {"cli": "echo", "args": {"msg": {"positional": True, "default": "ran"}}},
+    )
     rt = Runtime(cache_root=tmp_path / "cache")
     maina.register(rt, registry_dirs=[root], installers=[PathBackend()])
     maina.use(rt)
-    # bare `run noargs` prints help; `run noargs --` runs it.
-    assert "Arguments:" in runner.invoke(app, ["run", "noargs"]).stdout
-    result = runner.invoke(app, ["run", "noargs", "--"])
-    assert result.exit_code == 0, result.stdout + result.stderr
+    assert main(["run", "noargs"]) == 0
+    assert "Arguments:" in capsys.readouterr().out
+    assert main(["run", "noargs", "--"]) == 0
+    assert capsys.readouterr().out.strip() == "ran"
 
 
 def test_cli_run_passes_the_tools_stderr_through_on_success(tmp_path: Any) -> None:

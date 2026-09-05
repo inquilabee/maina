@@ -180,12 +180,25 @@ class RunInvocation:
     def _lift_lead_flag(
         cls, tool_id: str | None, tokens: list[str]
     ) -> tuple[str | None, list[str]]:
-        """`maina run --json <id> …` — move a leading maina flag past the id."""
-        return (
-            (tokens[0], [str(tool_id), *tokens[1:]])
-            if tool_id in cls.MAINA_FLAGS and tokens
-            else (tool_id, tokens)
+        """`maina run --json --dry-run <id> …` — move every leading maina flag
+        written before the id past it, not just the first one.
+
+        Mirrors the same "find the first non-flag token" scan
+        :meth:`parse_raw` already uses for the raw-argv recovery path, applied
+        here to ``[tool_id, *tokens]`` — a single swap left a second leading
+        flag (whatever Click bound as the id after the first swap) stuck in
+        the id position.
+        """
+        if not isinstance(tool_id, str) or tool_id not in cls.MAINA_FLAGS:
+            return tool_id, tokens
+        combined: list[str] = [tool_id, *tokens]
+        split = next(
+            (i for i, tok in enumerate(combined) if tok not in cls.MAINA_FLAGS), len(combined)
         )
+        if split == len(combined):
+            return tool_id, tokens
+        lead, rest = combined[:split], combined[split:]
+        return rest[0], [*lead, *rest[1:]]
 
     @classmethod
     def parse_raw(cls, after_run: list[str]) -> tuple[str | None, list[str], bool]:
