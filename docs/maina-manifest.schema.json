@@ -10,7 +10,10 @@
       "type": "boolean"
     },
     "args": {
-      "type": "object",
+      "type": [
+        "object",
+        "null"
+      ],
       "additionalProperties": {
         "anyOf": [
           {
@@ -27,7 +30,10 @@
       "minLength": 1
     },
     "env": {
-      "type": "object",
+      "type": [
+        "object",
+        "null"
+      ],
       "additionalProperties": {
         "type": [
           "string",
@@ -39,13 +45,27 @@
       "type": "string"
     },
     "install": {
-      "$ref": "#/$defs/install"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/install"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "name": {
       "type": "string"
     },
     "output": {
-      "$ref": "#/$defs/output"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/output"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "parser": {
       "type": "string",

@@ -38,6 +38,11 @@ def test_build_argv_subcommands_and_extra() -> None:
     assert argv == ["git", "remote", "add", "origin", "https://example.com", "--verbose"]
 
 
+def test_extra_with_unbalanced_quotes_raises_arg_error_not_value_error() -> None:
+    with pytest.raises(ArgError, match="not a valid shell-quoted string"):
+        ArgParser({}).build("jq", [], {}, extra='--filter "unclosed')
+
+
 def test_build_argv_repeated_flags() -> None:
     schema = {"glob": {"flag": "--glob", "type": "string", "repeat": True}}
     argv = ArgParser(schema).build("rg", [], {"glob": ["*.py", "*.md"]})

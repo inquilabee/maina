@@ -15,6 +15,7 @@ from . import ids as registry_ids
 from .common import (
     MANIFEST_PREFIX,
     manifest_error,
+    require_bool,
     require_str_keys,
     safe_segment,
     scalar_str,
@@ -191,6 +192,9 @@ class Registry:
             raise manifest_error(
                 tid, f"schema {schema!r} unsupported (maina understands schema {CURRENT_SCHEMA})"
             )
+        # Eager, like every other bool field — `abstract: "true"` (a string)
+        # must not load clean and only surface as a masked warning later.
+        require_bool(merged.get("abstract"), field_name="abstract", tool_id=tid)
         cls._validate_timeout(tid, merged.get("timeout"))
         cls._validate_platforms(tid, merged.get("platforms"))
         cls._validate_separator_and_from_file(tid, merged)
@@ -471,9 +475,36 @@ class Registry:
             return candidate
         raise ManifestError(f"parser {parser!r} not found under {family_parsers}")
 
-    # A manifest is a small hand-written config; a wall of YAML anchors is either
-    # a mistake or an alias-expansion ("billion laughs") attempt.
+    # A manifest is a small hand-written config; a wall of real anchors is a
+    # mistake, not a legitimate hand-written shape.
     MAX_YAML_ANCHORS = 64
+
+    @staticmethod
+    def _count_yaml_anchors(text: str) -> int:
+        """Count real ``&name`` anchor declarations, not the literal ``&``
+        character.
+
+        An ordinary description or a URL query string can easily contain
+        65+ literal ``&`` characters with zero real anchors, which a
+        ``text.count("&")`` guard rejects as a false positive. Composing
+        (not constructing) the document exposes the actual anchor table
+        PyYAML's own ``Composer`` builds; ``Composer.compose_document``
+        clears it right after composing (for multi-document streams), so
+        this reads it before that happens rather than via the ``compose()``
+        convenience function. Aliases resolve to the *same* node object as
+        their anchor, so this table already reflects real anchor
+        *declarations* regardless of how many aliases reference each one.
+        """
+        loader = yaml.SafeLoader(text)
+        try:
+            loader.get_event()  # STREAM-START
+            if loader.check_event(yaml.StreamEndEvent):
+                return 0
+            loader.get_event()  # DOCUMENT-START
+            loader.compose_node(None, None)
+            return len(loader.anchors)
+        finally:
+            loader.dispose()
 
     def _load_raw_yaml(self, path: Path) -> dict[str, Any]:
         """Load a single YAML manifest file, memoized on its own mtime + size.
@@ -497,7 +528,11 @@ class Registry:
             text = path.read_text(encoding="utf-8")
         except OSError as exc:
             raise ManifestError(f"cannot read {path}: {exc}") from exc
-        if text.count("&") > cls.MAX_YAML_ANCHORS:
+        try:
+            anchor_count = cls._count_yaml_anchors(text)
+        except yaml.YAMLError as exc:
+            raise ManifestError(f"invalid YAML in {path}: {exc}") from exc
+        if anchor_count > cls.MAX_YAML_ANCHORS:
             raise ManifestError(f"{MANIFEST_PREFIX}{path} has too many YAML anchors")
         try:
             raw = yaml.safe_load(text)

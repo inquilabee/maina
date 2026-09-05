@@ -317,9 +317,9 @@ class OutputSpec:
     @staticmethod
     def _parse_from_file(raw: Any, *, tool_id: str) -> str | None:
         """A relative-path template; absolute paths and ``..`` are rejected."""
-        text = optional_str(raw)
-        if text is None:
+        if raw is None:
             return None
+        text = scalar_str(raw, field_name="output.from_file", tool_id=tool_id)
         parts = text.replace("\\", "/").split("/")
         if text.startswith("/") or ".." in parts:
             raise manifest_error(
@@ -336,7 +336,7 @@ class OutputSpec:
         return tuple(codes)
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class Manifest:
     """Resolved registry surface ready for install/run."""
 

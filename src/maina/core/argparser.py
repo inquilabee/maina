@@ -312,6 +312,11 @@ class ArgParser:
     @staticmethod
     def normalize_extra(extra: str | list[str] | None) -> list[str]:
         """Normalize extra passthrough args to an argv suffix."""
-        return (
-            [] if extra is None else (shlex.split(extra) if isinstance(extra, str) else list(extra))
-        )
+        if extra is None:
+            return []
+        if not isinstance(extra, str):
+            return list(extra)
+        try:
+            return shlex.split(extra)
+        except ValueError as exc:
+            raise ArgError(f"extra={extra!r} is not a valid shell-quoted string: {exc}") from exc

@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 from string import Formatter
 from typing import Any, ClassVar
 
+from maina.core.platform import PLATFORM_BY_PREFIX
+
 from .common import (
     is_unsafe_segment,
     manifest_error,
@@ -23,6 +25,11 @@ from .common import (
 )
 from .keys import INSTALL_KEYS
 
+# The os_map (not arch_map) key space is closed: maina only ever emits
+# linux/macos/windows as the {os} half of a platform key. arch_map keys stay
+# open (any platform.machine() string is a legitimate, if exotic, arch).
+KNOWN_OS_TOKENS = frozenset(PLATFORM_BY_PREFIX.values())
+
 
 @dataclass(slots=True, frozen=True)
 class InstallSpec:
@@ -30,7 +37,7 @@ class InstallSpec:
 
     backend: str = "path"
     repo: str | None = None
-    assets: dict[str, Any] = field(default_factory=dict)
+    assets: dict[str, str] = field(default_factory=dict)
     asset_template: str | None = None
     os_map: dict[str, str] = field(default_factory=dict)
     arch_map: dict[str, str] = field(default_factory=dict)
@@ -53,11 +60,20 @@ class InstallSpec:
             keys = ", ".join(bad)
             raise manifest_error(tool_id, f"install unknown keys: {keys}")
         return cls(
-            backend="path" if raw.get("backend") is None else str(raw.get("backend", "path")),
+            backend=(
+                "path"
+                if raw.get("backend") is None
+                else scalar_str(raw["backend"], field_name="install.backend", tool_id=tool_id)
+            ),
             repo=cls._parse_repo(raw.get("repo"), tool_id=tool_id),
             assets=cls._parse_assets(raw.get("assets"), tool_id=tool_id),
             asset_template=cls._parse_asset_template(raw.get("asset_template"), tool_id=tool_id),
-            os_map=cls._parse_token_map(raw.get("os_map"), field_name="os_map", tool_id=tool_id),
+            os_map=cls._parse_token_map(
+                raw.get("os_map"),
+                field_name="os_map",
+                tool_id=tool_id,
+                valid_keys=KNOWN_OS_TOKENS,
+            ),
             arch_map=cls._parse_token_map(
                 raw.get("arch_map"), field_name="arch_map", tool_id=tool_id
             ),
@@ -126,7 +142,7 @@ class InstallSpec:
     def _parse_repo(raw: Any, *, tool_id: str) -> str | None:
         if raw is None:
             return None
-        text = str(raw)
+        text = scalar_str(raw, field_name="install.repo", tool_id=tool_id)
         parts = text.split("/")
         if len(parts) != 2 or not all(parts) or any(is_unsafe_segment(p) for p in parts):
             raise manifest_error(tool_id, f"install.repo {text!r} must be 'owner/name'")
@@ -191,19 +207,30 @@ class InstallSpec:
         return text
 
     @staticmethod
-    def _parse_token_map(raw: Any, *, field_name: str, tool_id: str) -> dict[str, str]:
-        """Parse ``os_map`` / ``arch_map`` — maina's token to the project's spelling."""
+    def _parse_token_map(
+        raw: Any, *, field_name: str, tool_id: str, valid_keys: frozenset[str] | None = None
+    ) -> dict[str, str]:
+        """Parse ``os_map`` / ``arch_map`` — maina's token to the project's spelling.
+
+        *valid_keys*, when given, closes the key space (``os_map``'s keys can
+        only be ``linux``/``macos``/``windows`` — a typo like ``linvx`` would
+        otherwise silently no-op instead of failing at load).
+        """
+        prefix = f"install.{field_name}"
         if raw is None:
             return {}
         if not isinstance(raw, dict):
-            raise manifest_error(tool_id, f"install.{field_name} must be a map")
+            raise manifest_error(tool_id, f"{prefix} must be a map")
+        if valid_keys is not None and (bad := sorted(str(k) for k in raw if k not in valid_keys)):
+            allowed = ", ".join(sorted(valid_keys))
+            raise manifest_error(tool_id, f"{prefix} keys {bad} not in {{{allowed}}}")
         return {
-            str(key): safe_segment(value, field_name=f"install.{field_name}.{key}", tool_id=tool_id)
+            str(key): safe_segment(value, field_name=f"{prefix}.{key}", tool_id=tool_id)
             for key, value in raw.items()
         }
 
     @staticmethod
-    def _parse_assets(raw: Any, *, tool_id: str) -> dict[str, Any]:
+    def _parse_assets(raw: Any, *, tool_id: str) -> dict[str, str]:
         assets = raw or {}
         if not isinstance(assets, dict):
             raise manifest_error(tool_id, "install.assets must be a map")

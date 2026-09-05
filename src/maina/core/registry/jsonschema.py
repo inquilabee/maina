@@ -67,14 +67,18 @@ TOP_LEVEL_PROPERTIES: dict[str, dict[str, Any]] = {
     "timeout": {"type": "number", "exclusiveMinimum": 0},
     "separator": {"type": "string", "minLength": 1},
     "parser": {"type": "string", "minLength": 1},
-    "env": {"type": "object", "additionalProperties": {"type": ["string", "null"]}},
+    # A whole block (not just one of its entries) can be `null` too: it is
+    # the same "clear everything this layer inherited" idiom `requires: null`
+    # already gets, applied uniformly to every MAP_KEYS block the loader's
+    # merge rules cover (see `core/registry/merge.py`).
+    "env": {"type": ["object", "null"], "additionalProperties": {"type": ["string", "null"]}},
     "args": {
-        "type": "object",
+        "type": ["object", "null"],
         "additionalProperties": {"anyOf": [{"$ref": "#/$defs/arg"}, {"type": "null"}]},
     },
-    "install": {"$ref": "#/$defs/install"},
+    "install": {"anyOf": [{"$ref": "#/$defs/install"}, {"type": "null"}]},
     "requires": {"type": ["object", "null"], "additionalProperties": {"type": ["string", "null"]}},
-    "output": {"$ref": "#/$defs/output"},
+    "output": {"anyOf": [{"$ref": "#/$defs/output"}, {"type": "null"}]},
     "name": {"type": "string"},
 }
 

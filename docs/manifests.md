@@ -244,6 +244,9 @@ that basis; give it `abstract: true` to make the intent explicit. Merge rules:
   platform's asset keeps the parent's other platforms, and
   `assets: { macos-arm64: null }` drops just that inherited entry (use it on a
   version-bump child so a parent's stale asset name / digest does not linger).
+- A bare `args: null` / `install: null` / `env: null` / `output: null` clears
+  the *whole* inherited block, not just one key — the same all-or-nothing
+  idiom `requires: null` already gets, on all five merged blocks.
 - Every other key is replaced by the child's value.
 - `subcommand` segments accumulate down the chain into `Manifest.subcommands`.
 - A cycle in `extends` raises `ManifestError`.
