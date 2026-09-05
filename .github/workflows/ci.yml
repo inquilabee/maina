@@ -1,0 +1,31 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+      - name: Set up Python
+        run: uv python install
+      - name: Sync dev dependencies
+        run: uv sync --group dev
+      - name: shipgate install
+        run: |
+          uv run shipgate install
+          bash scripts/shipgate-link-src.sh
+      - name: shipgate format (fail if it would change files)
+        run: |
+          uv run shipgate format --target .
+          git diff --exit-code
+      - name: shipgate check (full suite)
+        run: uv run shipgate check --target .
+      - name: shipgate refactor check --strict
+        run: uv run shipgate refactor check --strict src
+      - name: pytest unit tests
+        run: uv run pytest tests/unit -q
