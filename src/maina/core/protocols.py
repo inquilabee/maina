@@ -53,7 +53,7 @@ class LanguageRuntimeProvider(Protocol):
         ...
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class InstallContext:
     """Thin resolve context for installer backends (not the composition Runtime)."""
 

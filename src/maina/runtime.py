@@ -21,7 +21,7 @@ from maina.installer import Installer
 from maina.mise import MiseRuntime
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping, Sequence
+    from collections.abc import Callable, Iterator, Mapping, Sequence
     from importlib.metadata import EntryPoint
 
     from maina.core.parsers import ParserInput
@@ -33,24 +33,28 @@ class RuntimeSession:
 
     def __init__(self) -> None:
         self.current: Runtime | None = None
+        self._atexit_hook: Callable[[], None] | None = None
 
     def get(self) -> Runtime:
         """Return the active Runtime, lazy-building preferred defaults."""
-        if self.current is None:
-            self.current = Runtime.preferred()
-            atexit.register(self.current.close)
-        return self.current
+        return self.current if self.current is not None else self.set(Runtime.preferred())
 
     def set(self, rt: Runtime) -> Runtime:
         """Replace the active Runtime and return it.
 
-        Registers ``rt.close`` at exit too, matching :meth:`get`'s lazy
-        default — otherwise a ``Runtime`` installed explicitly via
-        ``use(rt)`` never gets its ``GithubBackend`` / ``requests.Session``
-        closed, unlike the one ``get()`` builds lazily.
+        Registers ``rt.close`` at exit, matching :meth:`get`'s lazy default —
+        otherwise a ``Runtime`` installed explicitly via ``use(rt)`` never gets
+        its ``GithubBackend`` / ``requests.Session`` closed. The previous
+        hook is unregistered first: without this, swapping the active
+        ``Runtime`` repeatedly (tests, a long-lived app reconfiguring) would
+        accumulate one ``atexit`` closure per swap, keeping every superseded
+        ``Runtime`` alive until process exit instead of just the current one.
         """
+        if self._atexit_hook is not None:
+            atexit.unregister(self._atexit_hook)
         self.current = rt
-        atexit.register(rt.close)
+        self._atexit_hook = rt.close
+        atexit.register(self._atexit_hook)
         return rt
 
 

@@ -57,3 +57,4 @@ notes/
 
 # local editor state (extensions, launch configs) — machine-specific
 .vscode/
+.claude/

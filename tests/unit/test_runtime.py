@@ -46,6 +46,27 @@ def test_use_registers_atexit_close_for_an_explicit_runtime(
     assert rt.close in registered
 
 
+def test_use_unregisters_the_previous_atexit_hook_on_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Swapping the active Runtime repeatedly must not accumulate one atexit
+    hook per swap, keeping every superseded Runtime alive until process
+    exit — each swap replaces the previous hook."""
+    registered: list[object] = []
+    unregistered: list[object] = []
+    monkeypatch.setattr(atexit, "register", registered.append)
+    monkeypatch.setattr(atexit, "unregister", unregistered.append)
+    rt1 = Runtime()
+    rt2 = Runtime()
+    maina.use(rt1)
+    maina.use(rt2)
+    # The autouse restore_session_runtime fixture already swapped the active
+    # Runtime once before this test body runs, so assert the tail of each
+    # list (this swap's effect) rather than the whole history.
+    assert registered[-2:] == [rt1.close, rt2.close]
+    assert unregistered[-1] == rt1.close
+
+
 def test_runtime_use_isolates() -> None:
     maina.use(Runtime())
     with pytest.raises(ManifestError):

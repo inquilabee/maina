@@ -10,7 +10,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -333,13 +333,23 @@ def test_install_dir_lock_exclusive(tmp_path: Path) -> None:
         assert (dest / ".maina-install.lock").is_file()
 
 
+def test_install_context_is_frozen(tmp_path: Path) -> None:
+    """InstallContext is never reassigned after construction (only the
+    caller-supplied env dict argument mutates, via prepend_path)."""
+    from maina.core.protocols import InstallContext
+
+    ctx = InstallContext(cache_root=tmp_path, language=FakeLanguage(tmp_path))
+    with pytest.raises(AttributeError):
+        cast("Any", ctx).cache_root = tmp_path / "other"
+
+
 def test_runtime_lock_creates_a_lock_file(tmp_path: Path) -> None:
     with Installer.runtime_lock(tmp_path, "node", "20"):
         assert (tmp_path / "runtimes" / "node-20" / ".maina-install.lock").is_file()
 
 
 def test_compose_requires_env_serializes_same_runtime_pin(tmp_path: Path) -> None:
-    """F22: two manifests pinning the same runtime must not race
+    """Two manifests pinning the same runtime must not race
     ``language.ensure()`` into the shared mise-data directory."""
     active = 0
     overlap = threading.Event()

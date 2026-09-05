@@ -161,7 +161,7 @@ def test_same_stem_parser_modules_are_distinct(tmp_path: Path) -> None:
 
 
 def test_module_cache_is_scoped_to_the_resolver_instance(tmp_path: Path) -> None:
-    """F37: the module cache must not be a process-wide ClassVar — a second,
+    """The module cache must not be a process-wide ClassVar — a second,
     independent ParserResolver must not see the first one's cached entry."""
     path = tmp_path / "p.py"
     path.write_text("def parse(raw, result):\n    return 'ONE'\n", encoding="utf-8")

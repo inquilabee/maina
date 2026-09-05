@@ -193,8 +193,8 @@ def test_repeated_load_reuses_the_cached_manifest_not_a_fresh_merge(
 
 
 def test_manifest_data_rejects_mutation(tmp_path: Path) -> None:
-    """G1: Registry.load() returns a shared, cached Manifest — a caller
-    mutating .data must not be able to corrupt it for every other load()."""
+    """Registry.load() returns a shared, cached Manifest — a caller mutating
+    .data must not be able to corrupt it for every other load()."""
     root = tmp_path / "reg"
     write_yaml(root / "t.yaml", {"cli": "echo"})
     registry = Registry([root])
