@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/inquilabee/maina"
+Homepage = "https://inquilabee.github.io/maina/"
 Documentation = "https://inquilabee.github.io/maina/"
 Repository = "https://github.com/inquilabee/maina"
 

@@ -3,11 +3,13 @@
 ## A registry root is trusted code
 
 maina hardens the path from a manifest to a running process — the `github`
-backend pins digests, enforces HTTPS with a redirect-host allowlist, caps
-download and decompression size, and validates archive members; `npm` runs with
-`--ignore-scripts` and an anchored `package.json`; the manifest schema rejects
-`..`, absolute paths, and shell metacharacters in every value that reaches a
-path or an argv token.
+backend verifies an optional per-platform `sha256` digest (opt-in: an asset
+with no `sha256:` entry installs with TLS integrity only, not a pinned
+digest), enforces HTTPS with a redirect-host allowlist, caps download and
+decompression size, and validates archive members; `npm` runs with
+`--ignore-scripts` and an anchored `package.json` by default (`install. allow_scripts: true` opts a manifest into running install/postinstall
+lifecycle scripts); the manifest schema rejects `..`, absolute paths, and
+shell metacharacters in every value that reaches a path or an argv token.
 
 None of that makes a **registry directory** safe to point at untrusted content.
 A directory you register can:
@@ -41,3 +43,11 @@ So registering a directory is equivalent to trusting the code in it. Treat
   and CA-bundle variables, and `HTTP(S)_PROXY` / `NO_PROXY`.
 - A manifest's own `env:` block is **always** forwarded and can override
   `PATH`; only put non-secret configuration there.
+- **`MAINA_ALLOW_MISE_BOOTSTRAP=1`** is the single highest-risk opt-in in the
+  installer layer: with it set, a `requires:` runtime pin (or any `npm`
+  tool) that mise doesn't already provide fetches `https://mise.run` over
+  HTTPS and pipes it into `sh`. The pinned `MISE_VERSION` fixes which mise
+  release that script installs, but the script's own content is not
+  checksummed or signed. Leave the variable unset unless you have already
+  decided to trust `mise.run` — without it, provisioning fails closed with
+  `RuntimeProvisionError` instead.

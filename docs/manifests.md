@@ -98,7 +98,7 @@ args:
 | `default` | any | Value used when the caller omits the argument. For `type: pairs` it must be a mapping or a list of `[key, value]` pairs; if `choices:` is also set, the default must be one of them — both checked at load. |
 | `repeat` | bool | For list values: `true` repeats the flag per item, `false` emits one flag then all items. |
 | `join` | string | Separator that joins a list into one token — `join: ","` → `--flag a,b`, `join: ";"` → `--flag 'a;b'`. It is the separator itself, so a word (`csv`, `comma`) is rejected with the punctuation it meant. |
-| `choices` | list of string | A non-empty allowlist; the value (or, for a list, every item) must match one, checked at every `run` / `argv`. Not valid on `type: flag` / `type: pairs`. |
+| `choices` | list of string or integer | A non-empty allowlist; the value (or, for a list, every item) must match one, checked at every `run` / `argv`. Not valid on `type: flag` / `type: pairs`. |
 | `description` / `help` | string | Shown in `Tool(id).help()`. |
 
 Calling rules:

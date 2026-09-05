@@ -74,6 +74,12 @@ wins for its platform, so one oddly-named release does not force every name to b
 spelled out. An unknown placeholder is rejected at load, and an expansion that is
 not a safe path segment is refused before any download.
 
+`install.allow_any_executable: true` opts in to a fallback: if no archive
+member is literally named `binary`, but the archive holds exactly one
+executable file, that file is installed as the binary (with a warning).
+Off by default — a release asset can otherwise ship a single trojan file
+that silently becomes the tool.
+
 ## `npm`
 
 Runs `npm install --prefix <cache>` for `package` and resolves the package's
@@ -85,6 +91,11 @@ install:
   backend: npm
   package: markdownlint-cli
 ```
+
+`--ignore-scripts` by default: a package's install/postinstall lifecycle
+scripts run with the composed environment, which is real code execution
+from a package the manifest names. `install.allow_scripts: true` opts a
+manifest into running them.
 
 ## `pip`
 
