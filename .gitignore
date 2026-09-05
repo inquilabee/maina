@@ -54,3 +54,6 @@ notes/
 
 # powerhouse agent process (plans, memory, decisions, reviews)
 .powerhouse/
+
+# local editor state (extensions, launch configs) — machine-specific
+.vscode/

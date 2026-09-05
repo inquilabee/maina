@@ -6,6 +6,7 @@ docs_dir: docs
 exclude_docs: |
   plans/
   reviews/
+  product/
 theme:
   name: material
   palette:
