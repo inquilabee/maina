@@ -230,16 +230,27 @@ class ArchiveFetcher:
 
     @classmethod
     def _extract_tar_members(cls, tar: tarfile.TarFile, dest: Path) -> None:
-        """Validate then extract every member of an open tar archive."""
-        members = tar.getmembers()
-        total = sum(member.size for member in members if member.isreg())
-        if total > EXTRACT_MAX_BYTES:
-            raise InstallError(
-                f"archive expands to {total} bytes, over the {EXTRACT_MAX_BYTES} cap"
-            )
-        for member in members:
+        """Validate then extract every member of an open tar archive.
+
+        Members are walked one at a time via :meth:`tarfile.TarFile.next`
+        rather than :meth:`~tarfile.TarFile.getmembers`, so a highly
+        compressible archive is rejected as soon as the running total crosses
+        the cap. ``getmembers()`` must read to the end of the compressed
+        stream to enumerate every header before returning, forcing full
+        decompression cost regardless of where the cap is exceeded.
+        """
+        members: list[tarfile.TarInfo] = []
+        total = 0
+        while (member := tar.next()) is not None:
+            if member.isreg():
+                total += member.size
+                if total > EXTRACT_MAX_BYTES:
+                    raise InstallError(
+                        f"archive expands to over {EXTRACT_MAX_BYTES} bytes, over the cap"
+                    )
             cls.assert_safe_member(dest, member.name)
             cls.assert_safe_link(dest, member)
+            members.append(member)
         try:
             tar.extractall(dest, members=members, filter="data")
         except TypeError as exc:
@@ -253,18 +264,35 @@ class ArchiveFetcher:
 
     @classmethod
     def safe_extract_zip(cls, archive: Path, dest: Path) -> None:
-        """Extract a zip archive after rejecting path-escape members."""
+        """Extract a zip archive after rejecting path-escape members.
+
+        Unlike tar (no separate index; headers are interleaved with data
+        throughout the stream), a zip's central directory — what
+        ``infolist()`` reads — is a compact record block at the end of the
+        file; reading it costs nothing proportional to the archive's actual
+        content, so the declared-size cap below runs before any
+        decompression, not after it. ``zipfile``'s own reader additionally
+        bounds decompressed output to each entry's declared size and
+        validates its CRC-32, so a tampered entry that understates its own
+        size fails extraction outright (``BadZipFile``) rather than
+        overrunning silently; that failure is wrapped as ``InstallError``
+        below like every other extraction failure.
+        """
         dest = dest.resolve()
         with zipfile.ZipFile(archive) as zf:
-            total = sum(info.file_size for info in zf.infolist())
+            infos = zf.infolist()
+            total = sum(info.file_size for info in infos)
             if total > EXTRACT_MAX_BYTES:
                 raise InstallError(
                     f"archive expands to {total} bytes, over the {EXTRACT_MAX_BYTES} cap"
                 )
-            for info in zf.infolist():
+            for info in infos:
                 cls.assert_safe_member(dest, info.filename)
-            for info in zf.infolist():
-                zf.extract(info, dest)
+            try:
+                for info in infos:
+                    zf.extract(info, dest)
+            except zipfile.BadZipFile as exc:
+                raise InstallError(f"corrupt or tampered zip entry in {archive}: {exc}") from exc
 
     # Compressed / archive formats maina cannot unpack — never install one of
     # these verbatim as an executable.

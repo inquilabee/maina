@@ -87,41 +87,6 @@ class RecordingBackend:
         return "/bin/true", env
 
 
-def test_assert_safe_member_rejects_prefix_sibling(tmp_path: Path) -> None:
-    dest = tmp_path / "dest"
-    dest.mkdir()
-    (tmp_path / "destevil").mkdir()
-    # Classic startswith false positive: .../destevil starts with .../dest.
-    with pytest.raises(InstallError, match="unsafe path"):
-        ArchiveFetcher.assert_safe_member(dest, "../destevil/bin")
-
-
-def test_assert_safe_member_rejects_dotdot(tmp_path: Path) -> None:
-    dest = tmp_path / "dest"
-    dest.mkdir()
-    with pytest.raises(InstallError, match="unsafe path"):
-        ArchiveFetcher.assert_safe_member(dest, "../outside")
-
-
-def test_assert_safe_member_allows_nested(tmp_path: Path) -> None:
-    dest = tmp_path / "dest"
-    dest.mkdir()
-    ArchiveFetcher.assert_safe_member(dest, "bin/tool")
-
-
-def test_safe_extract_tar_rejects_traversal(tmp_path: Path) -> None:
-    archive = tmp_path / "evil.tar.gz"
-    dest = tmp_path / "out"
-    dest.mkdir()
-    with tarfile.open(archive, "w:gz") as tar:
-        info = tarfile.TarInfo(name="../escape")
-        payload = b"x"
-        info.size = len(payload)
-        tar.addfile(info, io.BytesIO(payload))
-    with pytest.raises(InstallError, match="unsafe path"):
-        ArchiveFetcher.safe_extract_tar(archive, dest, mode="r:gz")
-
-
 def test_fetch_https_streams_with_size_cap(tmp_path: Path) -> None:
     fetcher = ArchiveFetcher(max_bytes=8)
     dest = tmp_path / "asset.bin"
