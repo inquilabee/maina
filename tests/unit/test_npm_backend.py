@@ -113,12 +113,13 @@ def test_npm_install_timeout_is_wrapped_as_install_error(
 ) -> None:
     import subprocess
 
+    from helpers import patch_popen
     from maina.backends.npm import NpmBackend
 
-    def fake_run(argv: list[str], **_kw: object) -> None:
-        raise subprocess.TimeoutExpired(cmd=argv, timeout=600)
+    def respond(argv: list[str], **_kw: object) -> dict[str, object]:
+        return {"wait_raises": subprocess.TimeoutExpired(cmd=argv, timeout=600)}
 
-    monkeypatch.setattr("maina.core.subprocess_utils.subprocess.run", fake_run)
+    patch_popen(monkeypatch, "maina.core.subprocess_utils.subprocess.Popen", respond)
     with pytest.raises(InstallError, match="timed out after"):
         NpmBackend._npm_install("/usr/bin/npm", tmp_path, "tool@1", {"PATH": "/usr/bin"})
 
@@ -126,20 +127,16 @@ def test_npm_install_timeout_is_wrapped_as_install_error(
 def test_npm_install_uses_ignore_scripts_by_default(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import maina.core.subprocess_utils as subprocess_utils_mod
+    from helpers import patch_popen
     from maina.backends.npm import NpmBackend
 
     calls: list[list[str]] = []
 
-    class _Result:
-        returncode = 0
-        stderr = ""
-
-    def fake_run(argv: list[str], **_kw: object) -> _Result:
+    def respond(argv: list[str], **_kw: object) -> dict[str, object]:
         calls.append(list(argv))
-        return _Result()
+        return {"returncode": 0}
 
-    monkeypatch.setattr(subprocess_utils_mod.subprocess, "run", fake_run)
+    patch_popen(monkeypatch, "maina.core.subprocess_utils.subprocess.Popen", respond)
     NpmBackend._npm_install("/usr/bin/npm", tmp_path / "x", "jscpd@1", {"PATH": "/usr/bin"})
     assert "--ignore-scripts" in calls[0]
     calls.clear()
@@ -155,19 +152,34 @@ def test_npm_install_separates_the_package_spec_with_dashdash(
     """Defense in depth matching pip.py: the package spec follows a `--`, so
     it can never be read as a flag even though install.package is already
     validated as a safe npm name."""
-    import maina.core.subprocess_utils as subprocess_utils_mod
+    from helpers import patch_popen
     from maina.backends.npm import NpmBackend
 
     calls: list[list[str]] = []
 
-    class _Result:
-        returncode = 0
-        stderr = ""
-
-    def fake_run(argv: list[str], **_kw: object) -> _Result:
+    def respond(argv: list[str], **_kw: object) -> dict[str, object]:
         calls.append(list(argv))
-        return _Result()
+        return {"returncode": 0}
 
-    monkeypatch.setattr(subprocess_utils_mod.subprocess, "run", fake_run)
+    patch_popen(monkeypatch, "maina.core.subprocess_utils.subprocess.Popen", respond)
     NpmBackend._npm_install("/usr/bin/npm", tmp_path / "x", "jscpd@1", {"PATH": "/usr/bin"})
     assert calls[0][-2:] == ["--", "jscpd@1"]
+
+
+def test_npm_install_output_over_cap_raises_install_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A flooding (or malicious) npm install script must not buffer unbounded
+    into this process — it should be capped the same way tool execution is."""
+    import maina.backends.npm as npm_module
+    from helpers import patch_popen
+    from maina.backends.npm import NpmBackend
+
+    monkeypatch.setattr(npm_module, "INSTALL_OUTPUT_MAX_BYTES", 10)
+
+    def respond(_argv: list[str], **_kw: object) -> dict[str, object]:
+        return {"returncode": 0, "stdout": b"x" * 1000}
+
+    patch_popen(monkeypatch, "maina.core.subprocess_utils.subprocess.Popen", respond)
+    with pytest.raises(InstallError, match="byte cap"):
+        NpmBackend._npm_install("/usr/bin/npm", tmp_path, "tool@1", {"PATH": "/usr/bin"})

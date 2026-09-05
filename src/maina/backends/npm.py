@@ -8,7 +8,11 @@ from typing import TYPE_CHECKING
 
 from maina.core.errors import InstallError
 from maina.core.protocols import InstallerBackend
-from maina.core.subprocess_utils import resolve_within, run_or_wrap
+from maina.core.subprocess_utils import (
+    INSTALL_OUTPUT_MAX_BYTES,
+    resolve_within,
+    run_or_wrap_capped,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -169,10 +173,11 @@ class NpmBackend(InstallerBackend):
         if not allow_scripts:
             argv.append("--ignore-scripts")
         argv.extend(["--", pkg_spec])
-        run_or_wrap(
+        run_or_wrap_capped(
             argv,
             env=env,
             timeout=NpmBackend.INSTALL_TIMEOUT,
+            max_bytes=INSTALL_OUTPUT_MAX_BYTES,
             error_cls=InstallError,
             on_timeout=(
                 lambda: f"npm install {pkg_spec} timed out after {NpmBackend.INSTALL_TIMEOUT}s"

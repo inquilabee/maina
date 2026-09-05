@@ -9,7 +9,12 @@ import subprocess
 from pathlib import Path
 
 from maina.core.errors import RuntimeProvisionError
-from maina.core.subprocess_utils import run_or_wrap
+from maina.core.subprocess_utils import (
+    INSTALL_OUTPUT_MAX_BYTES,
+    OutputCapExceededError,
+    run_capped,
+    run_or_wrap_capped,
+)
 
 # `mise.run` is an unpinned installer script. Downloading and piping it into a
 # shell is opt-in: set MAINA_ALLOW_MISE_BOOTSTRAP=1 (or put `mise` on PATH).
@@ -83,10 +88,11 @@ class MiseRuntime:
         if resolved := self._mise_which(mise, spec, runtime, env):
             return resolved
 
-        run_or_wrap(
+        run_or_wrap_capped(
             [str(mise), "install", spec],
             env=env,
             timeout=MISE_INSTALL_TIMEOUT,
+            max_bytes=INSTALL_OUTPUT_MAX_BYTES,
             error_cls=RuntimeProvisionError,
             on_timeout=lambda: f"mise install {spec} timed out after {MISE_INSTALL_TIMEOUT}s",
             on_failure=lambda detail: f"mise install {spec} failed: {detail}",
@@ -146,27 +152,25 @@ class MiseRuntime:
         shell = shutil.which("sh")
         if not curl or not shell:
             raise RuntimeProvisionError("curl and sh are required to bootstrap mise")
-        try:
-            script = subprocess.run(
-                [curl, "-fsSL", "https://mise.run"],
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=MISE_QUERY_TIMEOUT,
-            )
-            subprocess.run(
-                [shell],
-                input=script.stdout,
-                check=True,
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=MISE_INSTALL_TIMEOUT,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise RuntimeProvisionError("mise bootstrap timed out") from exc
-        except (OSError, subprocess.CalledProcessError) as exc:
-            raise RuntimeProvisionError(f"failed to bootstrap mise: {exc}") from exc
+        script = run_or_wrap_capped(
+            [curl, "-fsSL", "https://mise.run"],
+            env=env,
+            timeout=MISE_QUERY_TIMEOUT,
+            max_bytes=INSTALL_OUTPUT_MAX_BYTES,
+            error_cls=RuntimeProvisionError,
+            on_timeout=lambda: "mise bootstrap timed out fetching the install script",
+            on_failure=lambda detail: f"failed to fetch the mise install script: {detail}",
+        )
+        run_or_wrap_capped(
+            [shell],
+            env=env,
+            timeout=MISE_INSTALL_TIMEOUT,
+            stdin=script.stdout.encode("utf-8"),
+            max_bytes=INSTALL_OUTPUT_MAX_BYTES,
+            error_cls=RuntimeProvisionError,
+            on_timeout=lambda: "mise bootstrap timed out",
+            on_failure=lambda detail: f"failed to bootstrap mise: {detail}",
+        )
         if target.is_file():
             target.chmod(target.stat().st_mode | 0o111)
             return target
@@ -199,29 +203,31 @@ class MiseRuntime:
         ``mise install`` call.
         """
         try:
-            which = subprocess.run(
+            which = run_capped(
                 [str(mise), "which", "--toolchain", spec, runtime],
-                check=False,
                 env=env,
-                capture_output=True,
-                text=True,
                 timeout=MISE_QUERY_TIMEOUT,
+                max_bytes=INSTALL_OUTPUT_MAX_BYTES,
             )
-            if which.returncode == 0 and which.stdout.strip():
-                return Path(which.stdout.strip()).parent
+            which_stdout = which.stdout.decode("utf-8", "replace")
+            if which.returncode == 0 and which_stdout.strip():
+                return Path(which_stdout.strip()).parent
 
             shell = shutil.which("sh") or "/bin/sh"
             no_install_env = {**env, "MISE_EXEC_AUTO_INSTALL": "false"}
-            exe = subprocess.run(
+            exe = run_capped(
                 [str(mise), "exec", spec, "--", shell, "-c", f"command -v {shlex.quote(runtime)}"],
-                check=False,
                 env=no_install_env,
-                capture_output=True,
-                text=True,
                 timeout=MISE_QUERY_TIMEOUT,
+                max_bytes=INSTALL_OUTPUT_MAX_BYTES,
             )
         except OSError as exc:
             raise RuntimeProvisionError(f"could not run mise for {spec}: {exc}") from exc
-        if exe.returncode == 0 and (path := exe.stdout.strip()):
+        except OutputCapExceededError as exc:
+            raise RuntimeProvisionError(
+                f"mise for {spec} exceeded the {exc.max_bytes} byte cap"
+            ) from exc
+        exe_stdout = exe.stdout.decode("utf-8", "replace")
+        if exe.returncode == 0 and (path := exe_stdout.strip()):
             return Path(path).parent
         return None

@@ -8,7 +8,11 @@ from typing import TYPE_CHECKING
 
 from maina.core.errors import InstallError
 from maina.core.protocols import InstallerBackend
-from maina.core.subprocess_utils import resolve_within, run_or_wrap
+from maina.core.subprocess_utils import (
+    INSTALL_OUTPUT_MAX_BYTES,
+    resolve_within,
+    run_or_wrap_capped,
+)
 
 if TYPE_CHECKING:
     from maina.core.protocols import InstallContext
@@ -112,10 +116,11 @@ class PipBackend(InstallerBackend):
         """Create the tool's venv and return the interpreter inside it."""
         base = self._base_interpreter(manifest, env, ctx)
         venv.parent.mkdir(parents=True, exist_ok=True)
-        run_or_wrap(
+        run_or_wrap_capped(
             [str(base), "-m", "venv", str(venv)],
             env=env,
             timeout=self.VENV_TIMEOUT,
+            max_bytes=INSTALL_OUTPUT_MAX_BYTES,
             error_cls=InstallError,
             on_timeout=lambda: f"{manifest.id}: creating a venv timed out",
             on_failure=lambda detail: f"{manifest.id}: could not create a venv at {venv}: {detail}",
@@ -185,10 +190,11 @@ class PipBackend(InstallerBackend):
         if not allow_sdist:
             argv.append("--only-binary=:all:")
         argv.extend(["--", spec])
-        run_or_wrap(
+        run_or_wrap_capped(
             argv,
             env=env,
             timeout=PipBackend.INSTALL_TIMEOUT,
+            max_bytes=INSTALL_OUTPUT_MAX_BYTES,
             error_cls=InstallError,
             on_timeout=(
                 lambda: (

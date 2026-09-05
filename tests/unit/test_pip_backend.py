@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+from helpers import patch_popen
 from maina.backends import PipBackend
 from maina.core.errors import InstallError
 from maina.core.protocols import InstallContext
@@ -46,7 +47,7 @@ def recorded_runs(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
     """Capture every subprocess argv and fake a working venv + entry point."""
     calls: list[list[str]] = []
 
-    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    def respond(argv: list[str], **kwargs: Any) -> dict[str, object]:
         del kwargs
         calls.append(list(argv))
         if "venv" in argv:  # `<python> -m venv <dir>` — lay down what venv would
@@ -56,9 +57,9 @@ def recorded_runs(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
         if "install" in argv:  # pip install — lay down the console script
             venv = Path(argv[0]).parent.parent
             (venv / "bin" / "toolx").write_text("", encoding="utf-8")
-        return subprocess.CompletedProcess(argv, 0, "", "")
+        return {"returncode": 0}
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    patch_popen(monkeypatch, "maina.core.subprocess_utils.subprocess.Popen", respond)
     return calls
 
 
@@ -190,15 +191,15 @@ def test_probe_is_side_effect_free_and_reports_the_entry_point(tmp_path: Path) -
 def test_an_install_that_produces_no_entry_point_says_so(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    def respond(argv: list[str], **kwargs: Any) -> dict[str, object]:
         del kwargs
         if "venv" in argv:
             venv = Path(argv[-1])
             (venv / "bin").mkdir(parents=True, exist_ok=True)
             (venv / "bin" / "python").write_text("", encoding="utf-8")
-        return subprocess.CompletedProcess(argv, 0, "", "")  # never writes the script
+        return {"returncode": 0}  # never writes the script
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    patch_popen(monkeypatch, "maina.core.subprocess_utils.subprocess.Popen", respond)
     with pytest.raises(InstallError, match="produced no 'toolx' entry point"):
         PipBackend().resolve(pip_manifest(), version="1.2.3", env={}, ctx=context(tmp_path))
 
@@ -206,16 +207,16 @@ def test_an_install_that_produces_no_entry_point_says_so(
 def test_a_failed_pip_install_surfaces_pips_own_message(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    def respond(argv: list[str], **kwargs: Any) -> dict[str, object]:
         del kwargs
         if "venv" in argv:
             venv = Path(argv[-1])
             (venv / "bin").mkdir(parents=True, exist_ok=True)
             (venv / "bin" / "python").write_text("", encoding="utf-8")
-            return subprocess.CompletedProcess(argv, 0, "", "")
-        raise subprocess.CalledProcessError(1, argv, "", "No matching distribution found")
+            return {"returncode": 0}
+        return {"returncode": 1, "stderr": b"No matching distribution found"}
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    patch_popen(monkeypatch, "maina.core.subprocess_utils.subprocess.Popen", respond)
     with pytest.raises(InstallError, match="No matching distribution found"):
         PipBackend().resolve(pip_manifest(), version="1.2.3", env={}, ctx=context(tmp_path))
 
@@ -223,16 +224,16 @@ def test_a_failed_pip_install_surfaces_pips_own_message(
 def test_a_pip_install_timeout_is_wrapped_as_install_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    def respond(argv: list[str], **kwargs: Any) -> dict[str, object]:
         del kwargs
         if "venv" in argv:
             venv = Path(argv[-1])
             (venv / "bin").mkdir(parents=True, exist_ok=True)
             (venv / "bin" / "python").write_text("", encoding="utf-8")
-            return subprocess.CompletedProcess(argv, 0, "", "")
-        raise subprocess.TimeoutExpired(cmd=argv, timeout=600)
+            return {"returncode": 0}
+        return {"wait_raises": subprocess.TimeoutExpired(cmd=argv, timeout=600)}
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    patch_popen(monkeypatch, "maina.core.subprocess_utils.subprocess.Popen", respond)
     with pytest.raises(InstallError, match="timed out after"):
         PipBackend().resolve(pip_manifest(), version="1.2.3", env={}, ctx=context(tmp_path))
 
@@ -240,10 +241,33 @@ def test_a_pip_install_timeout_is_wrapped_as_install_error(
 def test_a_venv_creation_timeout_is_wrapped_as_install_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    def respond(argv: list[str], **kwargs: Any) -> dict[str, object]:
         del kwargs
-        raise subprocess.TimeoutExpired(cmd=argv, timeout=120)
+        return {"wait_raises": subprocess.TimeoutExpired(cmd=argv, timeout=120)}
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    patch_popen(monkeypatch, "maina.core.subprocess_utils.subprocess.Popen", respond)
     with pytest.raises(InstallError, match="creating a venv timed out"):
+        PipBackend().resolve(pip_manifest(), version="1.2.3", env={}, ctx=context(tmp_path))
+
+
+def test_pip_install_output_over_cap_raises_install_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A flooding (or malicious) pip install must not buffer unbounded into
+    this process — it should be capped the same way tool execution is."""
+    import maina.backends.pip as pip_module
+
+    monkeypatch.setattr(pip_module, "INSTALL_OUTPUT_MAX_BYTES", 10)
+
+    def respond(argv: list[str], **kwargs: Any) -> dict[str, object]:
+        del kwargs
+        if "venv" in argv:
+            venv = Path(argv[-1])
+            (venv / "bin").mkdir(parents=True, exist_ok=True)
+            (venv / "bin" / "python").write_text("", encoding="utf-8")
+            return {"returncode": 0}
+        return {"returncode": 0, "stdout": b"x" * 1000}
+
+    patch_popen(monkeypatch, "maina.core.subprocess_utils.subprocess.Popen", respond)
+    with pytest.raises(InstallError, match="byte cap"):
         PipBackend().resolve(pip_manifest(), version="1.2.3", env={}, ctx=context(tmp_path))

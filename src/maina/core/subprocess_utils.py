@@ -20,6 +20,12 @@ if TYPE_CHECKING:
     from typing import IO
 
 DEFAULT_CHUNK_SIZE = 64 * 1024
+# Cap on stdout/stderr collected from an install-phase subprocess (npm/pip
+# install, mise install/which/exec, the mise.run bootstrap script) — these run
+# less-trusted code than the tool itself (allow_scripts / allow_sdist already
+# document install-time code as untrusted), so they get the same order-of-
+# magnitude bound as the tool-run boundary (runner.RUN_OUTPUT_MAX_BYTES).
+INSTALL_OUTPUT_MAX_BYTES = 64 * 1024 * 1024
 
 
 class OutputCapExceededError(Exception):
@@ -153,6 +159,43 @@ def run_or_wrap(
         raise error_cls(on_failure(detail)) from exc
     except OSError as exc:
         raise error_cls(on_failure(str(exc))) from exc
+
+
+def run_or_wrap_capped(
+    argv: list[str],
+    *,
+    env: dict[str, str],
+    timeout: float,
+    max_bytes: int = INSTALL_OUTPUT_MAX_BYTES,
+    stdin: bytes | None = None,
+    error_cls: type[Exception],
+    on_timeout: Callable[[], str],
+    on_failure: Callable[[str], str],
+) -> subprocess.CompletedProcess[str]:
+    """Like :func:`run_or_wrap`, but stdout/stderr are each bounded at
+    *max_bytes* (see :func:`run_capped`) instead of ``subprocess.run``'s own
+    unbounded ``capture_output=True``.
+
+    *on_timeout* builds the message for a ``TimeoutExpired``; *on_failure*
+    receives the failure detail (stderr, or the exception text for an
+    ``OSError`` / output-cap overrun) and builds the message for that case.
+    Both raise *error_cls*, matching ``run_or_wrap``'s ``check=True`` contract
+    (a non-zero exit also raises *error_cls* via *on_failure*).
+    """
+    try:
+        completed = run_capped(argv, env=env, timeout=timeout, stdin=stdin, max_bytes=max_bytes)
+    except subprocess.TimeoutExpired as exc:
+        raise error_cls(on_timeout()) from exc
+    except OutputCapExceededError as exc:
+        raise error_cls(on_failure(f"output exceeded the {exc.max_bytes} byte cap")) from exc
+    except OSError as exc:
+        raise error_cls(on_failure(str(exc))) from exc
+    stdout = completed.stdout.decode("utf-8", "replace")
+    stderr = completed.stderr.decode("utf-8", "replace")
+    if completed.returncode != 0:
+        detail = (stderr or stdout).strip() or f"exited {completed.returncode}"
+        raise error_cls(on_failure(detail))
+    return subprocess.CompletedProcess(argv, completed.returncode, stdout, stderr)
 
 
 def resolve_within(path: Path, root: Path, *, error_cls: type[Exception], message: str) -> Path:

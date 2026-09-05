@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from helpers import patch_popen
 from maina.mise import MiseRuntime
 
 
@@ -55,15 +56,15 @@ def test_mise_which_fallback_disables_exec_auto_install(
     install for its own, separate, explicit `mise install` call."""
     calls: list[tuple[list[str], dict[str, str]]] = []
 
-    def fake_run(
+    def respond(
         argv: list[str], *, env: dict[str, str] | None = None, **_kw: object
-    ) -> subprocess.CompletedProcess[str]:
+    ) -> dict[str, object]:
         calls.append((list(argv), dict(env or {})))
         if "which" in argv:
-            return subprocess.CompletedProcess(argv, 1, "", "")
-        return subprocess.CompletedProcess(argv, 0, "/opt/node/bin/node\n", "")
+            return {"returncode": 1}
+        return {"returncode": 0, "stdout": b"/opt/node/bin/node\n"}
 
-    monkeypatch.setattr("maina.mise.subprocess.run", fake_run)
+    patch_popen(monkeypatch, "maina.core.subprocess_utils.subprocess.Popen", respond)
     result = MiseRuntime._mise_which_uncaught(
         Path("/usr/bin/mise"), "node@20", "node", {"PATH": "/usr/bin"}
     )
@@ -84,11 +85,11 @@ def test_present_bin_dir_never_calls_mise_install(
     rt = MiseRuntime(cache_root=tmp_path)
     monkeypatch.setattr("maina.mise.shutil.which", lambda *_a, **_k: "/usr/bin/mise")
 
-    def fake_run(argv: list[str], **_kw: object) -> subprocess.CompletedProcess[str]:
+    def respond(argv: list[str], **_kw: object) -> dict[str, object]:
         assert "install" not in argv
-        return subprocess.CompletedProcess(argv, 1, "", "")  # nothing resolves
+        return {"returncode": 1}  # nothing resolves
 
-    monkeypatch.setattr("maina.mise.subprocess.run", fake_run)
+    patch_popen(monkeypatch, "maina.core.subprocess_utils.subprocess.Popen", respond)
     assert rt.present_bin_dir("node", "20") is None
 
 
@@ -99,20 +100,20 @@ def test_bootstrap_mise_argv_and_env(tmp_path: Path, monkeypatch: pytest.MonkeyP
     calls: list[list[str]] = []
     target = tmp_path / "mise" / "bin" / "mise"
 
-    def fake_run(
+    def respond(
         argv: list[str], *, env: dict[str, str] | None = None, **_kw: object
-    ) -> subprocess.CompletedProcess[str]:
+    ) -> dict[str, object]:
         calls.append(list(argv))
         if argv[0].endswith("curl"):
-            return subprocess.CompletedProcess(argv, 0, "#!/bin/sh\necho installed\n", "")
+            return {"returncode": 0, "stdout": b"#!/bin/sh\necho installed\n"}
         assert env is not None
         assert env["MISE_INSTALL_PATH"] == str(target)
         assert env["MISE_VERSION"]
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("#!/bin/sh\n", encoding="utf-8")
-        return subprocess.CompletedProcess(argv, 0, "", "")
+        return {"returncode": 0}
 
-    monkeypatch.setattr("maina.mise.subprocess.run", fake_run)
+    patch_popen(monkeypatch, "maina.core.subprocess_utils.subprocess.Popen", respond)
     monkeypatch.setattr("maina.mise.shutil.which", which_only("curl", "sh"))
     result = MiseRuntime._bootstrap_mise(target, {"PATH": "/usr/bin"})
     assert result == target
@@ -123,10 +124,12 @@ def test_bootstrap_mise_argv_and_env(tmp_path: Path, monkeypatch: pytest.MonkeyP
 def test_bootstrap_mise_timeout_is_wrapped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from maina.core.errors import RuntimeProvisionError
 
-    def fake_run(argv: list[str], **_kw: object) -> subprocess.CompletedProcess[str]:
-        raise subprocess.TimeoutExpired(cmd=argv, timeout=600)
+    def respond(argv: list[str], **_kw: object) -> dict[str, object]:
+        if argv[0].endswith("curl"):
+            return {"returncode": 0, "stdout": b"#!/bin/sh\n"}
+        return {"wait_raises": subprocess.TimeoutExpired(cmd=argv, timeout=600)}
 
-    monkeypatch.setattr("maina.mise.subprocess.run", fake_run)
+    patch_popen(monkeypatch, "maina.core.subprocess_utils.subprocess.Popen", respond)
     monkeypatch.setattr("maina.mise.shutil.which", which_only("curl", "sh"))
     with pytest.raises(RuntimeProvisionError, match="timed out"):
         MiseRuntime._bootstrap_mise(tmp_path / "mise" / "bin" / "mise", {"PATH": "/usr/bin"})
@@ -135,12 +138,33 @@ def test_bootstrap_mise_timeout_is_wrapped(tmp_path: Path, monkeypatch: pytest.M
 def test_bootstrap_mise_failure_is_wrapped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from maina.core.errors import RuntimeProvisionError
 
-    def fake_run(argv: list[str], **_kw: object) -> subprocess.CompletedProcess[str]:
+    def respond(argv: list[str], **_kw: object) -> dict[str, object]:
         if argv[0].endswith("curl"):
-            return subprocess.CompletedProcess(argv, 0, "#!/bin/sh\n", "")
-        raise subprocess.CalledProcessError(1, argv, "", "install script failed")
+            return {"returncode": 0, "stdout": b"#!/bin/sh\n"}
+        return {"returncode": 1, "stderr": b"install script failed"}
 
-    monkeypatch.setattr("maina.mise.subprocess.run", fake_run)
+    patch_popen(monkeypatch, "maina.core.subprocess_utils.subprocess.Popen", respond)
     monkeypatch.setattr("maina.mise.shutil.which", which_only("curl", "sh"))
     with pytest.raises(RuntimeProvisionError, match="failed to bootstrap mise"):
+        MiseRuntime._bootstrap_mise(tmp_path / "mise" / "bin" / "mise", {"PATH": "/usr/bin"})
+
+
+def test_bootstrap_mise_sh_output_over_cap_is_wrapped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The curl | sh install script is the highest-risk output source in this
+    module — a flooding script must not buffer unbounded into this process."""
+    import maina.mise as mise_module
+    from maina.core.errors import RuntimeProvisionError
+
+    monkeypatch.setattr(mise_module, "INSTALL_OUTPUT_MAX_BYTES", 10)
+
+    def respond(argv: list[str], **_kw: object) -> dict[str, object]:
+        if argv[0].endswith("curl"):
+            return {"returncode": 0, "stdout": b"#!/bin/sh\n"}
+        return {"returncode": 0, "stdout": b"x" * 1000}
+
+    patch_popen(monkeypatch, "maina.core.subprocess_utils.subprocess.Popen", respond)
+    monkeypatch.setattr("maina.mise.shutil.which", which_only("curl", "sh"))
+    with pytest.raises(RuntimeProvisionError, match="byte cap"):
         MiseRuntime._bootstrap_mise(tmp_path / "mise" / "bin" / "mise", {"PATH": "/usr/bin"})
