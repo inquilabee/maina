@@ -10,6 +10,7 @@ from .common import (
     optional_str,
     require_bool,
     require_optional_bool,
+    require_str_keys,
     safe_segment,
     scalar_str,
     unknown_keys,
@@ -406,8 +407,9 @@ class Manifest:
             return {}
         if not isinstance(raw, dict):
             raise manifest_error(self.id, "env must be a map")
+        require_str_keys(raw, block_name="env", tool_id=self.id)
         return {
-            str(key): scalar_str(value, field_name=f"env.{key}", tool_id=self.id)
+            key: scalar_str(value, field_name=f"env.{key}", tool_id=self.id)
             for key, value in raw.items()
         }
 
@@ -422,6 +424,7 @@ def parse_args_map(raw: Any, *, tool_id: str) -> dict[str, ArgSpec]:
         raw = {}
     if not isinstance(raw, dict):
         raise manifest_error(tool_id, "args must be a map")
+    require_str_keys(raw, block_name="args", tool_id=tool_id)
     return {
         name: ArgSpec.from_mapping(name, spec, tool_id=tool_id)
         for name, spec in raw.items()

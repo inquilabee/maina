@@ -12,7 +12,14 @@ import yaml
 from maina.core.errors import ManifestError
 
 from . import ids as registry_ids
-from .common import MANIFEST_PREFIX, manifest_error, scalar_str, unknown_keys
+from .common import (
+    MANIFEST_PREFIX,
+    manifest_error,
+    require_str_keys,
+    safe_segment,
+    scalar_str,
+    unknown_keys,
+)
 from .install import InstallSpec
 from .keys import (
     BASE_TOOL_ID,
@@ -191,19 +198,22 @@ class Registry:
 
     @staticmethod
     def _validate_scalar_fields(tid: str, merged: dict[str, Any]) -> None:
-        """Force the ``bool`` / ``float`` rejection for lazily-read scalar fields.
-
-        ``cli`` / ``version`` and every ``env`` value are read through properties;
-        validate them here so an unquoted ``version: 3.10`` fails at load, not at
-        the first download.
+        """Force validation for scalar fields the resolved ``Manifest`` otherwise
+        reads through lazy properties (``cli``, ``version``, ``env``), so a bad
+        value fails at ``load()``, not at first property access or first
+        download. ``cli`` / ``version`` also get the same ``safe_segment``
+        path-traversal check their properties run — a manifest whose ``cli``
+        would resolve outside the cache root must not load cleanly and only
+        fail once something reads ``.cli``.
         """
+        for field_name in ("cli", "version"):
+            if merged.get(field_name) is not None:
+                safe_segment(merged[field_name], field_name=field_name, tool_id=tid)
         env = merged.get("env")
-        scalars = {
-            **{k: merged[k] for k in ("cli", "version") if merged.get(k) is not None},
-            **{f"env.{k}": v for k, v in (env.items() if isinstance(env, dict) else ())},
-        }
-        for field_name, value in scalars.items():
-            scalar_str(value, field_name=field_name, tool_id=tid)
+        if isinstance(env, dict):
+            require_str_keys(env, block_name="env", tool_id=tid)
+            for key, value in env.items():
+                scalar_str(value, field_name=f"env.{key}", tool_id=tid)
 
     @classmethod
     def _validate_separator_and_from_file(cls, tid: str, merged: dict[str, Any]) -> None:
@@ -250,7 +260,11 @@ class Registry:
             raise manifest_error(
                 tid, f"platforms {platforms!r} must be a list, e.g. [linux, macos]"
             )
-        if unknown := sorted(str(p) for p in platforms if p not in VALID_PLATFORMS):
+        # isinstance first: an unhashable item (e.g. a stray mapping from a YAML
+        # indentation slip) must not crash `in` on the membership check below.
+        if unknown := sorted(
+            str(p) for p in platforms if not isinstance(p, str) or p not in VALID_PLATFORMS
+        ):
             allowed = ", ".join(sorted(VALID_PLATFORMS))
             raise manifest_error(tid, f"platforms {unknown} not in {{{allowed}}}")
 

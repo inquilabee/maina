@@ -74,6 +74,26 @@ def scalar_str(value: Any, *, field_name: str, tool_id: str) -> str:
     return str(value)
 
 
+def require_str_keys(raw: dict[str, Any], *, block_name: str, tool_id: str) -> None:
+    """Reject a non-``str`` mapping key.
+
+    YAML 1.1 reads a bare ``yes`` / ``no`` / ``on`` / ``off`` / ``true`` /
+    ``false`` (or an unquoted number) key as ``bool`` / ``int``, not ``str`` —
+    silently colliding two differently-spelled keys (``env: {on: "1", yes:
+    "2"}`` both become the key ``True``) onto one Python key and dropping the
+    other, with no error. Reject the type instead of quietly losing data or
+    crashing downstream on a non-``str`` dict key: quoting is the only way to
+    mean the literal word.
+    """
+    for key in raw:
+        if not isinstance(key, str):
+            raise manifest_error(
+                tool_id,
+                f"{block_name} key {key!r} must be a quoted string (a bare "
+                "yes/no/on/off/true/false/number key is read as that type, not text)",
+            )
+
+
 def unknown_keys(raw: dict[str, Any], allowed: frozenset[str]) -> list[str]:
     """Return sorted unknown mapping keys relative to an allowlist.
 

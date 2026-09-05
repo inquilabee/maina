@@ -15,6 +15,21 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+def make_raw_reg(tmp_path: Path, files: dict[str, str]) -> Registry:
+    """Like :func:`make_reg`, but each value is literal YAML text.
+
+    Needed when the test cares about the *source spelling* of a bare
+    scalar (``on:`` vs ``yes:`` both resolve to the same Python ``True`` key,
+    which a Python-dict fixture can only ever represent as one key already).
+    """
+    root = tmp_path / "reg"
+    for rel, text in files.items():
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    return Registry(root)
+
+
 def make_reg(tmp_path: Path, files: dict[str, dict[str, Any]]) -> Registry:
     root = tmp_path / "reg"
     for rel, data in files.items():
@@ -498,4 +513,59 @@ def test_an_empty_join_separator_is_rejected(tmp_path: Path) -> None:
         {"t.yaml": {"cli": "echo", "args": {"a": {"flag": "--a", "join": ""}}}},
     )
     with pytest.raises(ManifestError, match="join must be a non-empty separator"):
+        registry.load("t")
+
+
+# --- fail-closed on non-str/unhashable keys and eager path-safety (review F4/F5/F6/F7) ---
+
+
+def test_a_bare_yaml_bool_arg_name_is_rejected_not_a_typeerror(tmp_path: Path) -> None:
+    """An unquoted ``yes:`` arg name is read as the bool ``True`` by YAML 1.1,
+    which used to reach ``ArgSpec`` construction and crash with a raw
+    ``TypeError`` instead of a clean ``ManifestError``."""
+    registry = make_raw_reg(
+        tmp_path,
+        {"t.yaml": "cli: echo\nargs:\n  yes:\n    flag: --yes\n    type: flag\n"},
+    )
+    with pytest.raises(ManifestError, match="args key True must be a quoted string"):
+        registry.load("t")
+
+
+def test_colliding_bare_yaml_bool_env_keys_are_rejected_not_silently_dropped(
+    tmp_path: Path,
+) -> None:
+    """``on:`` and ``yes:`` both resolve to the Python key ``True`` — the second
+    one silently overwrote the first with no error. Reject the non-str key
+    instead of quietly losing data."""
+    registry = make_raw_reg(
+        tmp_path,
+        {"t.yaml": 'cli: echo\nenv:\n  on: "1"\n  yes: "2"\n'},
+    )
+    with pytest.raises(ManifestError, match="env key True must be a quoted string"):
+        registry.load("t")
+
+
+def test_a_non_string_platforms_item_is_rejected_not_a_typeerror(tmp_path: Path) -> None:
+    """A stray mapping in the ``platforms`` list (e.g. an indentation slip) used
+    to crash ``in`` on the ``VALID_PLATFORMS`` frozenset with an unhashable-type
+    ``TypeError`` instead of a clean ``ManifestError``."""
+    registry = make_reg(
+        tmp_path,
+        {"t.yaml": {"cli": "echo", "platforms": ["linux", {"macos": True}]}},
+    )
+    with pytest.raises(ManifestError, match="platforms"):
+        registry.load("t")
+
+
+def test_cli_path_traversal_is_rejected_by_load_itself_not_only_by_property_access(
+    tmp_path: Path,
+) -> None:
+    """``Registry.load()`` must fail closed on its own — a manifest whose ``cli``
+    would escape the cache root must not load successfully and only fail once
+    something later reads ``.cli``."""
+    registry = make_reg(
+        tmp_path,
+        {"t.yaml": {"cli": "../../escaped/echo"}},
+    )
+    with pytest.raises(ManifestError, match="not a safe path segment"):
         registry.load("t")
