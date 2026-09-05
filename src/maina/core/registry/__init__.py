@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
-from .common import MANIFEST_PREFIX, manifest_error, optional_str, scalar_str, unknown_keys
+from .common import (
+    MANIFEST_PREFIX,
+    manifest_error,
+    optional_str,
+    scalar_str,
+    unknown_keys,
+)
 from .ids import join_tool_id, normalize_id, yaml_path_to_id
+from .install import InstallSpec
 from .jsonschema import build_manifest_schema
 from .keys import (
     ARG_KEYS,
@@ -16,7 +23,7 @@ from .keys import (
 from .loader import Registry
 from .merge import MAP_KEYS
 from .requires import RequiresSpec
-from .specs import ArgSpec, InstallSpec, Manifest, OutputSpec, parse_args_map
+from .specs import ArgSpec, Manifest, OutputSpec, parse_args_map
 
 __all__ = [
     "ARG_KEYS",

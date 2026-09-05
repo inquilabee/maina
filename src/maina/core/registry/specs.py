@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import hashlib
-import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from .common import (
-    is_unsafe_segment,
     manifest_error,
     optional_str,
     require_bool,
@@ -17,7 +14,8 @@ from .common import (
     scalar_str,
     unknown_keys,
 )
-from .keys import ARG_KEYS, ARG_TYPES, INSTALL_KEYS, JOIN_VALUES, OUTPUT_KEYS
+from .install import InstallSpec
+from .keys import ARG_KEYS, ARG_TYPES, JOIN_WORD_HINTS, OUTPUT_KEYS
 from .requires import RequiresSpec
 
 if TYPE_CHECKING:
@@ -34,6 +32,7 @@ class ArgSpec:
 
     type: str = "string"
     flag: str | None = None
+    false_flag: str | None = None
     joiner: str | None = None
     positional: bool = False
     required: bool = False
@@ -58,8 +57,9 @@ class ArgSpec:
             raw.get("positional"), field_name=f"args.{name}.positional", tool_id=tool_id
         )
         flag = cls._opt_scalar(raw, "flag", name=name, tool_id=tool_id)
-        join = None if raw.get("join") is None else str(raw["join"])
+        join = cls._opt_scalar(raw, "join", name=name, tool_id=tool_id)
         joiner = cls._opt_scalar(raw, "joiner", name=name, tool_id=tool_id)
+        false_flag = cls._opt_scalar(raw, "false_flag", name=name, tool_id=tool_id)
         repeat = require_optional_bool(
             raw.get("repeat"), field_name=f"args.{name}.repeat", tool_id=tool_id
         )
@@ -68,6 +68,7 @@ class ArgSpec:
             arg_type,
             positional=positional,
             flag=flag,
+            false_flag=false_flag,
             join=join,
             joiner=joiner,
             repeat=repeat,
@@ -82,6 +83,7 @@ class ArgSpec:
         return cls(
             type=arg_type,
             flag=flag,
+            false_flag=false_flag,
             joiner=joiner,
             positional=positional,
             required=require_bool(
@@ -179,16 +181,16 @@ class ArgSpec:
         """Reject field pairs argv can only half-honour.
 
         Each of these loads clean today and then silently picks a winner:
-        ``join: csv`` beats ``repeat``, ``joiner`` beats ``repeat: false`` (the
+        ``join`` beats ``repeat``, ``joiner`` beats ``repeat: false`` (the
         one that bites — the author wrote "one flag, then every item" and gets a
         joined flag *per* item), and a ``flag`` / positional arg drops ``joiner``
         on the floor. An author who wrote both meant one of them.
         """
-        if join == "csv" and repeat is not None:
+        if join is not None and repeat is not None:
             raise manifest_error(
                 tool_id,
-                f"args.{name} join: csv and repeat are two different list layouts — csv joins "
-                "every item into one token, repeat emits the flag per item; pick one",
+                f"args.{name} join and repeat are two different list layouts — join puts "
+                "every item in one token, repeat emits the flag per item; pick one",
             )
         if joiner is not None and repeat is False:
             raise manifest_error(
@@ -200,6 +202,38 @@ class ArgSpec:
             what = "positional" if positional else "type: flag"
             raise manifest_error(tool_id, f"args.{name} joiner is never emitted for a {what} arg")
 
+    @staticmethod
+    def _check_join(name: str, join: str | None, *, tool_id: str) -> None:
+        """``join:`` is the separator itself, not a name for one."""
+        if join is None:
+            return
+        if not join:
+            raise manifest_error(
+                tool_id, f'args.{name} join must be a non-empty separator, e.g. join: ","'
+            )
+        if (literal := JOIN_WORD_HINTS.get(join)) is not None:
+            # A word here would join the list with that literal text (`a comma b`).
+            raise manifest_error(
+                tool_id,
+                f"args.{name} join: {join} names a separator; write the separator itself: "
+                f"join: {literal!r}",
+            )
+
+    @staticmethod
+    def _check_false_flag(
+        name: str, arg_type: str, *, false_flag: str | None, tool_id: str
+    ) -> None:
+        """``false_flag`` is the token emitted when a flag is explicitly off.
+
+        Only a ``type: flag`` arg has an off state to express; on anything else
+        it would silently never be emitted.
+        """
+        if false_flag is not None and arg_type != "flag":
+            raise manifest_error(
+                tool_id,
+                f"args.{name} false_flag only applies to type: flag (this arg is {arg_type})",
+            )
+
     @classmethod
     def _check_shape(
         cls,
@@ -208,6 +242,7 @@ class ArgSpec:
         *,
         positional: bool,
         flag: str | None,
+        false_flag: str | None,
         join: str | None,
         joiner: str | None,
         repeat: bool | None,
@@ -225,8 +260,8 @@ class ArgSpec:
                 "positional (a child overriding a parent's positional must also set "
                 "positional: false)",
             )
-        if join is not None and join not in JOIN_VALUES:
-            raise manifest_error(tool_id, f"args.{name} join {join!r} not in {{csv}}")
+        cls._check_join(name, join, tool_id=tool_id)
+        cls._check_false_flag(name, arg_type, false_flag=false_flag, tool_id=tool_id)
         if arg_type == "pairs" and flag is None:
             raise manifest_error(tool_id, f"args.{name} type: pairs needs a flag")
         cls._check_emit_conflicts(
@@ -238,133 +273,6 @@ class ArgSpec:
             repeat=repeat,
             tool_id=tool_id,
         )
-
-
-@dataclass(slots=True, frozen=True)
-class InstallSpec:
-    """Typed ``install:`` block from a resolved manifest."""
-
-    backend: str = "path"
-    repo: str | None = None
-    assets: dict[str, Any] = field(default_factory=dict)
-    binary: str | None = None
-    tag: str | None = None
-    package: str | None = None
-    sha256: dict[str, str] = field(default_factory=dict)
-    allow_scripts: bool = False
-    allow_sdist: bool = False
-    allow_any_executable: bool = False
-
-    @classmethod
-    def from_mapping(cls, raw: Any, *, tool_id: str) -> InstallSpec:
-        """Parse install map; fail closed on non-maps and unknown keys."""
-        if raw is None:
-            raw = {}
-        if not isinstance(raw, dict):
-            raise manifest_error(tool_id, "install must be a map")
-        if bad := unknown_keys(raw, INSTALL_KEYS):
-            keys = ", ".join(bad)
-            raise manifest_error(tool_id, f"install unknown keys: {keys}")
-        return cls(
-            backend="path" if raw.get("backend") is None else str(raw.get("backend", "path")),
-            repo=cls._parse_repo(raw.get("repo"), tool_id=tool_id),
-            assets=cls._parse_assets(raw.get("assets"), tool_id=tool_id),
-            binary=safe_segment(
-                raw.get("binary"), field_name="install.binary", tool_id=tool_id, allow_none=True
-            ),
-            tag=safe_segment(
-                raw.get("tag"), field_name="install.tag", tool_id=tool_id, allow_none=True
-            ),
-            package=cls._parse_package(raw.get("package"), tool_id=tool_id),
-            sha256=cls._parse_sha256(raw.get("sha256"), tool_id=tool_id),
-            allow_scripts=require_bool(
-                raw.get("allow_scripts"), field_name="install.allow_scripts", tool_id=tool_id
-            ),
-            allow_sdist=require_bool(
-                raw.get("allow_sdist"), field_name="install.allow_sdist", tool_id=tool_id
-            ),
-            allow_any_executable=require_bool(
-                raw.get("allow_any_executable"),
-                field_name="install.allow_any_executable",
-                tool_id=tool_id,
-            ),
-        )
-
-    def identity_key(self, *, extra: tuple[Any, ...] = ()) -> str:
-        """Short stable hash of what this spec fetches (repo/tag/asset/sha256).
-
-        Two manifests that share ``cli`` + ``version`` but differ here must not
-        share a cache directory. *extra* lets the caller fold in context the
-        spec does not own (e.g. the ``requires:`` runtime pins for ``npm``).
-        """
-        payload = repr(
-            (
-                self.backend,
-                self.repo,
-                self.tag,
-                sorted(self.assets.items()),
-                sorted(self.sha256.items()),
-                self.package,
-                self.binary,
-                self.allow_scripts,
-                self.allow_sdist,
-                self.allow_any_executable,
-                extra,
-            )
-        )
-        return hashlib.blake2s(payload.encode("utf-8"), digest_size=5).hexdigest()
-
-    # npm package: optional @scope/, then a name of url-safe lowercase chars.
-    _NPM_NAME_RE = re.compile(r"^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*$")
-
-    @classmethod
-    def _parse_package(cls, raw: Any, *, tool_id: str) -> str | None:
-        """Validate ``install.package`` as an npm package name (scoped ok)."""
-        if raw is None:
-            return None
-        text = scalar_str(raw, field_name="install.package", tool_id=tool_id)
-        if not cls._NPM_NAME_RE.match(text):
-            raise manifest_error(tool_id, f"install.package {text!r} is not a valid npm name")
-        return text
-
-    @staticmethod
-    def _parse_repo(raw: Any, *, tool_id: str) -> str | None:
-        if raw is None:
-            return None
-        text = str(raw)
-        parts = text.split("/")
-        if len(parts) != 2 or not all(parts) or any(is_unsafe_segment(p) for p in parts):
-            raise manifest_error(tool_id, f"install.repo {text!r} must be 'owner/name'")
-        return text
-
-    @staticmethod
-    def _parse_assets(raw: Any, *, tool_id: str) -> dict[str, Any]:
-        assets = raw or {}
-        if not isinstance(assets, dict):
-            raise manifest_error(tool_id, "install.assets must be a map")
-        return {
-            str(key): safe_segment(value, field_name=f"install.assets.{key}", tool_id=tool_id)
-            for key, value in assets.items()
-        }
-
-    @staticmethod
-    def _parse_sha256(raw: Any, *, tool_id: str) -> dict[str, str]:
-        """Parse the optional ``install.sha256`` map (platform key → 64-hex digest)."""
-        if raw is None:
-            return {}
-        if not isinstance(raw, dict):
-            raise manifest_error(
-                tool_id, "install.sha256 must be a map of platform key to hex digest"
-            )
-        out: dict[str, str] = {}
-        for key, value in raw.items():
-            digest = str(value).strip().lower()
-            if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
-                raise manifest_error(
-                    tool_id, f"install.sha256.{key} {value!r} is not a 64-char hex digest"
-                )
-            out[str(key)] = digest
-        return out
 
 
 @dataclass(slots=True, frozen=True)

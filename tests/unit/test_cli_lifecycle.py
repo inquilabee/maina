@@ -59,7 +59,7 @@ def test_cli_validate_catches_static_manifest_bugs(tmp_path: Any) -> None:
     assert result.exit_code == 1
     err = result.stderr
     assert "error: nocli: no cli:" in err
-    assert "ghnorepo: install.backend: github needs both repo: and assets:" in err
+    assert "ghnorepo: install.backend: github needs repo: and assets:" in err
     assert "badtmpl: output.from_file names non-arg placeholder(s): nosucharg" in err
     assert "ok: base" in result.stdout
 

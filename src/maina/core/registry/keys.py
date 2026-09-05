@@ -42,6 +42,7 @@ ARG_KEYS = frozenset(
     {
         "type",
         "flag",
+        "false_flag",
         "joiner",
         "positional",
         "required",
@@ -55,7 +56,20 @@ ARG_KEYS = frozenset(
     }
 )
 ARG_TYPES = frozenset({"string", "flag", "path", "pairs"})
-JOIN_VALUES = frozenset({"csv"})
+
+# ``join:`` is the separator itself, so a word here is a mistake that would
+# otherwise join the list with that literal text (``a comma b``). These are the
+# spellings someone reaches for when they mean the punctuation.
+JOIN_WORD_HINTS = {
+    "csv": ",",
+    "comma": ",",
+    "space": " ",
+    "colon": ":",
+    "semicolon": ";",
+    "pipe": "|",
+    "tab": "\t",
+    "newline": "\n",
+}
 VALID_PLATFORMS = frozenset({"linux", "macos", "windows"})
 
 INSTALL_KEYS = frozenset(
@@ -63,6 +77,9 @@ INSTALL_KEYS = frozenset(
         "backend",
         "repo",
         "assets",
+        "asset_template",
+        "os_map",
+        "arch_map",
         "binary",
         "tag",
         "package",

@@ -90,21 +90,22 @@ args:
 | --- | --- | --- |
 | `type` | string | `string`, `flag`, `path`, or `pairs` (rejected otherwise). `path` is emit-only metadata (no coercion). |
 | `flag` | string | The option flag, e.g. `--config`. Required unless `positional: true`. Mutually exclusive with `positional: true` — set both and the manifest fails to load. |
+| `false_flag` | string | Token emitted when a `type: flag` arg is explicitly `False` (`--no-fix`). Without it, off emits nothing — with it, "not passed" and "passed off" are different requests. |
 | `joiner` | string | Emit `flag` and value as one token: `joiner: "="` → `--config=value`. |
 | `order` | int | Sort key for this arg's tokens in argv. Default is options (0) before positionals (100), each in declaration order; set `order:` to interleave — e.g. an option *after* a positional (`find <path> -name '*.py'`). |
 | `positional` | bool | Emit the value with no flag, after all options. A child that gives a parent's positional arg a `flag:` must also set `positional: false` — arg fields merge per-field down `extends`, so `positional: true` otherwise stays set and the load fails. |
 | `required` | bool | Missing value with no `default` raises `ArgError`. |
 | `default` | any | Value used when the caller omits the argument. For `type: pairs` it must be a mapping or a list of `[key, value]` pairs; if `choices:` is also set, the default must be one of them — both checked at load. |
 | `repeat` | bool | For list values: `true` repeats the flag per item, `false` emits one flag then all items. |
-| `join` | string | `csv` joins a list into one comma-separated token. |
+| `join` | string | Separator that joins a list into one token — `join: ","` → `--flag a,b`, `join: ";"` → `--flag 'a;b'`. It is the separator itself, so a word (`csv`, `comma`) is rejected with the punctuation it meant. |
 | `choices` | list of string | A non-empty allowlist; the value (or, for a list, every item) must match one, checked at every `run` / `argv`. Not valid on `type: flag` / `type: pairs`. |
 | `description` / `help` | string | Shown in `Tool(id).help()`. |
 
 Calling rules:
 
-- `flag` type expects a bool. `True` emits the flag; `False` / `None` emit
-  nothing.
-- A list value with `join: csv` becomes `--flag a,b`. Otherwise it repeats
+- `flag` type expects a bool. `True` emits the flag; `False` emits `false_flag`
+  when the manifest sets one, else nothing; `None` (unset) emits nothing.
+- A list value with `join: ","` becomes `--flag a,b`. Otherwise it repeats
   (`--flag a --flag b`) unless `repeat: false`. `joiner` applies to each token
   (`--flag=a --flag=b`).
 - Passing an argument name not in the schema raises `ArgError`.
@@ -183,7 +184,9 @@ install:
 | --- | --- | --- |
 | `backend` | all | `path` (default), `github`, `npm`, `pip`, or a registered custom name. |
 | `repo` | `github` | `owner/name` GitHub repository (validated at load). |
-| `assets` | `github` | Platform key (`linux-x86_64`, `macos-arm64`, ...) to release asset name (each a single safe path segment). |
+| `assets` | `github` | Platform key (`linux-x86_64`, `macos-arm64`, ...) to release asset name (each a single safe path segment). An entry here overrides `asset_template` for that platform. |
+| `asset_template` | `github` | One pattern for every platform's asset name, instead of repeating six near-identical lines. Placeholders are `{version}`, `{os}`, `{arch}` — anything else is rejected at load rather than surfacing as a 404 mid-install. |
+| `os_map` / `arch_map` | `github` | maina's token to the project's spelling, applied before `asset_template` expands: `arch_map: {x86_64: x64}` turns `linux-x86_64` into `linux_x64`. `{os}` is maina's token (`linux` / `macos` / `windows`), so a project that names its macOS asset `darwin` needs `os_map: {macos: darwin}`. Values must be safe path segments. |
 | `binary` | `github` | Executable name inside the asset. Defaults to `cli`. `npm` ignores it and always links `node_modules/.bin/<cli>`, so for an npm package whose bin name differs from the package name, `cli:` must be the **bin** name and `package:` the package name. |
 | `tag` | `github` | Release tag (a single safe path segment). Defaults to `version`. `latest` resolves the newest release **once**: the download is cached under that tag, so later runs keep using it until `maina clean <id>`. Pin a real tag for a reproducible catalog. |
 | `sha256` | `github` | Optional platform key to hex digest. A mismatch aborts before `chmod +x`. |
@@ -261,6 +264,7 @@ What a manifest **cannot** express, and the way out of each:
 | Counted flags (`-vvv`) | `extra=["-vvv"]`. |
 | A subcommand chosen at run time | One manifest per subcommand (`kubectl/get.yaml`, `kubectl/apply.yaml`) — they share a parent, so the duplication is one line each. |
 | Interpolating an arg into `env:` (a secret via the environment) | `run(env={"TOKEN": ...})` — `env:` in YAML is static by design, so a manifest cannot exfiltrate a caller's value into a variable. |
+| Collapsing a list of paths to one directory (or a project root) | Compute the single value before calling. maina has no notion of a project root, and "many paths means scan from the root" is a policy the caller owns, not an argv shape. |
 | An npm bin whose name differs from the package | `cli:` is the bin name, `package:` the package name (see [install](#install)). |
 
 Two hatches worth knowing:

@@ -52,6 +52,28 @@ and then caches that binary under `<cache>/tools/<cli>/<version>-<hash>/`; it is
 not re-checked on later runs. To pick up a newer release, pin a real tag or
 delete that cache directory.
 
+### Naming assets once
+
+Most projects name every release asset to one pattern. Write it once:
+
+```yaml
+install:
+  backend: github
+  repo: gitleaks/gitleaks
+  asset_template: "gitleaks_{version}_{os}_{arch}.tar.gz"
+  arch_map: {x86_64: x64}        # maina's token -> the project's spelling
+  os_map: {macos: darwin}
+```
+
+`{version}` is the manifest's `version:`; `{os}` / `{arch}` are the halves of the
+host's platform key after `os_map` / `arch_map` — so `{os}` is maina's own token
+(`linux` / `macos` / `windows`), not the project's. Most GitHub releases spell
+macOS `darwin`, so `os_map: {macos: darwin}` is the line to reach for first;
+maina does not assume it, because plenty of projects ship `macos` or `osx`. An explicit `assets` entry still
+wins for its platform, so one oddly-named release does not force every name to be
+spelled out. An unknown placeholder is rejected at load, and an expansion that is
+not a safe path segment is refused before any download.
+
 ## `npm`
 
 Runs `npm install --prefix <cache>` for `package` and resolves the package's

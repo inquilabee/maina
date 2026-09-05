@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from maina.backends.archive import ArchiveFetcher
 from maina.core.errors import InstallError
 from maina.core.platform import platform_key
+from maina.core.registry.common import is_unsafe_segment
 
 if TYPE_CHECKING:
     from maina.core.protocols import InstallContext
@@ -53,11 +54,16 @@ class GithubBackend:
 
     def _resolve_github(self, manifest: Manifest, version: str, ctx: InstallContext) -> Path:
         """Download a GitHub release asset into the tool cache if needed."""
-        repo, assets, binary = self._install_parts(manifest)
+        repo, binary = self._install_parts(manifest)
         key = platform_key()
-        asset = assets.get(key)
+        asset = manifest.install.asset_for(key, manifest.version)
         if not asset:
             raise InstallError(f"{manifest.id}: no github asset for {key}")
+        if is_unsafe_segment(asset):
+            raise InstallError(
+                f"{manifest.id}: asset name {asset!r} for {key} is not a safe path segment "
+                "(check install.asset_template and os_map / arch_map)"
+            )
 
         dest_dir = ctx.tool_bin_dir(manifest.cli, version)
         dest = dest_dir / binary
@@ -80,15 +86,16 @@ class GithubBackend:
         return dest
 
     @staticmethod
-    def _install_parts(manifest: Manifest) -> tuple[str, dict[str, Any], str]:
-        """Validate and return repo, assets map, and binary name."""
+    def _install_parts(manifest: Manifest) -> tuple[str, str]:
+        """Validate and return repo and binary name."""
         install = manifest.install
         repo = install.repo
-        assets = install.assets
         binary = install.binary or manifest.cli
-        if not repo or not assets:
-            raise InstallError(f"{manifest.id}: github install needs repo and assets")
-        return repo, assets, binary
+        if not repo or not install.has_assets():
+            raise InstallError(
+                f"{manifest.id}: github install needs repo and assets (or asset_template)"
+            )
+        return repo, binary
 
     @staticmethod
     def _finalize_binary(

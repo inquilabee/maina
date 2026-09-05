@@ -110,6 +110,10 @@
         "description": {
           "type": "string"
         },
+        "false_flag": {
+          "type": "string",
+          "minLength": 1
+        },
         "flag": {
           "type": "string",
           "minLength": 1
@@ -118,8 +122,12 @@
           "type": "string"
         },
         "join": {
-          "enum": [
-            "csv"
+          "type": "string",
+          "minLength": 1,
+          "examples": [
+            ",",
+            ";",
+            ":"
           ]
         },
         "joiner": {
@@ -160,6 +168,16 @@
         "allow_sdist": {
           "type": "boolean"
         },
+        "arch_map": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "asset_template": {
+          "type": "string",
+          "minLength": 1
+        },
         "assets": {
           "type": "object",
           "propertyNames": {
@@ -194,6 +212,12 @@
         "binary": {
           "type": "string",
           "minLength": 1
+        },
+        "os_map": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
         },
         "package": {
           "type": "string",

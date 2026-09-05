@@ -19,7 +19,11 @@ except ImportError:  # pragma: no cover - Windows
 from maina.core.envfilter import filter_env
 from maina.core.errors import InstallError, ManifestError, UnsupportedPlatformError
 from maina.core.platform import current_platform
-from maina.core.protocols import InstallContext, InstallerBackend, LanguageRuntimeProvider
+from maina.core.protocols import (
+    InstallContext,
+    InstallerBackend,
+    LanguageRuntimeProvider,
+)
 from maina.mise import MiseRuntime
 
 if TYPE_CHECKING:

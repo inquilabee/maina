@@ -382,10 +382,10 @@ def test_child_can_drop_an_inherited_asset_with_null(tmp_path: Path) -> None:
 # --- arg field combinations argv can only half-honour ---------------------------
 
 
-def test_join_csv_and_repeat_are_rejected_together(tmp_path: Path) -> None:
+def test_join_and_repeat_are_rejected_together(tmp_path: Path) -> None:
     registry = make_reg(
         tmp_path,
-        {"t.yaml": {"cli": "echo", "args": {"a": {"flag": "--a", "join": "csv", "repeat": True}}}},
+        {"t.yaml": {"cli": "echo", "args": {"a": {"flag": "--a", "join": ",", "repeat": True}}}},
     )
     with pytest.raises(ManifestError, match="two different list layouts"):
         registry.load("t")
@@ -467,3 +467,35 @@ def test_output_allow_stale_report_is_a_declared_boolean(tmp_path: Path) -> None
     )
     with pytest.raises(ManifestError, match="allow_stale_report must be true or false"):
         bad.load("t")
+
+
+def test_false_flag_only_applies_to_a_flag_arg(tmp_path: Path) -> None:
+    """On any other type it would silently never be emitted."""
+    registry = make_reg(
+        tmp_path,
+        {"t.yaml": {"cli": "echo", "args": {"a": {"flag": "--a", "false_flag": "--no-a"}}}},
+    )
+    with pytest.raises(ManifestError, match="false_flag only applies to type: flag"):
+        registry.load("t")
+
+
+def test_a_word_where_a_separator_belongs_is_rejected(tmp_path: Path) -> None:
+    """``join:`` is the separator itself, so ``join: csv`` would join the list
+    with the literal text "csv" — silently wrong argv."""
+    for word, literal in (("csv", "','"), ("comma", "','"), ("semicolon", "';'")):
+        registry = make_reg(
+            tmp_path / word,
+            {"t.yaml": {"cli": "echo", "args": {"a": {"flag": "--a", "join": word}}}},
+        )
+        with pytest.raises(ManifestError, match="names a separator") as excinfo:
+            registry.load("t")
+        assert literal in str(excinfo.value)
+
+
+def test_an_empty_join_separator_is_rejected(tmp_path: Path) -> None:
+    registry = make_reg(
+        tmp_path,
+        {"t.yaml": {"cli": "echo", "args": {"a": {"flag": "--a", "join": ""}}}},
+    )
+    with pytest.raises(ManifestError, match="join must be a non-empty separator"):
+        registry.load("t")

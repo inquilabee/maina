@@ -232,7 +232,7 @@ def test_join_typo_rejected_at_load(tmp_path: Path) -> None:
             }
         },
     )
-    with pytest.raises(ManifestError, match="join 'comma' not in"):
+    with pytest.raises(ManifestError, match="names a separator; write the separator itself"):
         reg.load("t")
 
 

@@ -334,17 +334,38 @@
 
 ### Manifest expressiveness
 
+- **`args.<name>.false_flag`** — the token a `type: flag` arg emits when it is
+  explicitly `False` (`--fix` / `--no-fix`). Without it, off emits nothing; with
+  it, "not passed" and "passed off" are different requests. Rejected at load on
+  any other arg type, where it could never be emitted.
+
+- **`args.<name>.join` is now the separator itself** (`join: ","`,
+  `join: ";"`), not the fixed word `csv`. A word where a separator belongs
+  (`csv`, `comma`, `semicolon`, ...) is rejected at load naming the punctuation
+  it meant — accepting it would silently join the list with that literal text.
+  **Breaking:** `join: csv` becomes `join: ","`.
+
+- **`install.asset_template`** with `install.os_map` / `install.arch_map` names
+  every platform's github asset from one pattern (`{version}`, `{os}`, `{arch}`)
+  instead of six near-identical lines that can drift apart. An explicit `assets`
+  entry still wins for its platform. Unknown placeholders and format specs are
+  rejected at load; an expansion that is not a safe path segment is refused
+  before any download; and the template and maps are part of the cache identity.
+
 - `args.<name>.choices: [...]` limits a value (or every item, for a list) to
   a fixed set — checked on every `run()` / `argv()`, not just at load. Not
   valid on `type: flag` / `type: pairs`. A `default:` that is not itself one
   of the arg's own `choices:` is rejected at load, and a `type: pairs`
   `default:` must be a mapping or a list of `[key, value]` pairs — both used
   to load clean and fail every call.
+
 - `args.<name>.type: pairs` emits one flag per pair — three tokens
   `--flag key value` by default (`jq --arg`), or two (`--flag key=value`) when
   the arg also sets `joiner: "="` (`docker -e K=V`).
+
 - `args.<name>.separator` emits a literal token before an arg (e.g. `--` before
   positional paths).
+
 - `output.from_file: "<template>"` — the parser reads that file instead of
   stdout (for tools that write a report file). `result.raw` stays the tool's
   stdout; the file contents land on the new `result.report`, and
@@ -354,8 +375,10 @@
   unresolved placeholder, a path that escapes the run directory, or a missing
   file — never a silent fall back to stdout. Absolute paths and `..` are
   rejected at manifest load.
+
 - Load-time validation extended: `join` must be `csv`, `timeout` must be a
   number, `platforms` values must be `linux` / `macos` / `windows`.
+
 - CLI: `--json` after `--` reaches the tool (was stripped from the whole line).
 
 ### Results and parsers

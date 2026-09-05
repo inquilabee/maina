@@ -13,6 +13,7 @@ from maina.core.errors import ManifestError
 
 from . import ids as registry_ids
 from .common import MANIFEST_PREFIX, manifest_error, scalar_str, unknown_keys
+from .install import InstallSpec
 from .keys import (
     BASE_TOOL_ID,
     CURRENT_SCHEMA,
@@ -22,7 +23,7 @@ from .keys import (
 )
 from .merge import ManifestMerge
 from .requires import RequiresSpec
-from .specs import InstallSpec, Manifest, OutputSpec, parse_args_map
+from .specs import Manifest, OutputSpec, parse_args_map
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

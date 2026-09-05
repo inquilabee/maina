@@ -137,7 +137,8 @@ def validate(
 
     Checks that the manifest loads and its ``parser:`` resolves; that a concrete
     manifest has a ``cli:``; that ``install.backend`` is registered and (for
-    ``github``) carries ``repo`` + ``assets``; that ``install.assets`` /
+    ``github``) carries ``repo`` + ``assets`` (or ``asset_template``); that
+    ``install.assets`` /
     ``sha256`` platform keys are real; that every ``output.from_file``
     placeholder names a declared arg; and that no two files under one root
     derive the same id (one would silently shadow the other). Prints
@@ -215,8 +216,8 @@ def install_problem(manifest: Any, rt: Any) -> str | None:
     if install.backend not in rt.installer.backend_names:
         known = ", ".join(sorted(rt.installer.backend_names)) or "none"
         return f"install backend {install.backend!r} is not registered (known: {known})"
-    if install.backend == "github" and not (install.repo and install.assets):
-        return "install.backend: github needs both repo: and assets:"
+    if install.backend == "github" and not (install.repo and install.has_assets()):
+        return "install.backend: github needs repo: and assets: (or asset_template:)"
     keys = sorted(set(install.assets) | set(install.sha256))
     if bad := [problem for key in keys if (problem := platform_key_problem(key))]:
         return f"install.assets/sha256 platform keys: {'; '.join(bad)}"

@@ -43,7 +43,7 @@ def test_build_argv_repeated_flags() -> None:
 
 
 def test_build_argv_csv_join() -> None:
-    schema = {"tags": {"flag": "--tags", "type": "string", "join": "csv"}}
+    schema = {"tags": {"flag": "--tags", "type": "string", "join": ","}}
     argv = ArgParser(schema).build("tool", [], {"tags": ["a", "b"]})
     assert argv == ["tool", "--tags", "a,b"]
 
@@ -208,3 +208,31 @@ def test_pairs_keys_go_through_the_scalar_guard_too() -> None:
     parser = ArgParser({"arg": {"flag": "--arg", "type": "pairs"}})
     with pytest.raises(ArgError, match="pairs key must be a string or number"):
         parser.build("jq", [], {"arg": [(True, "v")]})
+
+
+def test_false_flag_emits_the_off_switch_only_when_explicitly_off() -> None:
+    """For a CLI whose off switch is its own flag (``--no-fix``), "not passed"
+    and "passed off" are different requests."""
+    parser = ArgParser({"fix": {"flag": "--fix", "false_flag": "--no-fix", "type": "flag"}})
+    assert parser.build("ruff", [], {"fix": True}) == ["ruff", "--fix"]
+    assert parser.build("ruff", [], {"fix": False}) == ["ruff", "--no-fix"]
+    assert parser.build("ruff", [], {}) == ["ruff"]
+
+
+def test_a_flag_without_a_false_flag_still_emits_nothing_when_off() -> None:
+    parser = ArgParser({"fix": {"flag": "--fix", "type": "flag"}})
+    assert parser.build("ruff", [], {"fix": False}) == ["ruff"]
+
+
+def test_join_uses_the_separator_the_manifest_names() -> None:
+    schema = {
+        "select": {"flag": "--select", "join": ","},
+        "exclude": {"flag": "--exclude", "join": ";"},
+    }
+    argv = ArgParser(schema).build("ruff", [], {"select": ["E", "F"], "exclude": ["a", "b"]})
+    assert argv == ["ruff", "--select", "E,F", "--exclude", "a;b"]
+
+
+def test_a_joined_positional_needs_no_flag() -> None:
+    parser = ArgParser({"paths": {"positional": True, "join": ":"}})
+    assert parser.build("tool", [], {"paths": ["a", "b"]}) == ["tool", "a:b"]

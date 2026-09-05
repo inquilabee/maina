@@ -163,7 +163,7 @@ class ArgParser:
     def _emit_arg(name: str, spec: ArgSpec, value: Any) -> list[str]:
         """Emit argv tokens for one resolved argument."""
         if spec.type == "flag":
-            return ArgParser._emit_flag(name, spec.flag, value)
+            return ArgParser._emit_flag(name, spec.flag, value, false_flag=spec.false_flag)
         if spec.type == "pairs":
             return ArgParser._emit_pairs(name, spec.flag, value, joiner=spec.joiner)
         if isinstance(value, list):
@@ -225,13 +225,22 @@ class ArgParser:
         return key, val
 
     @staticmethod
-    def _emit_flag(name: str, flag: str | None, value: Any) -> list[str]:
-        """Emit a boolean CLI flag."""
+    def _emit_flag(
+        name: str, flag: str | None, value: Any, *, false_flag: str | None = None
+    ) -> list[str]:
+        """Emit a boolean CLI flag.
+
+        With ``false_flag:`` set, an explicit ``False`` emits that token instead
+        of nothing — for a CLI whose off switch is its own flag (``--no-fix``),
+        where "not passed" and "passed off" are different requests.
+        """
         if not flag:
             raise ArgError(f"flag argument {name!r} requires flag:")
         if value is True:
             return [flag]
-        if value is False or value is None:
+        if value is False:
+            return [false_flag] if false_flag else []
+        if value is None:
             return []
         raise ArgError(f"flag argument {name!r} expects bool, got {type(value).__name__}")
 
@@ -250,8 +259,10 @@ class ArgParser:
         tokens = [ArgParser._scalar_token(name, v) for v in values]
         return (
             (
-                ArgParser._emit_csv(name, flag, tokens, positional=positional, joiner=joiner)
-                if join == "csv"
+                ArgParser._emit_joined(
+                    name, flag, tokens, positional=positional, joiner=joiner, separator=join
+                )
+                if join is not None
                 else (
                     tokens
                     if positional or not flag
@@ -273,20 +284,21 @@ class ArgParser:
         return [flag, *tokens] if repeat is False else repeated
 
     @staticmethod
-    def _emit_csv(
+    def _emit_joined(
         name: str,
         flag: str | None,
         tokens: list[str],
         *,
         positional: Any,
         joiner: str | None = None,
+        separator: str = ",",
     ) -> list[str]:
-        """Join list values with commas for a single CLI token."""
-        joined = ",".join(tokens)
+        """Join list values with ``separator`` into a single CLI token."""
+        joined = separator.join(tokens)
         if positional:
             return [joined]
         if not flag:
-            raise ArgParser._arg_error(name, "needs a flag for csv join")
+            raise ArgParser._arg_error(name, "needs a flag for a joined list")
         return [f"{flag}{joiner}{joined}"] if joiner is not None else [flag, joined]
 
     @staticmethod
