@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import io
 import subprocess
 import tarfile
@@ -109,9 +110,20 @@ def test_fetch_https_rejects_non_https(tmp_path: Path) -> None:
 
 
 def demo_targz(binary_name: str = "bin/demo") -> bytes:
-    """A tiny gzipped tar containing one executable payload at *binary_name*."""
+    """A tiny gzipped tar containing one executable payload at *binary_name*.
+
+    Built with a pinned gzip ``mtime=0``: ``tarfile.open(mode="w:gz")``
+    otherwise stamps the gzip header with wall-clock time, and this helper is
+    called twice per test (once to seed a mocked response, once in a
+    byte-equality assertion) — a run that straddled a one-second boundary
+    got two different byte strings for "the same" archive, a real,
+    reproduced-in-CI flake.
+    """
     archive_bytes = io.BytesIO()
-    with tarfile.open(fileobj=archive_bytes, mode="w:gz") as tar:
+    with (
+        gzip.GzipFile(fileobj=archive_bytes, mode="wb", mtime=0) as gz,
+        tarfile.open(fileobj=gz, mode="w|") as tar,
+    ):
         payload = b"#!/bin/sh\necho ok\n"
         info = tarfile.TarInfo(name=binary_name)
         info.size = len(payload)
