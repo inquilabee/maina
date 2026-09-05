@@ -5,6 +5,7 @@ from __future__ import annotations
 import warnings
 from copy import deepcopy
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 import yaml
@@ -173,7 +174,10 @@ class Registry:
         parser_path = self._resolve_parser_path(decl_path, decl_root, merged.get("parser"))
         return Manifest(
             id=tid,
-            data=merged,
+            # Registry.load caches and reuses this instance across calls; a
+            # plain dict would let a caller mutate .data and corrupt every
+            # other load() of the same id (see Manifest.data's docstring).
+            data=MappingProxyType(merged),
             subcommands=subcommands,
             path=leaf_path,
             parser_path=parser_path,

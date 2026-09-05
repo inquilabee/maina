@@ -20,6 +20,7 @@ from .keys import ARG_KEYS, ARG_TYPES, JOIN_WORD_HINTS, OUTPUT_KEYS
 from .requires import RequiresSpec
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
 
@@ -341,7 +342,10 @@ class Manifest:
     """Resolved registry surface ready for install/run."""
 
     id: str
-    data: dict[str, Any]
+    # A read-only view (types.MappingProxyType, set by the loader) — Registry
+    # caches and reuses one Manifest instance per id (see loader.Registry.load),
+    # so a caller mutating .data would corrupt every other load() of that id.
+    data: Mapping[str, Any]
     subcommands: list[str] = field(default_factory=list)
     path: Path | None = None
     parser_path: Path | None = None

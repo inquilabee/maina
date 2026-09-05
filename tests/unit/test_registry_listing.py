@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -190,6 +190,19 @@ def test_repeated_load_reuses_the_cached_manifest_not_a_fresh_merge(
     second = registry.load("t")
     assert second is first
     assert calls == 0
+
+
+def test_manifest_data_rejects_mutation(tmp_path: Path) -> None:
+    """G1: Registry.load() returns a shared, cached Manifest — a caller
+    mutating .data must not be able to corrupt it for every other load()."""
+    root = tmp_path / "reg"
+    write_yaml(root / "t.yaml", {"cli": "echo"})
+    registry = Registry([root])
+    manifest = registry.load("t")
+    mutable_view = cast("dict[str, Any]", manifest.data)
+    with pytest.raises(TypeError):
+        mutable_view["cli"] = "printf"
+    assert registry.load("t").data.get("cli") == "echo"
 
 
 def test_manifest_cache_invalidates_when_a_parent_layer_changes(tmp_path: Path) -> None:
