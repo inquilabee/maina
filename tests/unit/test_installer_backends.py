@@ -432,6 +432,38 @@ def test_check_ids_is_batch_resilient_to_a_bad_backend(tmp_path: Path) -> None:
     assert "unknown install backend" in failures["bad"]
 
 
+def test_check_ids_is_batch_resilient_to_a_probe_raising_oserror(tmp_path: Path) -> None:
+    """A probe raising a raw OSError (permission denied, a broken symlink
+    loop) must land in failures like any other bad id — not escape check_ids
+    and blank the report for every other, healthy id."""
+
+    class FlakyBackend:
+        @property
+        def name(self) -> str:
+            return "flaky"
+
+        def resolve(self, *_a: object, **_k: object) -> tuple[str, dict[str, str]]:
+            raise NotImplementedError
+
+        @staticmethod
+        def probe(*_a: object, **_k: object) -> bool:
+            raise OSError("permission denied")
+
+    root = tmp_path / "reg"
+    write_yaml(root / "good.yaml", {"cli": "true", "install": {"backend": "path"}})
+    write_yaml(root / "flaky.yaml", {"cli": "x", "install": {"backend": "flaky"}})
+    installer = Installer(
+        cache_root=tmp_path / "cache",
+        language=FakeLanguage(tmp_path / "cache"),
+        registry=Registry(root),
+        backends=[PathBackend(), FlakyBackend()],
+    )
+    satisfied, missing, failures = installer.check_ids()
+    assert satisfied == ["good"]
+    assert missing == []
+    assert "permission denied" in failures["flaky"]
+
+
 def test_npm_install_rejects_out_of_cache_bin(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

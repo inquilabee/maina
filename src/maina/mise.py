@@ -166,6 +166,18 @@ class MiseRuntime:
     def _mise_which_uncaught(
         mise: Path, spec: str, runtime: str, env: dict[str, str]
     ) -> Path | None:
+        """Resolve *spec*'s binary dir via ``mise which``, falling back to
+        ``mise exec`` for a toolchain ``which`` cannot see through.
+
+        Both calls are a *check*, never an install: ``mise exec`` normally
+        installs a missing version on demand, which would make this "just
+        resolve it" helper (shared by :meth:`ensure`'s own pre-install check
+        and the side-effect-free :meth:`present_bin_dir` probe) provision a
+        runtime as a side effect of asking whether one is already there.
+        ``exec_auto_install=false`` keeps the fallback a pure check; the
+        actual install, when wanted, is :meth:`ensure`'s own explicit
+        ``mise install`` call.
+        """
         try:
             which = subprocess.run(
                 [str(mise), "which", "--toolchain", spec, runtime],
@@ -179,10 +191,11 @@ class MiseRuntime:
                 return Path(which.stdout.strip()).parent
 
             shell = shutil.which("sh") or "/bin/sh"
+            no_install_env = {**env, "MISE_EXEC_AUTO_INSTALL": "false"}
             exe = subprocess.run(
                 [str(mise), "exec", spec, "--", shell, "-c", f"command -v {shlex.quote(runtime)}"],
                 check=False,
-                env=env,
+                env=no_install_env,
                 capture_output=True,
                 text=True,
                 timeout=MISE_QUERY_TIMEOUT,

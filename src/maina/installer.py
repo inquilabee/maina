@@ -328,7 +328,9 @@ class Installer:
         for tid, manifest in self._selected_manifests(tool_ids):
             try:
                 ok = self.is_satisfied(manifest)
-            except InstallError as exc:
+            except (InstallError, OSError) as exc:
+                # A probe raising a raw OSError (permission denied, a broken
+                # symlink loop) must not blank the report for every other id.
                 failures[tid] = str(exc)
             else:
                 (satisfied if ok else missing).append(tid)
