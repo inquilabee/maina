@@ -11,12 +11,10 @@ register your own manifests.
 ```python
 from pathlib import Path
 import maina
-from maina import Tool
 
-rt = maina.Runtime.preferred()
-maina.register(rt, registry_dirs=[Path("my_tools")])   # your manifests
+app = maina.register(maina.Runtime.preferred(), registry_dirs=[Path("my_tools")])  # your manifests
 
-result = Tool("jq", runtime=rt)(filter=".name", path="package.json", raw=True)
+result = app.tool("jq")(filter=".name", path="package.json", raw=True)
 print(result.raw)      # stdout as the CLI produced it
 print(result.parsed)   # structured value from the manifest's parser, or None
 print(result.ok, result.exit_code)
@@ -41,8 +39,8 @@ runtime, so no hand-written wrapper is needed.
 
 - [Quickstart](user/quickstart.md) — install, first tool, the CLI.
 - [Manifest schema](user/manifests.md) — every field a registry entry can set.
-- [Install backends](user/backends.md) — `path`, `github`, `npm`, and mise
-  runtimes.
+- [Install backends](user/backends.md) — `path`, `github`, `npm`, `pip`,
+  `script`, and mise runtimes.
 - [Extending maina](user/extending.md) — add tools, parsers, and backends
   without a fork.
 - [Security model](user/security.md) — a registry root is trusted code; what

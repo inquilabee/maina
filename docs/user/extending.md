@@ -27,20 +27,32 @@ rt.close()           # or: with maina.Runtime.preferred(...) as rt: ...
 from pathlib import Path
 import maina
 
-rt = maina.Runtime.preferred()
-maina.register(
-    rt,
+app = maina.register(
+    maina.Runtime.preferred(),
     registry_dirs=[Path("tools")],   # a later root overrides an earlier id
     parsers={"csv": parse_csv},
     parsers_dirs=[Path("parsers")],
     installers=[MyBackend()],
     language=MyRuntimeProvider(),
 )
-maina.Tool("mytool", runtime=rt).run(...)
+app.tool("mytool").run(...)
 ```
 
 `register(rt, registry_dirs=[...], replace=True)` clears the catalog first;
 duplicate roots are ignored.
+
+`register(...)` returns a `MainaApp` — `app.runtime` is the mutated `Runtime`
+(`rt` above), and `app.tool(name)` is `Tool(name, runtime=app.runtime)`. Build
+several independent apps in one process (separate catalogs, separate caches)
+by calling `register()` once per `Runtime` instead of sharing the process-wide
+session:
+
+```python
+demo1 = maina.register(maina.Runtime.preferred(use_env=False), registry_dirs=["catalog1"])
+demo2 = maina.register(maina.Runtime.preferred(use_env=False), registry_dirs=["catalog2"])
+demo1.tool("jq").run(...)
+demo2.tool("pq").run(...)
+```
 
 ## Catalogs that change while the process runs
 
@@ -61,7 +73,7 @@ That memo also means `Tool(id)` is cheap to construct repeatedly, but not free:
 it still re-merges the `extends` chain every time. Hoist it out of a loop.
 
 ```python
-tool = maina.Tool("shellcheck", runtime=rt)   # once
+tool = app.tool("shellcheck")   # once
 for path in paths:
     tool.run(path=[str(path)])
 ```
@@ -72,7 +84,7 @@ Build your own help, form UI, or CLI from a tool's schema without parsing
 `help()` text:
 
 ```python
-tool = maina.Tool("mytool", runtime=rt)
+tool = app.tool("mytool")
 tool.manifest            # the resolved Manifest
 tool.args                # read-only Mapping[str, ArgSpec]
 tool.describe()          # JSON-safe dict: id, cli, args, install, output, ...

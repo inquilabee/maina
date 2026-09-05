@@ -13,12 +13,10 @@ you register your own manifests (or your app does).
 ```python
 from pathlib import Path
 import maina
-from maina import Tool
 
-rt = maina.Runtime.preferred()
-maina.register(rt, registry_dirs=[Path("my_tools")])   # your manifests
+app = maina.register(maina.Runtime.preferred(), registry_dirs=[Path("my_tools")])  # your manifests
 
-result = Tool("jscpd", runtime=rt)(path=["src"], min_lines=5)
+result = app.tool("jscpd")(path=["src"], min_lines=5)
 print(result.raw, result.parsed)
 ```
 
@@ -29,15 +27,17 @@ Full documentation is in [`docs/`](docs/index.md) (built with MkDocs):
 
 ## Extendibility
 
-Register tools, parsers, and installer backends on a `Runtime`.
+Register tools, parsers, and installer backends on a `Runtime`. `maina.register(...)`
+returns a `MainaApp` bound to that Runtime — `app.tool(name)` is `Tool(name, runtime=rt)`
+without threading `rt` through every call, and lets several independent apps (separate
+registry/parsers dirs, separate cache) coexist in one process.
 
 ```python
 from pathlib import Path
 import maina
 
-rt = maina.Runtime.preferred()
-maina.register(rt, registry_dirs=[Path("tools")])
-maina.Tool("mytool", runtime=rt).run(...)
+app = maina.register(maina.Runtime.preferred(), registry_dirs=[Path("tools")])
+app.tool("mytool").run(...)
 ```
 
 Or omit the Runtime and mutate the process session: `maina.register(registry_dirs=[...])`.
@@ -46,7 +46,7 @@ pass `parsers=`, `parsers_dirs=`, `installers=`, and `language=`. Parsers
 implement the `Parser` protocol (`parse(raw, result)` / any matching callable).
 
 The process-wide session is not thread-safe. For concurrent or nested use pass an
-explicit `Tool(..., runtime=rt)`, or scope a swap to a block with
+explicit `Tool(..., runtime=rt)` (or `app.tool(name)`), or scope a swap to a block with
 `with maina.isolated(rt): ...` (restores the prior Runtime on exit).
 
 `Tool.run` / the call form take `timeout=<seconds>` (bounds the tool subprocess),

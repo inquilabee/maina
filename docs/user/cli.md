@@ -13,7 +13,8 @@ export MAINA_REGISTRY=./my_tools:./vendor_tools
 maina list
 ```
 
-Library callers use `register(rt, registry_dirs=[...])` instead.
+Library callers use `app = register(rt, registry_dirs=[...])` instead, then
+`app.tool(name)` (see [quickstart](quickstart.md#register-a-catalog)).
 
 ## `maina list [PARENT]`
 

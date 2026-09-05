@@ -18,9 +18,9 @@ structured result (raw text, parsed value, exit code, timing).
 It ships the engine and the manifest contract, not a tool catalog: callers register
 their own manifests, and other projects build their catalogs on top of maina rather
 than depending on one bundled with it. Install backends cover path-resolved
-binaries, GitHub release archives, npm packages, and pip packages in per-tool
-virtual environments, with mise-provisioned language runtimes and per-tool caching
-underneath.
+binaries, GitHub release archives, npm packages, pip packages in per-tool
+virtual environments, and repo-local scripts or script packages, with
+mise-provisioned language runtimes and per-tool caching underneath.
 
 ## Not this
 

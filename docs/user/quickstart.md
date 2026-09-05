@@ -45,25 +45,23 @@ emits a JSON Schema your editor can check the file against as you type, and
 ## Register a catalog
 
 Point a `Runtime` at the directory
-([layout](manifests.md#file-layout-and-ids)):
+([layout](manifests.md#file-layout-and-ids)); `register(...)` returns a
+`MainaApp` bound to it:
 
 ```python
 from pathlib import Path
 import maina
 
-rt = maina.Runtime.preferred()
-maina.register(rt, registry_dirs=[Path("my_tools")])
+app = maina.register(maina.Runtime.preferred(), registry_dirs=[Path("my_tools")])
 ```
 
-Or mutate the process session (`maina.register(registry_dirs=[...])`) and drop
-the `runtime=` argument below.
+Or mutate the process session (`maina.register(registry_dirs=[...])`) and call
+`maina.Tool(name)` directly instead of `app.tool(name)` below.
 
 ## Call a tool
 
 ```python
-from maina import Tool
-
-result = Tool("shellcheck", runtime=rt).run(path=["scripts/deploy.sh"], format="json")
+result = app.tool("shellcheck").run(path=["scripts/deploy.sh"], format="json")
 result.raise_for_status()          # raises ToolExitError on a non-success code
 print(result.parsed)               # json parser -> Python list/dict
 ```
@@ -71,8 +69,12 @@ print(result.parsed)               # json parser -> Python list/dict
 The call form is equivalent to `.run(...)`:
 
 ```python
-Tool("jq", runtime=rt)(filter=".", path="data.json")
+app.tool("jq")(filter=".", path="data.json")
 ```
+
+`app.tool(name)` is `Tool(name, runtime=app.runtime)` — reach for the explicit
+form directly when you need it (e.g. passing a `Runtime` you built some other
+way).
 
 ## Read the result
 

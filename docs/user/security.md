@@ -17,6 +17,9 @@ A directory you register can:
 - ship a `parsers/*.py` module, which maina imports and executes in-process
   with no sandbox (`parser:` in a manifest, or `parsers_dirs=`);
 - declare an `install:` block that downloads and runs a binary;
+- declare `install: {backend: script, entry: ...}`, which `chmod +x`'s and
+  runs a file (or a directory-selected file) straight from the registry — no
+  download, no checksum, weaker than even the unsigned `github`/`npm` path;
 - set an `env:` block on the tool subprocess, including `LD_PRELOAD` /
   `DYLD_INSERT_LIBRARIES`.
 
@@ -27,8 +30,8 @@ So registering a directory is equivalent to trusting the code in it. Treat
 
 ## Practical guidance
 
-- **Vendor your catalog.** Keep manifests (and their `parsers/`) in your own
-  repository or a package you publish, reviewed like any other code.
+- **Vendor your catalog.** Keep manifests (and their `parsers/` / `scripts/`)
+  in your own repository or a package you publish, reviewed like any other code.
 - **`Runtime.preferred()` reads `$MAINA_REGISTRY` by default.** Pass
   `use_env=False` when building a `Runtime` inside a library or a service that
   should not inherit an operator's environment.
