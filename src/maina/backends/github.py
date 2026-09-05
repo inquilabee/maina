@@ -68,7 +68,7 @@ class GithubBackend(InstallerBackend):
                 "(check install.asset_template and os_map / arch_map)"
             )
 
-        dest_dir = ctx.tool_bin_dir(manifest.cli, version)
+        dest_dir = ctx.ensure_tool_bin_dir(manifest.cli, version)
         dest = dest_dir / binary
         if dest.is_file():
             return dest

@@ -66,8 +66,13 @@ class InstallContext:
     """
 
     def tool_bin_dir(self, name: str, version: str = "default") -> Path:
-        """Per-tool versioned bin directory under the cache."""
-        path = self.cache_root / "tools" / name / version / "bin"
+        """Per-tool versioned bin directory under the cache (pure — does not
+        create it; see :meth:`ensure_tool_bin_dir` for that)."""
+        return self.cache_root / "tools" / name / version / "bin"
+
+    def ensure_tool_bin_dir(self, name: str, version: str = "default") -> Path:
+        """:meth:`tool_bin_dir`, creating it (and parents) if missing."""
+        path = self.tool_bin_dir(name, version)
         path.mkdir(parents=True, exist_ok=True)
         return path
 
