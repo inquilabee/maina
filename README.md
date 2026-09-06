@@ -68,8 +68,7 @@ set `MAINA_ALLOW_MISE_BOOTSTRAP=1`; otherwise it raises `RuntimeProvisionError`.
 
 `extends` parents use registry ids (no `.yaml` suffix), e.g. `extends: kubectl`
 (not `kubectl-kubectl`). Family roots resolve from `kubectl/kubectl.yaml` as id
-`kubectl`. See `examples/local_tool/` (overlay registry),
-`examples/parsers_dirs/` (custom parser via `parsers_dirs`), and
+`kubectl`. See `examples/parsers_dirs/` (custom parser via `parsers_dirs`) and
 `examples/scripts_dir/` (a repo-local script or script package via
 `install.backend: script`).
 
@@ -121,18 +120,18 @@ A download whose SHA-256 does not match is rejected before `chmod +x`.
 - An intermediate family surface can be callable with empty args on purpose
   (`git remote` lists remotes).
 - See `examples/catalog/` for a worked catalog (`github`, `npm`, `pip`,
-  `output.from_file`, a subcommand family), `examples/local_tool/` for an
-  overlay registry, `examples/parsers_dirs/` for a custom parser, and
-  `examples/scripts_dir/` for the `script` backend.
+  `output.from_file`, a subcommand family), `examples/parsers_dirs/` for a
+  custom parser, `examples/scripts_dir/` for the `script` backend, and
+  `examples/wild_catalog/` for 30 real CLIs installed and run for real.
 
 ## Setup
 
 ```bash
 uv sync
-uv run python examples/demo.py
 uv run python examples/parsers_dirs/demo.py
 uv run python examples/scripts_dir/demo.py
 uv run python examples/catalog/demo.py    # worked catalog: github + npm + from_file + family
+uv run python examples/wild_catalog/demo.py    # 30 real CLIs, needs network
 ```
 
 Tool cache: `~/.cache/maina` (override with `MAINA_CACHE`).
