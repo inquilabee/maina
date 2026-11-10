@@ -1,25 +1,58 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="maina — a Common myna">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="maina — a Common myna">
   <title>maina — a Common myna</title>
-  <rect width="64" height="64" rx="14" fill="#fbf1dc"/>
-  <!-- perch -->
-  <path d="M10 53 H54" stroke="#6b4a2b" stroke-width="3" stroke-linecap="round"/>
-  <!-- legs -->
-  <path d="M29 45 V52 M35 45 V52" stroke="#f0a800" stroke-width="2.2" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff6e3"/>
+      <stop offset="1" stop-color="#f6e2bd"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9a6439"/>
+      <stop offset="1" stop-color="#7c4c2a"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <circle cx="256" cy="262" r="196" fill="#ffffff" opacity="0.35"/>
+
+  <!-- branch and leaves -->
+  <path d="M52 424 H462" stroke="#6b4a2b" stroke-width="22" stroke-linecap="round"/>
+  <path d="M388 424 q18 -52 62 -62 q-6 46 -62 62 Z" fill="#6f9a45"/>
+  <path d="M420 424 q4 -34 40 -46 q4 34 -40 46 Z" fill="#88b45a"/>
+
+  <!-- legs and toes -->
+  <g stroke="#f0a800" stroke-width="10" stroke-linecap="round" fill="none">
+    <path d="M232 354 V414 M228 414 h-26 M236 414 h22"/>
+    <path d="M290 350 V414 M286 414 h-26 M294 414 h22"/>
+  </g>
+
   <!-- tail with white tip -->
-  <path d="M42 36 L58 46 L55 50 L38 42 Z" fill="#5a3a22"/>
-  <path d="M56.4 47.6 L58 46 L55 50 L53.6 49 Z" fill="#ffffff"/>
-  <!-- body -->
-  <ellipse cx="32" cy="38" rx="16" ry="11" transform="rotate(-8 32 38)" fill="#8b5a34"/>
-  <!-- wing with white flash -->
-  <path d="M24 34 Q38 30 46 40 Q34 46 24 40 Z" fill="#6c4526"/>
-  <ellipse cx="33" cy="37.2" rx="4.6" ry="2" transform="rotate(-12 33 37.2)" fill="#ffffff"/>
+  <path d="M318 282 L470 350 L450 392 L296 328 Z" fill="#4d3120"/>
+  <path d="M452 354 L470 350 L450 392 L432 384 Z" fill="#ffffff"/>
+
+  <!-- body, belly, undertail -->
+  <ellipse cx="252" cy="294" rx="132" ry="90" transform="rotate(-12 252 294)" fill="url(#body)"/>
+  <ellipse cx="236" cy="326" rx="94" ry="48" transform="rotate(-8 236 326)" fill="#c08a5c"/>
+  <path d="M312 330 q30 6 58 30 q-34 10 -66 -4 Z" fill="#ffffff"/>
+
+  <!-- wing -->
+  <path d="M190 268 Q300 232 372 306 Q300 356 196 322 Q176 296 190 268 Z" fill="#6a4225"/>
+  <g stroke="#4d3120" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.7">
+    <path d="M222 292 Q296 278 346 306"/>
+    <path d="M214 308 Q290 306 340 326"/>
+  </g>
+  <ellipse cx="272" cy="298" rx="42" ry="14" transform="rotate(-12 272 298)" fill="#ffffff"/>
+
   <!-- black head and throat -->
-  <circle cx="21" cy="26" r="10" fill="#1d1d1d"/>
-  <path d="M13 30 Q18 40 28 38 L26 30 Z" fill="#1d1d1d"/>
+  <path d="M96 214 Q108 340 214 322 L222 236 Z" fill="#1b1b1d"/>
+  <circle cx="170" cy="192" r="82" fill="#1b1b1d"/>
+  <path d="M120 144 Q168 112 218 140" stroke="#3a3a3e" stroke-width="8" stroke-linecap="round" fill="none"/>
+
   <!-- yellow eye patch and eye -->
-  <ellipse cx="23" cy="25.5" rx="4.4" ry="3.2" fill="#ffc81a"/>
-  <circle cx="22" cy="25.5" r="1.5" fill="#1d1d1d"/>
-  <circle cx="21.5" cy="25" r="0.5" fill="#ffffff"/>
-  <!-- yellow bill -->
-  <path d="M12.5 25.2 L3 28.6 L12.8 30.6 Z" fill="#ffb300"/>
+  <path d="M148 190 Q170 160 218 176 Q232 198 212 216 Q172 232 148 190 Z" fill="#ffc81a"/>
+  <circle cx="176" cy="192" r="13" fill="#2b1a0e"/>
+  <circle cx="171" cy="187" r="4.5" fill="#ffffff"/>
+
+  <!-- bill -->
+  <path d="M104 176 Q58 186 14 214 L104 222 Z" fill="#ffb300"/>
+  <path d="M104 222 L22 220 Q62 240 106 242 Z" fill="#e8940a"/>
+  <path d="M44 204 L18 214" stroke="#e8940a" stroke-width="5" stroke-linecap="round"/>
 </svg>

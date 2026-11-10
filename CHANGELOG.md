@@ -6,7 +6,8 @@
 
 ### Changed
 
-- README: added "What's in the name?" (the package page on PyPI now carries it).
+- README: added "What's in the name?" with a CC0 photo of a Common myna, and a larger, more detailed
+  logo (the package page on PyPI now carries both).
 
 ### Internal
 

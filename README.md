@@ -1,4 +1,8 @@
-# ![maina](https://raw.githubusercontent.com/inquilabee/maina/main/docs/images/maina-mark.svg) maina
+<p align="center">
+  <img src="https://raw.githubusercontent.com/inquilabee/maina/main/docs/images/maina-mark.svg" alt="maina" width="160">
+</p>
+
+# maina
 
 [![CI](https://github.com/inquilabee/maina/actions/workflows/ci.yml/badge.svg)](https://github.com/inquilabee/maina/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/inquilabee/maina/blob/main/LICENSE)
@@ -68,6 +72,12 @@ their lives carrying things from one place to another, and that is the one thing
 this project borrows from them: it carries a call from Python over to a program
 written in another language, and brings the answer back as data. The name only claims
 that part of what birds do.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/inquilabee/maina/main/docs/images/maina-myna.jpg" alt="A Common myna perched on a stone post" width="560">
+  <br>
+  <sub>A Common myna. Photo by Hobbyfotowiki, <a href="https://commons.wikimedia.org/wiki/File:Common_myna,_(Acridotheres_tristis).jpg">Wikimedia Commons</a> (CC0).</sub>
+</p>
 
 ## Platform support and stability
 
