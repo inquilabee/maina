@@ -70,8 +70,10 @@ class ToolResult:
     def raise_for_status(self) -> ToolResult:
         """Raise ToolExitError when the run was not ok."""
         if not self.ok:
+            last_line = next((ln for ln in reversed(self.stderr.splitlines()) if ln.strip()), "")
             raise ToolExitError(
-                f"{self.tool} exited with code {self.exit_code}",
+                f"{self.tool} exited with code {self.exit_code}"
+                + (f": {last_line.strip()[:200]}" if last_line else ""),
                 exit_code=self.exit_code,
                 tool=self.tool,
                 command=self.command,

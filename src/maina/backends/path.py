@@ -31,7 +31,10 @@ class PathBackend(InstallerBackend):
         del version, ctx
         found = shutil.which(manifest.cli, path=env.get("PATH"))
         if not found:
-            raise InstallError(f"{manifest.cli!r} not found on PATH")
+            raise InstallError(
+                f"{manifest.cli!r} not found on PATH — install it, or add an install: block "
+                "(github, npm, pip, script) so maina can fetch it"
+            )
         return found, env
 
     @staticmethod

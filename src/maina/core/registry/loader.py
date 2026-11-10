@@ -382,7 +382,10 @@ class Registry:
         if not tid:
             raise ManifestError("empty tool id")
         if not self.roots:
-            raise ManifestError(f"no registry entry for {tid!r} (registry has no roots)")
+            raise ManifestError(
+                f"no registry entry for {tid!r} (registry has no roots — set "
+                "MAINA_REGISTRY=<dir> or call maina.register(registry_dirs=[...]))"
+            )
         for root in reversed(self.roots):
             if (path := self._locate(root, tid)) is not None:
                 return path, root
