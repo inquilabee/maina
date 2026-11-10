@@ -279,6 +279,30 @@ Two hatches worth knowing:
   `run()`'s own parameters (`timeout`, `cwd`, `env`, `parser`, `stdin`, `text`,
   `extra`, `env_allow`, `args`) — see [reserved names](#args).
 
+## Authoring notes
+
+- **Quote any string YAML 1.1 could reinterpret.** `version: "3.10"` (unquoted it
+  is the float `3.1`), `cli: "yes"` / `install.tag: "on"` (unquoted they are
+  booleans), and likewise `install.binary`, `install.assets.*`, and `env:` values.
+  maina rejects a bare `bool` / `float` in these fields at load rather than
+  downloading the wrong release, so the mistake is loud either way. A value with
+  no second reading (`cli: jq`, `version: 1.7.1`) needs no quotes, and a strict
+  YAML linter will object if you add them.
+- **Defaults may differ from the upstream CLI** so machine output is usable by
+  default (for example force `--format json`); pass the kwarg to override.
+- **Name an arg `output_format`, not `output`,** when it would clash with the
+  manifest's top-level `output:` block.
+- **An intermediate family surface can be callable with empty args on purpose**
+  (`git remote` lists remotes).
+- **`name:` at the top level is decoration** and is ignored; `platforms:` *is*
+  enforced (an unsupported host raises `UnsupportedPlatformError`, and
+  `maina prepare` with no ids skips that tool).
+- **`base.yaml`** in a registry root auto-extends every tool in that same root, so
+  shared defaults (for example runtime pins) live there. It has no `cli:` of its
+  own; add `abstract: true` to say so explicitly. A `base.yaml` in another
+  registered root is *not* applied, so overlay catalogs compose without rewriting
+  each other.
+
 ## ToolResult
 
 `run()` returns a frozen-ish dataclass:
@@ -286,7 +310,7 @@ Two hatches worth knowing:
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `tool` | str | Resolved tool id. |
-| `ok` | bool | `exit_code in success_codes`. |
+| `ok` | bool | `exit_code in success_codes`. Independent of `parse_error`: a run can be `ok` with a failed parse, so check both when you rely on `parsed`. |
 | `exit_code` | int | Process return code. |
 | `raw` | str | stdout as text (a `text=False` run decodes it lossily). |
 | `stderr` | str | stderr as text. |

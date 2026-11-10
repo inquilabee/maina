@@ -317,7 +317,10 @@ resolve_cache_root = Runtime.resolve_cache_root
 
 
 def runtime() -> Runtime:
-    """Return the process-wide active composition Runtime (lazy preferred default)."""
+    """Return the process-wide active composition Runtime (lazy preferred default).
+
+    Experimental, like :func:`use` and :func:`isolated`: may change before 1.0.
+    """
     return SESSION.get()
 
 

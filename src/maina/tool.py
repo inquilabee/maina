@@ -312,6 +312,8 @@ class MainaApp:
     several independent apps (separate registry/parsers dirs, separate cache)
     can coexist in one process without going through the process-wide
     ``SESSION`` singleton (:class:`~maina.runtime.RuntimeSession`).
+
+    Experimental: this surface may change before 1.0.
     """
 
     def __init__(self, runtime: Runtime) -> None:
@@ -338,6 +340,8 @@ def register(
     runtime: Runtime | None = None,
 ) -> MainaApp:
     """Mutate a Runtime (positional or ``runtime=``) or the active session; return a MainaApp.
+
+    Experimental: may change before 1.0.
 
     Prefer ``register(rt, ...)``. ``runtime=`` is an alternate keyword spelling of the
     same Runtime. Passing both raises ``ValueError``. With neither, mutates

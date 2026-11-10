@@ -85,6 +85,7 @@ way).
 | `raw` | stdout as text |
 | `parsed` | parser output, or `None` |
 | `ok` | `exit_code` is in the manifest's `success_codes` |
+| `parse_error` | why parsing failed, or `None` — a run can be `ok` with a failed parse |
 | `exit_code` | process return code |
 | `stderr` | stderr as text |
 | `command` | the argv list that ran |
@@ -92,8 +93,10 @@ way).
 
 ## Options on every call
 
+These assume an `rg` manifest in your catalog:
+
 ```python
-Tool("rg").run(
+app.tool("rg").run(
     pattern="TODO",
     path=["src"],
     timeout=30,                 # seconds; ToolTimeoutError on overrun
@@ -111,8 +114,22 @@ manifest's own `env:` block still wins a key collision.
 
 ## The CLI
 
+The CLI reads its catalog from `MAINA_REGISTRY` (directories separated by
+`os.pathsep`), so point it at your manifests first. With a `my_tools/jq.yaml`
+that wraps the `jq` already on your `PATH`:
+
+```yaml
+cli: jq
+install: {backend: path}
+args:
+  filter: {positional: true, required: true}
+  path: {positional: true, type: path}
+  null_input: {flag: -n, type: flag}
+```
+
 ```bash
-maina list                     # tool ids in the active/registered catalog
+export MAINA_REGISTRY=my_tools
+maina list                     # tool ids in the catalog
 maina run jq filter=. null_input
 maina run shellcheck --help    # manifest help for that tool
 maina prepare                  # install every registered tool + runtime
@@ -120,7 +137,7 @@ maina prepare jq shellcheck    # just these
 maina prepare --check          # report state; install nothing
 ```
 
-(The CLI operates on the process session's catalog — see
-[CLI](cli.md#catalog).)
+With no `MAINA_REGISTRY` the catalog is empty and `maina run` says so. (The CLI
+operates on the process session's catalog — see [CLI](cli.md#catalog).)
 
 See [CLI](cli.md) for the full surface.

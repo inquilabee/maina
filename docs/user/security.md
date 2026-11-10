@@ -7,7 +7,7 @@ backend verifies an optional per-platform `sha256` digest (opt-in: an asset
 with no `sha256:` entry installs with TLS integrity only, not a pinned
 digest), enforces HTTPS with a redirect-host allowlist, caps download and
 decompression size, and validates archive members; `npm` runs with
-`--ignore-scripts` and an anchored `package.json` by default (`install. allow_scripts: true` opts a manifest into running install/postinstall
+`--ignore-scripts` and an anchored `package.json` by default (`install.allow_scripts: true` opts a manifest into running install/postinstall
 lifecycle scripts); the manifest schema rejects `..`, absolute paths, and
 shell metacharacters in every value that reaches a path or an argv token.
 

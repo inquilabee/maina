@@ -53,13 +53,18 @@ explicitly.
 exactly one file named like the directory itself (any or no extension, e.g.
 `release/release.py`), which is the entry point; sibling files in the
 directory are free to import or source each other however their language
-allows. See `examples/scripts_dir/`.
+allows. See [`examples/scripts_dir/`](https://github.com/inquilabee/maina/tree/main/examples/scripts_dir).
 
 ## `github`
 
 Downloads a release asset over HTTPS, verifies an optional `sha256`, extracts
 the named `binary`, and marks it executable. Cached across runs. Streamed with a
-512 MiB soft cap; non-HTTPS URLs are refused.
+512 MiB soft cap; non-HTTPS URLs are refused. A bare-binary, `.gz` or `.xz`
+asset must start like a Linux, macOS or Windows executable (or a shebang script) before it is
+cached, so an HTML error or login page is rejected rather than installed.
+
+Pin a `sha256` per platform for every asset you depend on; without one the
+download is protected by TLS and the executable check only.
 
 ```yaml
 install:
@@ -84,9 +89,11 @@ delete that cache directory.
 Most projects name every release asset to one pattern. Write it once:
 
 ```yaml
+version: 8.18.4
 install:
   backend: github
   repo: gitleaks/gitleaks
+  tag: v8.18.4                   # `tag` defaults to `version`; this project's tags carry a `v`
   asset_template: "gitleaks_{version}_{os}_{arch}.tar.gz"
   arch_map: {x86_64: x64}        # maina's token -> the project's spelling
   os_map: {macos: darwin}
