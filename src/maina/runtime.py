@@ -57,6 +57,15 @@ class RuntimeSession:
         atexit.register(self._atexit_hook)
         return rt
 
+    def restore(self, rt: Runtime | None) -> None:
+        """Put *rt* (possibly ``None``) back as active, moving the exit hook with it."""
+        if self._atexit_hook is not None:
+            atexit.unregister(self._atexit_hook)
+        self.current = rt
+        self._atexit_hook = rt.close if rt is not None else None
+        if self._atexit_hook is not None:
+            atexit.register(self._atexit_hook)
+
 
 SESSION = RuntimeSession()
 
@@ -343,7 +352,7 @@ def isolated(rt: Runtime | None = None) -> Iterator[Runtime]:
     try:
         yield SESSION.get()
     finally:
-        SESSION.current = previous
+        SESSION.restore(previous)
 
 
 def register(

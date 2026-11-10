@@ -212,3 +212,18 @@ def test_relative_registry_dir_still_runs_a_script_tool_from_another_cwd(
     rt = Runtime.preferred(cache_root=tmp_path / "cache", use_env=False)
     app = maina.register(rt, registry_dirs=["my_tools"])
     assert app.tool("hi").run(cwd=str(elsewhere)).raw.strip() == "hi"
+
+
+def test_isolated_moves_the_atexit_hook_back_to_the_previous_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registered: list[object] = []
+    unregistered: list[object] = []
+    monkeypatch.setattr(atexit, "register", registered.append)
+    monkeypatch.setattr(atexit, "unregister", unregistered.append)
+    outer, inner = Runtime(), Runtime()
+    maina.use(outer)
+    with maina.isolated(inner):
+        assert registered[-1] == inner.close
+    assert registered[-1] == outer.close
+    assert inner.close in unregistered

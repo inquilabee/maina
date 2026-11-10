@@ -321,33 +321,36 @@ class Installer:
             f"cannot prepare abstract tool {tool_id!r}; {cls.ABSTRACT_PREPARE_HINT}"
         )
 
-    def _selected_manifests(self, tool_ids: list[str] | None) -> Iterator[tuple[str, Manifest]]:
+    def _selected_manifests(
+        self, tool_ids: list[str] | None, *, broken: dict[str, str]
+    ) -> Iterator[tuple[str, Manifest]]:
         """Yield ``(id, manifest)`` for concrete, host-supported tools.
 
         Explicit abstract ids raise :class:`InstallError`; when *tool_ids* is
-        omitted, abstract surfaces, hosts the manifest does not target, and
-        manifests that fail to load are skipped (the last with a warning).
+        omitted, abstract surfaces and hosts the manifest does not target are
+        skipped, and a manifest that fails to load is recorded in *broken*
+        (id -> message) so the caller can report it instead of dropping it.
         """
         explicit = tool_ids is not None
         ids = tool_ids if explicit else self.registry.iter_ids()
         for tid in ids:
-            manifest = self._resolve_selection(tid, explicit=explicit)
+            manifest = self._resolve_selection(tid, explicit=explicit, broken=broken)
             if manifest is not None:
                 yield tid, manifest
 
-    def _resolve_selection(self, tid: str, *, explicit: bool) -> Manifest | None:
+    def _resolve_selection(
+        self, tid: str, *, explicit: bool, broken: dict[str, str]
+    ) -> Manifest | None:
         """Load and filter one id for listing / prepare; ``None`` means skip.
 
-        A broken manifest re-raises when the caller named it, else warns.
+        A broken manifest re-raises when the caller named it, else is recorded in *broken*.
         """
         try:
             manifest = self.registry.load(tid)
-        except ManifestError:
+        except ManifestError as exc:
             if explicit:
                 raise
-            warnings.warn(
-                f"skipping {tid!r}: manifest failed to load", RuntimeWarning, stacklevel=2
-            )
+            broken[tid] = str(exc)
             return None
         if manifest.abstract:
             if explicit:
@@ -378,7 +381,7 @@ class Installer:
         satisfied: list[str] = []
         missing: list[str] = []
         failures: dict[str, str] = {}
-        for tid, manifest in self._selected_manifests(tool_ids):
+        for tid, manifest in self._selected_manifests(tool_ids, broken=failures):
             try:
                 ok = self.is_satisfied(manifest)
             except (InstallError, OSError) as exc:
@@ -409,7 +412,7 @@ class Installer:
         """
         prepared: list[str] = []
         failures: dict[str, str] = {}
-        for tid, manifest in self._selected_manifests(tool_ids):
+        for tid, manifest in self._selected_manifests(tool_ids, broken=failures):
             try:
                 self.prepare(manifest)
             except InstallError as exc:  # covers RuntimeProvision / UnsupportedPlatform

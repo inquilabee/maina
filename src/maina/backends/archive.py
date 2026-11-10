@@ -9,6 +9,7 @@ import shutil
 import stat
 import tarfile
 import tempfile
+import time
 import warnings
 import zipfile
 from contextlib import suppress
@@ -54,6 +55,8 @@ UNPACK_ERRORS = (
     OSError,
 )
 CHUNK_SIZE = 64 * 1024
+# Wall-clock cap on one download; the per-read timeout alone lets a slow-drip server hold it open.
+DOWNLOAD_MAX_SECONDS = 30 * 60
 REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 MAX_REDIRECT_HOPS = 5
 TarReadMode = Literal["r:gz", "r:xz"]
@@ -192,10 +195,13 @@ class ArchiveFetcher:
                 if int(content_length) > self.max_bytes:
                     raise InstallError(f"download exceeds size cap ({self.max_bytes} bytes): {url}")
         total = 0
+        deadline = time.monotonic() + DOWNLOAD_MAX_SECONDS
         with dest.open("wb") as out:
             for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
                 if not chunk:
                     continue
+                if time.monotonic() > deadline:
+                    raise InstallError(f"download took over {DOWNLOAD_MAX_SECONDS}s: {url}")
                 total += len(chunk)
                 if total > self.max_bytes:
                     raise InstallError(f"download exceeds size cap ({self.max_bytes} bytes): {url}")

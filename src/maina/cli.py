@@ -281,6 +281,14 @@ def emit_check(installer: Installer, tools: list[str] | None) -> None:
     missing or errored — one bad manifest never blanks the rest of the report.
     """
     satisfied, missing, failures = installer.check_ids(tools)
+    rt = runtime()
+    for tid in [*satisfied, *missing]:
+        # An install probe does not look at the parser or output: a manifest `validate`
+        # rejects must not be reported as satisfied.
+        if problem := catalog_validate.validate_one(rt, tid):
+            failures[tid] = problem
+    satisfied = [tid for tid in satisfied if tid not in failures]
+    missing = [tid for tid in missing if tid not in failures]
     for tid in satisfied:
         typer.echo(f"satisfied: {tid}")
     for tid in missing:

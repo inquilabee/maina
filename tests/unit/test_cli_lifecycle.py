@@ -296,3 +296,29 @@ def test_validate_problems_name_the_manifest_file(tmp_path: Any) -> None:
     result = runner.invoke(app, ["validate"])
     assert result.exit_code == 1
     assert str(root / "nocli.yaml") in result.stderr
+
+
+def test_cli_prepare_check_does_not_call_a_manifest_validate_rejects_satisfied(
+    tmp_path: Any,
+) -> None:
+    root = tmp_path / "reg"
+    write_yaml(
+        root / "badparser.yaml",
+        {"cli": "echo", "install": {"backend": "path"}, "parser": "jsonn"},
+    )
+    maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root], use_env=False))
+    result = runner.invoke(app, ["prepare", "--check"])
+    assert result.exit_code == 1
+    assert "satisfied: badparser" not in result.stdout
+    assert "error: badparser:" in result.stderr
+
+
+def test_cli_prepare_exits_nonzero_when_a_manifest_cannot_load(tmp_path: Any) -> None:
+    root = tmp_path / "reg"
+    write_yaml(root / "good.yaml", {"cli": "echo", "install": {"backend": "path"}})
+    (root / "bad.yaml").write_text("cli: bad\noutputs: {}\n", encoding="utf-8")
+    maina.use(Runtime.preferred(cache_root=tmp_path / "c", registry_dirs=[root], use_env=False))
+    result = runner.invoke(app, ["prepare"])
+    assert result.exit_code == 1
+    assert "prepared: good" in result.stdout
+    assert "failed: bad:" in result.stderr

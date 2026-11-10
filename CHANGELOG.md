@@ -57,6 +57,10 @@ catalog**: you register your own manifests.
 - Corrupt or non-archive downloads, an unwritable cache, malformed `asset_template`, unsafe
   `requires:` pins, null bytes in arguments or environment, and bad `extra` / `stdin` /
   `env_allow` values now raise `MainaError` subclasses instead of raw stdlib exceptions.
+- Downloads have a 30-minute wall-clock cap in addition to the per-read timeout.
+- `maina prepare` and `prepare --check` report a manifest that cannot load (or that `validate`
+  would reject) as a failure with a non-zero exit instead of skipping it or calling it satisfied.
+- `maina.isolated(...)` hands the exit-time cleanup hook back to the previous runtime.
 - pip packages such as `PyYAML` and `black[d]` are accepted (standard Python package names).
 
 ### Platform support

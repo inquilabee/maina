@@ -247,7 +247,7 @@ def test_prepare_ids_rejects_explicit_abstract(tmp_path: Path) -> None:
     assert installer.prepare_ids(["child"]) == (["child"], {})
 
 
-def test_prepare_ids_skips_broken_manifest_but_explicit_raises(tmp_path: Path) -> None:
+def test_a_broken_manifest_is_reported_as_a_failure_and_explicit_raises(tmp_path: Path) -> None:
     from maina.core.errors import ManifestError
 
     root = tmp_path / "reg"
@@ -259,10 +259,13 @@ def test_prepare_ids_skips_broken_manifest_but_explicit_raises(tmp_path: Path) -
         registry=Registry(root),
         backends=[PathBackend()],
     )
-    with pytest.warns(RuntimeWarning, match="failed to load"):
-        satisfied, missing, _failures = installer.check_ids()
+    satisfied, missing, failures = installer.check_ids()
     assert "good" in satisfied + missing
     assert "broken" not in satisfied + missing
+    assert "broken" in failures
+    prepared, prepare_failures = installer.prepare_ids()
+    assert prepared == ["good"]
+    assert "broken" in prepare_failures
     with pytest.raises(ManifestError):
         installer.check_ids(["broken"])
 

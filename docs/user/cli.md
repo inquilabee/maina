@@ -88,12 +88,15 @@ of the `2`-mapped usage errors above.
 Ensure mise runtimes and tool installs.
 
 - No arguments: prepare every concrete tool. Tools unsupported on this host
-  (`platforms:`) are skipped.
+  (`platforms:`) are skipped. A manifest that fails to load is reported as
+  `failed: <id>: ...` and the command exits `1` after preparing the rest.
 - Explicit ids: prepare exactly those. An abstract id fails with exit `2`.
 - `--check`: install nothing. Print `satisfied: <id>` or `missing: <id>` for
   each tool and exit non-zero if anything is missing. Side-effect free — no
   download, no mise call. A manifest bug (e.g. an unknown `install.backend`)
-  is its own `error: <id>: ...` line rather than aborting the whole report.
+  is its own `error: <id>: ...` line rather than aborting the whole report, and
+  so is a manifest that `maina validate` would reject (for example an unknown
+  `parser:`), which is never reported as `satisfied`.
 - `--force`: delete the named tools' cached installs before preparing. It needs
   explicit ids and cannot be combined with `--check`. To wipe the whole tool
   cache, use `maina clean`.

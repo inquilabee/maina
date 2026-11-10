@@ -257,6 +257,15 @@ def test_download_of_an_html_page_is_an_install_error_and_not_cached(
     assert not (dest / "demo").exists()
 
 
+def test_a_download_past_the_wall_clock_deadline_is_an_install_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("maina.backends.archive.DOWNLOAD_MAX_SECONDS", -1)
+    fetcher, _session = mock_targz_fetcher(demo_targz())
+    with pytest.raises(InstallError, match="download took over"):
+        fetcher.fetch_https("https://example.com/demo.tar.gz", tmp_path / "demo.tar.gz")
+
+
 def test_github_backend_passes_sha256_from_manifest(tmp_path: Path) -> None:
     from maina.backends.github import GithubBackend
     from maina.core.protocols import InstallContext
