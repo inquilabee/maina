@@ -183,3 +183,32 @@ def test_resolve_cache_root_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     assert root.is_dir()
     explicit = resolve_cache_root(tmp_path / "explicit")
     assert explicit == tmp_path / "explicit"
+
+
+def test_failed_replace_keeps_the_existing_registry_roots(tmp_path: Path) -> None:
+    root = tmp_path / "tools"
+    write_yaml(root / "keep.yaml", {"cli": "echo", "install": {"backend": "path"}})
+    rt = Runtime()
+    rt.register(registry_dirs=[root])
+    with pytest.raises(RegisterError):
+        rt.register(registry_dirs=[tmp_path / "typo"], replace=True)
+    assert rt.registry.load("keep").cli == "echo"
+
+
+def test_relative_registry_dir_still_runs_a_script_tool_from_another_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tools = tmp_path / "my_tools"
+    write_yaml(
+        tools / "hi.yaml",
+        {"cli": "hi", "install": {"backend": "script", "entry": "hi.sh"}},
+    )
+    script = tools / "scripts" / "hi.sh"
+    script.parent.mkdir()
+    script.write_text("#!/bin/sh\necho hi\n", encoding="utf-8")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(tmp_path)
+    rt = Runtime.preferred(cache_root=tmp_path / "cache", use_env=False)
+    app = maina.register(rt, registry_dirs=["my_tools"])
+    assert app.tool("hi").run(cwd=str(elsewhere)).raw.strip() == "hi"

@@ -43,7 +43,8 @@ class Registry:
         if root is None:
             self.roots: list[Path] = []
         else:
-            self.roots = [Path(root)] if isinstance(root, (str, Path)) else [Path(p) for p in root]
+            given = [root] if isinstance(root, (str, Path)) else list(root)
+            self.roots = [Path(p).resolve() for p in given]
         # Memo of "does <resolved root> ship a base.yaml", per root — without it
         # every load() re-scans (rglob) for the base id. Cleared on append_roots.
         self._base_present: dict[Path, bool] = {}
@@ -77,14 +78,16 @@ class Registry:
     def append_roots(self, roots: Sequence[Path]) -> None:
         """Append overlay roots (later entries override earlier ids).
 
-        A root already present (by resolved path) is not added again.
+        Roots are stored absolute: a relative root would make a ``script`` tool's
+        ``argv[0]`` relative and break any run with an explicit ``cwd``. A root
+        already present is not added again.
         """
-        seen = {p.resolve() for p in self.roots}
+        seen = set(self.roots)
         for raw in roots:
-            path = Path(raw)
-            if path.resolve() not in seen:
+            path = Path(raw).resolve()
+            if path not in seen:
                 self.roots.append(path)
-                seen.add(path.resolve())
+                seen.add(path)
         self.refresh()
 
     def refresh(self) -> None:

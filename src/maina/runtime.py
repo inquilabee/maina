@@ -124,9 +124,10 @@ class Runtime:
         ``registry_dirs`` (a reset for tests / apps that reconfigure at runtime).
         """
         if registry_dirs is not None:
+            # Validate before clearing: a bad path must not leave zero roots.
+            dirs = self.require_dirs(self.as_paths(registry_dirs), kind="registry")
             if replace:
                 self._registry.roots.clear()
-            dirs = self.require_dirs(self.as_paths(registry_dirs), kind="registry")
             self._registry.append_roots(dirs)
         if parsers is not None:
             self._parsers.register_many(parsers)
