@@ -69,7 +69,7 @@ class ToolRunner:
         timeout: float | None = None,
         env_allow: Iterable[str] | None = None,
         env: dict[str, str] | None = None,
-        stdin: str | bytes | None = None,
+        stdin: str | bytes | bytearray | memoryview | None = None,
         text: bool = True,
     ) -> ToolResult:
         """Install/resolve, build argv, execute, and parse.
@@ -87,10 +87,11 @@ class ToolRunner:
         tool that emits an archive, image, or other binary on stdout.
         """
         self._check_env(env)
-        self._check_call_inputs(env_allow=env_allow, stdin=stdin, cwd=cwd)
-        # Materialise env_allow once — it is consumed twice (install-phase and
+        # env_allow is materialised once — it is consumed twice (install-phase and
         # tool subprocess), so a one-shot generator would apply differently.
-        env_allow = None if env_allow is None else frozenset(env_allow)
+        env_allow = self._check_call_inputs(env_allow=env_allow, stdin=stdin, cwd=cwd)
+        if isinstance(stdin, (bytearray, memoryview)):
+            stdin = bytes(stdin)
         # Build argv first so a bad kwarg raises ArgError *before* any install
         # work (a typo'd argument should not pay for a download).
         argv = ArgParser(self.manifest.args, tool_id=self.manifest.id).build(
@@ -160,18 +161,34 @@ class ToolRunner:
                     "and no NUL byte in the name or value"
                 )
 
-    def _check_call_inputs(self, *, env_allow: Any, stdin: Any, cwd: str | None) -> None:
-        """Reject call-site values ``Popen`` / ``frozenset`` would mangle or raise on."""
+    def _check_call_inputs(
+        self, *, env_allow: Any, stdin: Any, cwd: str | None
+    ) -> frozenset[str] | None:
+        """Reject call-site values ``Popen`` / ``frozenset`` would mangle or raise on.
+
+        Returns ``env_allow`` as a frozenset (or ``None``).
+        """
         tool = self.manifest.id
-        if isinstance(env_allow, str):
-            raise ArgError(
-                f"{tool}: env_allow must be a list of variable names, not the string "
-                f"{env_allow!r} (it would be read as a set of single characters)"
-            )
-        if stdin is not None and not isinstance(stdin, (str, bytes)):
+        allowed = self._env_allow_names(env_allow)
+        if stdin is not None and not isinstance(stdin, (str, bytes, bytearray, memoryview)):
             raise ArgError(f"{tool}: stdin must be str or bytes, not {type(stdin).__name__}")
         if cwd is not None and "\x00" in str(cwd):
             raise ArgError(f"{tool}: cwd contains a NUL byte")
+        return allowed
+
+    def _env_allow_names(self, env_allow: Any) -> frozenset[str] | None:
+        if env_allow is None:
+            return None
+        if isinstance(env_allow, str) or not isinstance(env_allow, Iterable):
+            raise ArgError(
+                f"{self.manifest.id}: env_allow must be a list of variable names, not "
+                f"{env_allow!r} (a bare string would be read as single characters)"
+            )
+        items = list(env_allow)
+        names = frozenset(name for name in items if isinstance(name, str))
+        if len(names) != len(set(items)):
+            raise ArgError(f"{self.manifest.id}: env_allow must be a list of variable-name strings")
+        return names
 
     def _build_result(
         self,

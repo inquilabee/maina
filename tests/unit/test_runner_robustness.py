@@ -124,6 +124,9 @@ def test_run_without_stdin_does_not_block(tmp_path: Path) -> None:
         {"extra": [1, 2]},
         {"stdin": 5},
         {"env_allow": "HOME"},
+        {"env_allow": ["HOME", 1]},
+        {"env_allow": 5},
+        {"extra": {"a": 1}},
         {"cwd": "bad\x00dir"},
     ],
 )
@@ -143,3 +146,9 @@ def test_a_nul_byte_in_an_argument_raises_arg_error(tmp_path: Path) -> None:
     runner = ToolRunner(reg.load("echo"), installer=path_installer(tmp_path, reg))
     with pytest.raises(ArgError, match="NUL"):
         runner.run({"msg": "a\x00b"})
+
+
+def test_a_bytearray_stdin_is_still_accepted(tmp_path: Path) -> None:
+    reg = make_reg(tmp_path, {"cat.yaml": {"cli": "cat", "install": {"backend": "path"}}})
+    runner = ToolRunner(reg.load("cat"), installer=path_installer(tmp_path, reg))
+    assert runner.run({}, stdin=bytearray(b"hi"), timeout=5).raw == "hi"

@@ -10,13 +10,14 @@ from __future__ import annotations
 
 import os
 import shlex
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from maina.core.errors import ArgError
 from maina.core.registry import ArgSpec
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Iterable
 
 
 class ArgParser:
@@ -328,6 +329,8 @@ class ArgParser:
     @staticmethod
     def _extra_tokens(extra: Iterable[Any]) -> list[str]:
         """``extra=[...]`` tokens: strings or paths only (a number is a call-site mistake)."""
+        if isinstance(extra, Mapping):
+            raise ArgError("extra must be a string or a list of strings, not a mapping")
         try:
             tokens = list(extra)
         except TypeError as exc:
