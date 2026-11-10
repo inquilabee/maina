@@ -46,4 +46,4 @@ code-quality gates. It is not required for contributions and does not run in CI.
 
 ## Reporting security issues
 
-Do not open a public issue; see [SECURITY.md](SECURITY.md).
+Do not open a public issue; see the [security policy](SECURITY.md).

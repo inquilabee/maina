@@ -9,6 +9,9 @@ install:
   assets:
     linux-x86_64: shellcheck-v0.10.0.linux.x86_64.tar.xz
     macos-arm64: shellcheck-v0.10.0.darwin.aarch64.tar.xz
+  sha256:
+    linux-x86_64: 6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87
+    macos-arm64: bbd2f14826328eee7679da7221f2bc3afb011f6a928b848c80c321f6046ddf81
 parser: json
 args:
   path: {positional: true, required: true, repeat: true, type: path}
