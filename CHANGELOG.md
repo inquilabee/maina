@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.1.1 - 2026-11-10
+
+### Changed
+
+- README: added "What's in the name?" (the package page on PyPI now carries it).
+
+### Internal
+
+- Tag-triggered publish workflow (trusted publishing); the prepare usage-error test no longer
+  depends on terminal formatting.
+
 ## 0.1.0 - 2026-11-10
 
 First public release (Beta). maina ships **the engine and the manifest contract, not a tool

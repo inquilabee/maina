@@ -1,6 +1,6 @@
 [project]
 name = "maina"
-version = "0.1.0"
+version = "0.1.1"
 description = "Use non-Python CLIs from Python with native-like APIs"
 readme = "README.md"
 license = "MIT"
