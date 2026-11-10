@@ -61,6 +61,14 @@ real `shellcheck` manifest with a JSON parser.
 - **A CLI** — `maina list | describe | validate | prepare | run`.
 - **Typed** — ships `py.typed`; errors derive from `MainaError`.
 
+## What's in the name?
+
+The myna (also spelled *maina*) is a bird, and the logo is a Common myna. Birds spend
+their lives carrying things from one place to another, and that is the one thing
+this project borrows from them: it carries a call from Python over to a program
+written in another language, and brings the answer back as data. The name only claims
+that part of what birds do.
+
 ## Platform support and stability
 
 Linux and macOS are supported. Windows is not: the install lock is a no-op there and
