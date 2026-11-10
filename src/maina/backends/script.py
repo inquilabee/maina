@@ -104,4 +104,7 @@ class ScriptBackend(InstallerBackend):
     def _ensure_executable(path: Path) -> None:
         mode = path.stat().st_mode
         if not mode & 0o111:
-            path.chmod(mode | 0o111)
+            try:
+                path.chmod(mode | 0o111)
+            except OSError as exc:
+                raise InstallError(f"cannot make {path} executable: {exc}") from exc

@@ -96,6 +96,23 @@ def test_safe_extract_tar_rejects_oversized_total(
         ArchiveFetcher.safe_extract_tar(archive, dest, mode="r:gz")
 
 
+def test_safe_extract_tar_rejects_too_many_members(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("maina.backends.archive.EXTRACT_MAX_MEMBERS", 2)
+    archive = tmp_path / "many.tar.gz"
+    dest = tmp_path / "out"
+    dest.mkdir()
+    with tarfile.open(archive, "w:gz") as tar:
+        for index in range(3):
+            info = tarfile.TarInfo(name=f"link{index}")
+            info.type = tarfile.SYMTYPE
+            info.linkname = "target"
+            tar.addfile(info)
+    with pytest.raises(InstallError, match="members"):
+        ArchiveFetcher.safe_extract_tar(archive, dest, mode="r:gz")
+
+
 def patch_zip_declared_size(path: Path, *, real_size: int, lie_size: int) -> None:
     """Rewrite the uncompressed-size field in both the local file header and
     the central directory record of the (single) entry in *path*, without

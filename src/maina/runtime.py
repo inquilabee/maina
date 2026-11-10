@@ -285,7 +285,13 @@ class Runtime:
             override = os.environ.get("MAINA_CACHE")
             root = Path(override) if override else Path.home() / ".cache" / "maina"
         root = root.expanduser().resolve()
-        root.mkdir(parents=True, exist_ok=True)
+        try:
+            root.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise RegisterError(
+                f"cannot create the maina cache directory {root}: {exc} "
+                "(set MAINA_CACHE to a writable directory)"
+            ) from exc
         return root
 
     @staticmethod

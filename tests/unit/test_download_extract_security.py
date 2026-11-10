@@ -240,6 +240,23 @@ def test_download_and_extract_sha256_mismatch_rejected(tmp_path: Path) -> None:
     assert not (tmp_path / "out" / "demo").exists()
 
 
+@pytest.mark.parametrize("asset", ["demo.tar.gz", "demo.tar.xz", "demo.zip", "demo.gz", "demo"])
+def test_download_of_an_html_page_is_an_install_error_and_not_cached(
+    tmp_path: Path, asset: str
+) -> None:
+    """A proxy / login page served with a 200 must never become the cached tool."""
+    fetcher, _session = mock_targz_fetcher(b"<html>sign in to continue</html>")
+    dest = tmp_path / "out"
+    with pytest.raises(InstallError):
+        fetcher.download_and_extract(
+            f"https://example.com/releases/{asset}",
+            dest,
+            binary="demo",
+            asset_name=asset,
+        )
+    assert not (dest / "demo").exists()
+
+
 def test_github_backend_passes_sha256_from_manifest(tmp_path: Path) -> None:
     from maina.backends.github import GithubBackend
     from maina.core.protocols import InstallContext

@@ -28,6 +28,30 @@ DEFAULT_MAX_BYTES = 512 * 1024 * 1024
 # Cap on the *decompressed* size of an archive (guards against zip/tar bombs;
 # the download cap above only covers the compressed stream).
 EXTRACT_MAX_BYTES = 2 * 1024 * 1024 * 1024
+# Cap on archive member count: the byte cap above ignores links and empty
+# members, so a tiny archive of millions of symlinks could still exhaust time/memory.
+EXTRACT_MAX_MEMBERS = 100_000
+# What an executable maina can exec starts with: ELF, Mach-O (thin/fat, either
+# endianness), a PE header, or a shebang. A captive-portal HTML page does not.
+EXECUTABLE_MAGICS = (
+    b"\x7fELF",
+    b"#!",
+    b"MZ",
+    b"\xfe\xed\xfa\xce",
+    b"\xfe\xed\xfa\xcf",
+    b"\xce\xfa\xed\xfe",
+    b"\xcf\xfa\xed\xfe",
+    b"\xca\xfe\xba\xbe",
+)
+# Failures a corrupt, truncated, or unwritable download raises from the stdlib.
+UNPACK_ERRORS = (
+    tarfile.TarError,
+    zipfile.BadZipFile,
+    gzip.BadGzipFile,
+    lzma.LZMAError,
+    EOFError,
+    OSError,
+)
 CHUNK_SIZE = 64 * 1024
 REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 MAX_REDIRECT_HOPS = 5
@@ -85,22 +109,25 @@ class ArchiveFetcher:
         When *sha256* is given, the downloaded asset must match that hex digest
         before it is extracted; a mismatch raises :class:`InstallError`.
         """
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            # asset_name is validated at manifest load, but never let it escape.
-            archive = tmp_path / Path(asset_name).name
-            self.fetch_https(url, archive)
-            if sha256:
-                self._verify_sha256(archive, expected=sha256, url=url)
-            self.extract_archive(
-                archive,
-                tmp_path,
-                dest_dir,
-                binary=binary,
-                asset_name=asset_name,
-                allow_any_executable=allow_any_executable,
-            )
+        try:
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory() as tmp:
+                tmp_path = Path(tmp)
+                # asset_name is validated at manifest load, but never let it escape.
+                archive = tmp_path / Path(asset_name).name
+                self.fetch_https(url, archive)
+                if sha256:
+                    self._verify_sha256(archive, expected=sha256, url=url)
+                self.extract_archive(
+                    archive,
+                    tmp_path,
+                    dest_dir,
+                    binary=binary,
+                    asset_name=asset_name,
+                    allow_any_executable=allow_any_executable,
+                )
+        except UNPACK_ERRORS as exc:
+            raise InstallError(f"could not install {asset_name} from {url}: {exc}") from exc
 
     @staticmethod
     def _verify_sha256(archive: Path, *, expected: str, url: str) -> None:
@@ -247,6 +274,8 @@ class ArchiveFetcher:
                     raise InstallError(
                         f"archive expands to over {EXTRACT_MAX_BYTES} bytes, over the cap"
                     )
+            if len(members) >= EXTRACT_MAX_MEMBERS:
+                raise InstallError(f"archive has over {EXTRACT_MAX_MEMBERS} members, over the cap")
             cls.assert_safe_member(dest, member.name)
             cls.assert_safe_link(dest, member)
             members.append(member)
@@ -315,13 +344,29 @@ class ArchiveFetcher:
             raise InstallError(f"unsupported asset format: {name}")
         tmp = out.with_name(f".{out.name}.part")
         opener = gzip.open if name.endswith(".gz") else lzma.open if name.endswith(".xz") else None
-        if opener is None:
-            shutil.copy2(archive, tmp)
-        else:
-            with opener(archive, "rb") as src, tmp.open("wb") as dst:
-                cls._capped_copy(src, dst, name)
+        try:
+            if opener is None:
+                shutil.copy2(archive, tmp)
+            else:
+                with opener(archive, "rb") as src, tmp.open("wb") as dst:
+                    cls._capped_copy(src, dst, name)
+            cls._require_executable_format(tmp, name)
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
         cls.make_executable(tmp)
         tmp.replace(out)
+
+    @staticmethod
+    def _require_executable_format(path: Path, name: str) -> None:
+        """Reject a download that is not an executable (e.g. a proxy's HTML page)."""
+        with path.open("rb") as handle:
+            head = handle.read(4)
+        if not head.startswith(EXECUTABLE_MAGICS):
+            raise InstallError(
+                f"{name} is not an executable (ELF, Mach-O, PE or shebang script) — "
+                "the server may have returned an error or login page instead of the release asset"
+            )
 
     @staticmethod
     def _capped_copy(src: DecompressingReader, dst: IO[bytes], name: str) -> None:
