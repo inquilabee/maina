@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from typer.testing import CliRunner
@@ -13,6 +14,12 @@ from maina.cli import app
 from maina.runtime import Runtime
 
 runner = CliRunner()
+
+
+def plain(text: str) -> str:
+    """Typer draws usage errors in a coloured, width-wrapped box on CI terminals; keep the words."""
+    text = re.sub(r"\x1b\[[0-9;]*m", "", text)
+    return " ".join(re.sub(r"[│╭╮╰╯─]", " ", text).split())
 
 
 def test_cli_validate_reports_each_error_and_exits_nonzero(tmp_path: Any) -> None:
@@ -120,11 +127,11 @@ def test_cli_prepare_force_needs_ids_and_rejects_check(tmp_path: Any) -> None:
 
     bare = runner.invoke(app, ["prepare", "--force"])
     assert bare.exit_code != 0
-    assert "needs explicit tool ids" in (bare.stdout + bare.stderr)
+    assert "needs explicit tool ids" in plain(bare.stdout + bare.stderr)
 
     combo = runner.invoke(app, ["prepare", "trueish", "--force", "--check"])
     assert combo.exit_code != 0
-    assert "cannot be combined with --check" in (combo.stdout + combo.stderr)
+    assert "cannot be combined with --check" in plain(combo.stdout + combo.stderr)
 
 
 def test_cli_prepare_check_reports_state(tmp_path: Any) -> None:
