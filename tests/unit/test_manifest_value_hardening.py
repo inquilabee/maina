@@ -54,7 +54,7 @@ def test_a_requires_pin_cannot_name_a_path(tmp_path: Path) -> None:
 
 def test_runtime_lock_never_leaves_the_cache_root(tmp_path: Path) -> None:
     with (
-        pytest.raises(InstallError, match="outside the cache"),
+        pytest.raises(InstallError, match="not a safe cache directory"),
         Installer.runtime_lock(tmp_path / "cache", "node", "20/../../../outside"),
     ):
         pytest.fail("lock must not be taken")
@@ -84,3 +84,19 @@ def test_container_values_are_rejected_where_a_string_is_required(
 ) -> None:
     with pytest.raises(ManifestError, match=r"not a (dict|list)"):
         load_env(tmp_path, {"cli": "t", "install": {"backend": "path"}, **bad})
+
+
+def test_a_trailing_newline_does_not_pass_the_package_name_check(tmp_path: Path) -> None:
+    install = {"backend": "pip", "package": "black\n"}
+    with pytest.raises(ManifestError, match="valid pip name"):
+        load(tmp_path, {"cli": "t", "version": "1", "install": install})
+
+
+def test_runtime_lock_works_when_the_cache_directory_is_a_symlink(tmp_path: Path) -> None:
+    real = tmp_path / "bigdisk"
+    real.mkdir()
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / "runtimes").symlink_to(real)
+    with Installer.runtime_lock(cache, "node", "20"):
+        assert (real / "node-20" / ".maina-install.lock").exists()

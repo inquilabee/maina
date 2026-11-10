@@ -213,6 +213,10 @@ a re-download for a `github` tool.
 
 Language runtimes to provision through mise before the tool runs.
 
+A pin is a plain version string such as `"20"`, `"3.12.1"` or `"lts"`. It names a cache
+directory, so it may not contain path separators (`lts/iron` is rejected; use a plain
+alias such as `lts`), `..`, or glob characters.
+
 ```yaml
 requires:
   node: "22"

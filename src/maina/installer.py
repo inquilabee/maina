@@ -24,7 +24,7 @@ from maina.core.protocols import (
     InstallerBackend,
     LanguageRuntimeProvider,
 )
-from maina.core.subprocess_utils import resolve_within
+from maina.core.registry.common import is_unsafe_segment
 from maina.mise import MiseRuntime
 
 if TYPE_CHECKING:
@@ -124,14 +124,12 @@ class Installer:
         ``tools/``, so it can never nest with (or deadlock against)
         ``install_dir_lock`` taken by the same call path.
         """
-        lock_dir = cache_root / "runtimes" / f"{runtime}-{version}"
-        # Defence in depth: pins are validated at load, but never lock outside the cache.
-        resolve_within(
-            lock_dir,
-            cache_root,
-            error_cls=InstallError,
-            message=f"runtime {runtime}@{version} resolves outside the cache root",
-        )
+        name = f"{runtime}-{version}"
+        # Pins are validated at load; refuse a separator or leading dot here too. Lexical on
+        # purpose: resolving would reject a cache directory that is itself a symlink.
+        if is_unsafe_segment(name):
+            raise InstallError(f"runtime {runtime}@{version} is not a safe cache directory name")
+        lock_dir = cache_root / "runtimes" / name
         with cls._dir_lock(lock_dir):
             yield
 

@@ -148,7 +148,7 @@ class InstallSpec:
             return None
         text = scalar_str(raw, field_name="install.package", tool_id=tool_id)
         pattern, kind = (cls._PIP_NAME_RE, "pip") if backend == "pip" else (cls._NPM_NAME_RE, "npm")
-        if not pattern.match(text):
+        if not pattern.fullmatch(text):
             raise manifest_error(tool_id, f"install.package {text!r} is not a valid {kind} name")
         return text
 
