@@ -12,8 +12,15 @@ keywords = ["cli", "subprocess", "tools", "registry", "wrapper", "mise"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Libraries :: Python Modules",
     "Typing :: Typed",
 ]
 requires-python = ">=3.11.4"
@@ -27,6 +34,8 @@ dependencies = [
 Homepage = "https://inquilabee.github.io/maina/"
 Documentation = "https://inquilabee.github.io/maina/"
 Repository = "https://github.com/inquilabee/maina"
+Changelog = "https://github.com/inquilabee/maina/blob/main/CHANGELOG.md"
+Issues = "https://github.com/inquilabee/maina/issues"
 
 [project.scripts]
 maina = "maina.cli:main"
@@ -36,6 +45,7 @@ dev = [
     "mkdocs-material>=9.5",
     "pre-commit>=4.0",
     "pytest>=8.0",
+    "ruff>=0.9",
     "shipgate>=0.1.0",
 ]
 
@@ -53,6 +63,18 @@ known_first_party = ["maina"]
 
 # [tool.deptry.per_rule_ignores]
 # DEP002 = ["optional-extra-package"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.format]
+# Docs code blocks keep their hand-aligned comments.
+exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -325,7 +325,7 @@ def test_cli_name_rejects_flag_and_glob_chars(tmp_path: Path, bad: str) -> None:
     root = tmp_path / "reg"
     write_yaml(root / "t.yaml", {"cli": bad, "install": {"backend": "path"}})
     with pytest.raises(ManifestError, match="not a safe path segment"):
-        Registry(root).load("t").cli  # ruff:ignore[useless-expression] - property triggers validation
+        _ = Registry(root).load("t").cli  # property access triggers validation
 
 
 def test_install_sha256_must_be_64_hex(tmp_path: Path) -> None:
