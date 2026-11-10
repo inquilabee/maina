@@ -38,17 +38,20 @@ catalog**: you register your own manifests.
 - A registry root is documented as trusted code; `use_env=False` opts a library out of
   `$MAINA_REGISTRY`.
 - Tool ids, manifest paths, `install.entry`, `requires:` pins, archive members and symlinks are
-  contained under their roots; tar extraction uses the data filter with size and member-count
-  caps.
+  contained under their roots; tar extraction uses the data filter, and tar and zip extraction have
+  size and member-count caps.
 - Downloads are HTTPS-only with a redirect-host allowlist; a bare or compressed asset must look
   like an executable before it is cached, so an error page can never become the installed tool.
 - The `mise` bootstrap (`curl | sh`) is opt-in via `MAINA_ALLOW_MISE_BOOTSTRAP=1`; `npm` runs
   with `--ignore-scripts` and `pip` refuses source distributions unless the manifest opts in.
 
-### Fixed in the release candidate
+### Hardening
 
 - `timeout=` now kills the tool's whole process group, so a wrapper that forks no longer
-  outlives the timeout; Ctrl-C and output-cap overflow also stop the tree.
+  outlives the timeout; Ctrl-C and output-cap overflow also stop the tree, and a child left
+  holding the output pipes after the tool exits is killed after a short grace period. Tools run
+  in their own session, so they have no controlling terminal: a tool that prompts through
+  `/dev/tty` fails instead of asking (pass secrets via `stdin=`, `env=`, or flags).
 - Relative `registry_dirs` entries are stored absolute, so `script` tools run correctly with an
   explicit `cwd`; a failed `register(replace=True)` no longer empties the registry.
 - Corrupt or non-archive downloads, an unwritable cache, malformed `asset_template`, unsafe
