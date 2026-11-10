@@ -112,6 +112,13 @@ shared-library / CA-bundle / proxy vars, `MISE_DATA_DIR`) plus the names you
 list are forwarded to the subprocess. `env={...}` layers on top of that; the
 manifest's own `env:` block still wins a key collision.
 
+Tools run non-interactively in their own session: stdin is empty unless you pass
+`stdin=`, and there is no controlling terminal, so a tool that prompts through
+`/dev/tty` (a passphrase or credential prompt) fails instead of asking. Pass such
+secrets through `stdin=`, `env=`, or the tool's own flags. If a tool exits but
+leaves a child holding its output pipes, maina stops waiting after a short grace
+period and kills that child.
+
 ## The CLI
 
 The CLI reads its catalog from `MAINA_REGISTRY` (directories separated by

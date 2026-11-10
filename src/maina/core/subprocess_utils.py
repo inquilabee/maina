@@ -65,6 +65,9 @@ def run_capped(
     The child runs in its own session so a timeout, overflow, or interrupt can
     kill its descendants too — killing only the direct child leaves a forking
     tool's grandchildren holding the pipes open until they exit on their own.
+    A consequence: the tool has no controlling terminal, so it cannot prompt
+    through ``/dev/tty``. A child still holding the pipes after the tool exits
+    is killed after a short grace period rather than waited on.
     """
     proc = subprocess.Popen(
         argv,
@@ -86,20 +89,33 @@ def run_capped(
         # Timeout, Ctrl-C, or a stdin write failure: never leave the tree running.
         kill_tree(proc)
         proc.wait()
-        out_thread.join(DRAIN_JOIN_TIMEOUT)
-        err_thread.join(DRAIN_JOIN_TIMEOUT)
+        join_drains(proc, out_thread, err_thread)
         raise
-    out_thread.join()
-    err_thread.join()
+    join_drains(proc, out_thread, err_thread)
     if overflowed.is_set():
         raise OutputCapExceededError(max_bytes)
     return subprocess.CompletedProcess(argv, returncode, bytes(out_buf), bytes(err_buf))
 
 
-def kill_tree(proc: subprocess.Popen[bytes]) -> None:
-    """SIGKILL *proc* and its whole session (it leads one, see :func:`run_capped`)."""
+def join_drains(proc: subprocess.Popen[bytes], *threads: threading.Thread) -> None:
+    """Wait for the output pipes to close; kill a child still holding them after a grace period."""
+    for thread in threads:
+        thread.join(DRAIN_JOIN_TIMEOUT)
+    if any(thread.is_alive() for thread in threads):
+        kill_tree(proc, members_alive=True)
+        for thread in threads:
+            thread.join(DRAIN_JOIN_TIMEOUT)
+
+
+def kill_tree(proc: subprocess.Popen[bytes], *, members_alive: bool = False) -> None:
+    """SIGKILL *proc* and its whole session (it leads one, see :func:`run_capped`).
+
+    The group id is only trusted while the leader is unreaped or *members_alive*
+    (a live drain thread proves a member still holds the pipe); otherwise the pid
+    could in theory have been reused.
+    """
     # pid > 0: killpg(0) would signal our own process group.
-    if hasattr(os, "killpg") and proc.pid > 0:
+    if hasattr(os, "killpg") and proc.pid > 0 and (proc.returncode is None or members_alive):
         with contextlib.suppress(ProcessLookupError, PermissionError):
             os.killpg(proc.pid, signal.SIGKILL)
             return
