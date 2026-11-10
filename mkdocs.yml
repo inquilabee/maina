@@ -9,6 +9,8 @@ exclude_docs: |
   product/
 theme:
   name: material
+  logo: images/maina-mark.svg
+  favicon: images/maina-mark.svg
   palette:
     - scheme: default
       primary: black
@@ -38,6 +40,7 @@ nav:
   - Manifest schema: user/manifests.md
   - Install backends: user/backends.md
   - Parsers: user/parsers.md
+  - Errors: user/errors.md
   - Extending maina: user/extending.md
   - Security model: user/security.md
   - Architecture: architecture.md

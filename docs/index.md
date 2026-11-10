@@ -51,5 +51,6 @@ manifest schema, `ToolResult`, and the exception types are the stable core;
   `script`, and mise runtimes.
 - [Extending maina](user/extending.md) — add tools, parsers, and backends
   without a fork.
+- [Errors](user/errors.md) — every exception maina raises and what it means.
 - [Security model](user/security.md) — a registry root is trusted code; what
   `env_allow` and `use_env=False` do.

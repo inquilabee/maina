@@ -1,6 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="maina">
-  <rect width="64" height="64" rx="14" fill="#111111"/>
-  <path d="M16 22 L28 32 L16 42" fill="none" stroke="#ffb300" stroke-width="5"
-        stroke-linecap="round" stroke-linejoin="round"/>
-  <rect x="32" y="38" width="16" height="5" rx="2.5" fill="#ffb300"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="maina — a Common myna">
+  <title>maina — a Common myna</title>
+  <rect width="64" height="64" rx="14" fill="#fbf1dc"/>
+  <!-- perch -->
+  <path d="M10 53 H54" stroke="#6b4a2b" stroke-width="3" stroke-linecap="round"/>
+  <!-- legs -->
+  <path d="M29 45 V52 M35 45 V52" stroke="#f0a800" stroke-width="2.2" stroke-linecap="round"/>
+  <!-- tail with white tip -->
+  <path d="M42 36 L58 46 L55 50 L38 42 Z" fill="#5a3a22"/>
+  <path d="M56.4 47.6 L58 46 L55 50 L53.6 49 Z" fill="#ffffff"/>
+  <!-- body -->
+  <ellipse cx="32" cy="38" rx="16" ry="11" transform="rotate(-8 32 38)" fill="#8b5a34"/>
+  <!-- wing with white flash -->
+  <path d="M24 34 Q38 30 46 40 Q34 46 24 40 Z" fill="#6c4526"/>
+  <ellipse cx="33" cy="37.2" rx="4.6" ry="2" transform="rotate(-12 33 37.2)" fill="#ffffff"/>
+  <!-- black head and throat -->
+  <circle cx="21" cy="26" r="10" fill="#1d1d1d"/>
+  <path d="M13 30 Q18 40 28 38 L26 30 Z" fill="#1d1d1d"/>
+  <!-- yellow eye patch and eye -->
+  <ellipse cx="23" cy="25.5" rx="4.4" ry="3.2" fill="#ffc81a"/>
+  <circle cx="22" cy="25.5" r="1.5" fill="#1d1d1d"/>
+  <circle cx="21.5" cy="25" r="0.5" fill="#ffffff"/>
+  <!-- yellow bill -->
+  <path d="M12.5 25.2 L3 28.6 L12.8 30.6 Z" fill="#ffb300"/>
 </svg>

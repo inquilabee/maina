@@ -21,7 +21,7 @@ Layers:
 Tool (public)
   -> Registry      load + merge manifests, resolve ids
   -> Installer     dispatch to an InstallerBackend, compose env
-       -> PathBackend / GithubBackend / NpmBackend
+       -> PathBackend / GithubBackend / NpmBackend / PipBackend / ScriptBackend
        -> LanguageRuntimeProvider (MiseRuntime)
   -> ArgParser     kwargs -> argv from the manifest schema
   -> subprocess

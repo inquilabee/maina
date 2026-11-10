@@ -25,13 +25,6 @@ the one corner of the install-backend surface the other 27 tools don't
 exercise). Release asset names and CLI flags were read live against each
 project's current release / npm package on 2026-09-05 (see the comment atop
 each manifest) — pins will need bumping later like any dependency.
-`examples/wild_catalog/tools` is allowlisted against this repo's
-folder-breadth gate (`.shipgate/allowlists/folder-breadth.yaml`) — a flat
-one-manifest-per-tool catalog, not application code sprawl. That allowlist
-file lives under `.shipgate/`, which this repo gitignores entirely as
-personal/local state, so the entry does not travel with a fresh clone or CI
-— re-add it (or restructure `tools/` into subdirectories, which would change
-every tool's registry id) if the gate blocks a commit.
 
 | Tool | Backend | Category | Real demo call |
 | --- | --- | --- | --- |
