@@ -1,0 +1,48 @@
+name: Publish
+on:
+  push:
+    tags:
+      - v[0-9]+.[0-9]+.[0-9]+
+      - v[0-9]+.[0-9]+.[0-9]+rc[0-9]+
+      - v[0-9]+.[0-9]+.[0-9]+[ab][0-9]+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run --no-dev --with pytest pytest tests/unit -q
+      - run: uv build --no-sources
+      - run: uvx twine check dist/*
+      - name: Smoke wheel (version must match the tag)
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          uv run --isolated --no-project --with dist/*.whl python -c "
+          import maina
+          assert maina.__version__ == '''${TAG}''', (maina.__version__, '''${TAG}''')
+          print('ok', maina.__version__)
+          "
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/maina
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - run: uv publish --trusted-publishing always
