@@ -68,6 +68,7 @@ class FakePopen:
         self.stdout: io.BytesIO | None = io.BytesIO(stdout)
         self.stderr: io.BytesIO | None = io.BytesIO(stderr)
         self.stdin: io.BytesIO | None = io.BytesIO()
+        self.pid = 0  # never a real group: kill_tree falls back to kill()
         self.returncode = returncode
         self._wait_raises = wait_raises
         self.killed = False

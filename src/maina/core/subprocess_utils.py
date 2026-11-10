@@ -10,6 +10,8 @@ Pure transforms with no accumulating state — plain functions, not a class.
 from __future__ import annotations
 
 import contextlib
+import os
+import signal
 import subprocess
 import threading
 from typing import TYPE_CHECKING
@@ -26,6 +28,9 @@ DEFAULT_CHUNK_SIZE = 64 * 1024
 # document install-time code as untrusted), so they get the same order-of-
 # magnitude bound as the tool-run boundary (runner.RUN_OUTPUT_MAX_BYTES).
 INSTALL_OUTPUT_MAX_BYTES = 64 * 1024 * 1024
+# How long to wait for a drain thread after the process tree was killed. A
+# grandchild that left the session (setsid) can still hold the pipe open.
+DRAIN_JOIN_TIMEOUT = 2.0
 
 
 class OutputCapExceededError(Exception):
@@ -54,8 +59,12 @@ def run_capped(
     the other still has unread data). Crossing the cap kills the process and
     raises :class:`OutputCapExceededError` instead of silently truncating and
     returning a partial result. ``subprocess.TimeoutExpired`` propagates
-    (after the process is killed and both drain threads joined), matching
+    (after the process tree is killed and the drain threads joined), matching
     ``subprocess.run``'s own contract.
+
+    The child runs in its own session so a timeout, overflow, or interrupt can
+    kill its descendants too — killing only the direct child leaves a forking
+    tool's grandchildren holding the pipes open until they exit on their own.
     """
     proc = subprocess.Popen(
         argv,
@@ -64,6 +73,7 @@ def run_capped(
         stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
         cwd=cwd,
         env=env,
+        start_new_session=True,
     )
     out_buf, err_buf = bytearray(), bytearray()
     overflowed = threading.Event()
@@ -72,17 +82,28 @@ def run_capped(
     try:
         write_stdin(proc, stdin)
         returncode = proc.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        proc.kill()
+    except BaseException:
+        # Timeout, Ctrl-C, or a stdin write failure: never leave the tree running.
+        kill_tree(proc)
         proc.wait()
-        out_thread.join()
-        err_thread.join()
+        out_thread.join(DRAIN_JOIN_TIMEOUT)
+        err_thread.join(DRAIN_JOIN_TIMEOUT)
         raise
     out_thread.join()
     err_thread.join()
     if overflowed.is_set():
         raise OutputCapExceededError(max_bytes)
     return subprocess.CompletedProcess(argv, returncode, bytes(out_buf), bytes(err_buf))
+
+
+def kill_tree(proc: subprocess.Popen[bytes]) -> None:
+    """SIGKILL *proc* and its whole session (it leads one, see :func:`run_capped`)."""
+    # pid > 0: killpg(0) would signal our own process group.
+    if hasattr(os, "killpg") and proc.pid > 0:
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(proc.pid, signal.SIGKILL)
+            return
+    proc.kill()
 
 
 def start_drain_thread(
@@ -109,7 +130,7 @@ def drain_capped(
     max_bytes: int,
     chunk_size: int,
 ) -> None:
-    """Read *pipe* into *buf*; kill *proc* once the combined cap is crossed."""
+    """Read *pipe* into *buf*; kill *proc*'s tree once the combined cap is crossed."""
     if pipe is None:
         return
     # pipe torn down under us after kill()
@@ -119,7 +140,7 @@ def drain_capped(
                 continue
             if len(buf) + len(chunk) > max_bytes:
                 overflowed.set()
-                proc.kill()
+                kill_tree(proc)
                 continue
             buf.extend(chunk)
 
