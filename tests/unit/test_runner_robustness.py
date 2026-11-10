@@ -62,7 +62,7 @@ def test_copy_raw_asset_caps_gz_decompression(
 ) -> None:
     import gzip
 
-    from maina.backends import archive as archive_mod
+    from maina.backends import unpack as archive_mod
     from maina.backends.archive import ArchiveFetcher
 
     monkeypatch.setattr(archive_mod, "EXTRACT_MAX_BYTES", 4096)

@@ -116,3 +116,12 @@ class ToolExitError(MainaError):
         self.command = command
         self.raw = raw
         self.stderr = stderr
+
+    @classmethod
+    def from_run(
+        cls, *, tool: str, exit_code: int, command: list[str], raw: str, stderr: str
+    ) -> ToolExitError:
+        """Build the error for a failed run, naming the last line of stderr."""
+        last = next((ln.strip() for ln in reversed(stderr.splitlines()) if ln.strip()), "")
+        message = f"{tool} exited with code {exit_code}" + (f": {last[:200]}" if last else "")
+        return cls(message, exit_code=exit_code, tool=tool, command=command, raw=raw, stderr=stderr)

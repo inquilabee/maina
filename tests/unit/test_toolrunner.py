@@ -453,9 +453,9 @@ def test_from_file_template_rejects_format_spec(tmp_path: Path) -> None:
 def test_from_file_report_over_the_size_cap_is_rejected(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import maina.runner as runner_mod
+    import maina.core.reportfile as runner_mod
 
-    monkeypatch.setattr(runner_mod, "REPORT_MAX_BYTES", 16)
+    monkeypatch.setattr(runner_mod.ReportReader, "MAX_BYTES", 16)
     work = tmp_path / "cwd"
     work.mkdir()
     (work / "r.json").write_text('{"padding": "well over sixteen bytes"}', encoding="utf-8")

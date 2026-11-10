@@ -83,7 +83,7 @@ def test_safe_extract_tar_rejects_oversized_total(
 ) -> None:
     """The cap must be enforced by the streaming member walk (``tar.next()``),
     not only reachable via ``getmembers()``."""
-    monkeypatch.setattr("maina.backends.archive.EXTRACT_MAX_BYTES", 4)
+    monkeypatch.setattr("maina.backends.unpack.EXTRACT_MAX_BYTES", 4)
     archive = tmp_path / "big.tar.gz"
     dest = tmp_path / "out"
     dest.mkdir()
@@ -99,7 +99,7 @@ def test_safe_extract_tar_rejects_oversized_total(
 def test_safe_extract_tar_rejects_too_many_members(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("maina.backends.archive.EXTRACT_MAX_MEMBERS", 2)
+    monkeypatch.setattr("maina.backends.unpack.EXTRACT_MAX_MEMBERS", 2)
     archive = tmp_path / "many.tar.gz"
     dest = tmp_path / "out"
     dest.mkdir()
@@ -116,7 +116,7 @@ def test_safe_extract_tar_rejects_too_many_members(
 def test_safe_extract_zip_rejects_too_many_members(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("maina.backends.archive.EXTRACT_MAX_MEMBERS", 2)
+    monkeypatch.setattr("maina.backends.unpack.EXTRACT_MAX_MEMBERS", 2)
     archive = tmp_path / "many.zip"
     with zipfile.ZipFile(archive, "w") as zf:
         for index in range(3):
@@ -200,7 +200,7 @@ def test_safe_extract_zip_rejects_tampered_entry_size(tmp_path: Path) -> None:
 def test_safe_extract_zip_rejects_oversized_total(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("maina.backends.archive.EXTRACT_MAX_BYTES", 10)
+    monkeypatch.setattr("maina.backends.unpack.EXTRACT_MAX_BYTES", 10)
     archive = tmp_path / "big.zip"
     with zipfile.ZipFile(archive, "w") as zf:
         zf.writestr("payload.bin", b"x" * 20)

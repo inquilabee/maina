@@ -281,22 +281,24 @@ def emit_check(installer: Installer, tools: list[str] | None) -> None:
     missing or errored — one bad manifest never blanks the rest of the report.
     """
     satisfied, missing, failures = installer.check_ids(tools)
-    rt = runtime()
-    for tid in [*satisfied, *missing]:
-        # An install probe does not look at the parser or output: a manifest `validate`
-        # rejects must not be reported as satisfied.
-        if problem := catalog_validate.validate_one(rt, tid):
-            failures[tid] = problem
-    satisfied = [tid for tid in satisfied if tid not in failures]
-    missing = [tid for tid in missing if tid not in failures]
-    for tid in satisfied:
+    # An install probe does not look at the parser or output: a manifest `validate`
+    # rejects must not be reported as satisfied.
+    failures |= invalid_manifests([*satisfied, *missing])
+    for tid in (t for t in satisfied if t not in failures):
         typer.echo(f"satisfied: {tid}")
-    for tid in missing:
+    for tid in (t for t in missing if t not in failures):
         typer.echo(f"missing: {tid}")
     for tid, message in failures.items():
         typer.echo(f"error: {tid}: {message}", err=True)
     if missing or failures:
         raise typer.Exit(1)
+
+
+def invalid_manifests(tool_ids: list[str]) -> dict[str, str]:
+    """``{id: problem}`` for each of *tool_ids* that `maina validate` would reject."""
+    rt = runtime()
+    problems = {tid: catalog_validate.validate_one(rt, tid) for tid in tool_ids}
+    return {tid: problem for tid, problem in problems.items() if problem}
 
 
 @app.command()
