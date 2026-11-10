@@ -198,3 +198,19 @@ def test_non_script_backend_ignores_a_stray_install_entry(tmp_path: Path) -> Non
     )
     manifest = Registry(root).load("t")
     assert manifest.entry_path is None
+
+
+def test_script_backend_reports_a_chmod_failure_as_an_install_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    entry = tmp_path / "deploy.py"
+    entry.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    entry.chmod(0o644)
+
+    def deny(self: Path, mode: int) -> None:
+        raise PermissionError("read-only")
+
+    monkeypatch.setattr("pathlib.Path.chmod", deny)
+    manifest = Manifest(id="deploy", data={"cli": "deploy"}, entry_path=entry)
+    with pytest.raises(InstallError, match="cannot make"):
+        resolve_script(manifest, tmp_path)
