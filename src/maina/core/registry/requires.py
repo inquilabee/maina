@@ -8,7 +8,7 @@ from typing import Any
 
 from maina.core.errors import ManifestError
 
-from .common import MANIFEST_PREFIX, manifest_error
+from .common import MANIFEST_PREFIX, is_unsafe_segment, manifest_error
 
 
 @dataclass(slots=True, frozen=True)
@@ -121,6 +121,11 @@ class RequiresSpec:
         if isinstance(value, int):
             return str(value)
         if isinstance(value, str):
+            # The pin names a cache directory (runtimes/<name>-<pin>); no separators or "..".
+            if is_unsafe_segment(value):
+                raise ManifestError(
+                    cls._pin_message(tool_id, key, f"{value!r} is not a safe version string")
+                )
             return value
         raise ManifestError(
             cls._pin_message(tool_id, key, f"must be a version string (got {type(value).__name__})")

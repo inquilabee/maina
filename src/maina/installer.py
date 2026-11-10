@@ -24,6 +24,7 @@ from maina.core.protocols import (
     InstallerBackend,
     LanguageRuntimeProvider,
 )
+from maina.core.subprocess_utils import resolve_within
 from maina.mise import MiseRuntime
 
 if TYPE_CHECKING:
@@ -123,7 +124,15 @@ class Installer:
         ``tools/``, so it can never nest with (or deadlock against)
         ``install_dir_lock`` taken by the same call path.
         """
-        with cls._dir_lock(cache_root / "runtimes" / f"{runtime}-{version}"):
+        lock_dir = cache_root / "runtimes" / f"{runtime}-{version}"
+        # Defence in depth: pins are validated at load, but never lock outside the cache.
+        resolve_within(
+            lock_dir,
+            cache_root,
+            error_cls=InstallError,
+            message=f"runtime {runtime}@{version} resolves outside the cache root",
+        )
+        with cls._dir_lock(lock_dir):
             yield
 
     def register_backends(

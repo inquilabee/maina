@@ -60,12 +60,13 @@ class InstallSpec:
         if bad := unknown_keys(raw, INSTALL_KEYS):
             keys = ", ".join(bad)
             raise manifest_error(tool_id, f"install unknown keys: {keys}")
+        backend = (
+            "path"
+            if raw.get("backend") is None
+            else scalar_str(raw["backend"], field_name="install.backend", tool_id=tool_id)
+        )
         return cls(
-            backend=(
-                "path"
-                if raw.get("backend") is None
-                else scalar_str(raw["backend"], field_name="install.backend", tool_id=tool_id)
-            ),
+            backend=backend,
             repo=cls._parse_repo(raw.get("repo"), tool_id=tool_id),
             assets=cls._parse_assets(raw.get("assets"), tool_id=tool_id),
             asset_template=cls._parse_asset_template(raw.get("asset_template"), tool_id=tool_id),
@@ -84,7 +85,7 @@ class InstallSpec:
             tag=safe_segment(
                 raw.get("tag"), field_name="install.tag", tool_id=tool_id, allow_none=True
             ),
-            package=cls._parse_package(raw.get("package"), tool_id=tool_id),
+            package=cls._parse_package(raw.get("package"), tool_id=tool_id, backend=backend),
             entry=cls._parse_entry(raw.get("entry"), tool_id=tool_id),
             sha256=cls._parse_sha256(raw.get("sha256"), tool_id=tool_id),
             allow_scripts=require_bool(
@@ -137,14 +138,18 @@ class InstallSpec:
     # npm package: optional @scope/, then a name of url-safe lowercase chars.
     _NPM_NAME_RE = re.compile(r"^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*$")
 
+    # pip distribution: a PEP 508 name, optionally with extras (``black[d]``).
+    _PIP_NAME_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?(\[[A-Za-z0-9._,-]+\])?$")
+
     @classmethod
-    def _parse_package(cls, raw: Any, *, tool_id: str) -> str | None:
-        """Validate ``install.package`` as an npm package name (scoped ok)."""
+    def _parse_package(cls, raw: Any, *, tool_id: str, backend: str) -> str | None:
+        """Validate ``install.package`` as an npm name (scoped ok) or, for pip, a PEP 508 name."""
         if raw is None:
             return None
         text = scalar_str(raw, field_name="install.package", tool_id=tool_id)
-        if not cls._NPM_NAME_RE.match(text):
-            raise manifest_error(tool_id, f"install.package {text!r} is not a valid npm name")
+        pattern, kind = (cls._PIP_NAME_RE, "pip") if backend == "pip" else (cls._NPM_NAME_RE, "npm")
+        if not pattern.match(text):
+            raise manifest_error(tool_id, f"install.package {text!r} is not a valid {kind} name")
         return text
 
     @staticmethod
@@ -208,7 +213,13 @@ class InstallSpec:
         text = scalar_str(raw, field_name="install.asset_template", tool_id=tool_id)
         if not text:
             raise manifest_error(tool_id, "install.asset_template must be a non-empty pattern")
-        for _literal, name, spec, conv in Formatter().parse(text):
+        try:
+            fields = list(Formatter().parse(text))
+        except ValueError as exc:  # unbalanced "{" / "}"
+            raise manifest_error(
+                tool_id, f"install.asset_template {text!r} is malformed: {exc}"
+            ) from exc
+        for _literal, name, spec, conv in fields:
             if name is None:
                 continue
             if spec or conv:

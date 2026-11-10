@@ -61,6 +61,10 @@ def scalar_str(value: Any, *, field_name: str, tool_id: str) -> str:
         raise manifest_error(
             tool_id, f"{field_name} must be a quoted string, not null (a bare 'key:' is null)"
         )
+    if isinstance(value, (dict, list)):
+        raise manifest_error(
+            tool_id, f"{field_name} must be a string, not a {type(value).__name__}"
+        )
     if isinstance(value, bool):
         raise manifest_error(
             tool_id, f"{field_name} must be a quoted string, not a YAML boolean ({value!r})"

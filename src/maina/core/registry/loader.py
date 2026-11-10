@@ -14,7 +14,7 @@ from maina.core.errors import ManifestError
 from maina.core.subprocess_utils import resolve_within
 
 from . import ids as registry_ids
-from .common import MANIFEST_PREFIX
+from .common import MANIFEST_PREFIX, scalar_str
 from .install import InstallSpec
 from .keys import BASE_TOOL_ID, IGNORED_MANIFEST_KEYS
 from .merge import merge_maps
@@ -170,7 +170,7 @@ class Registry:
             if "requires" in layer:
                 layer["requires"] = RequiresSpec.layer_for_merge(layer["requires"], tool_id=cid)
             if (seg := layer.get("subcommand")) is not None and str(seg) != "":
-                subcommands.append(str(seg))
+                subcommands.append(scalar_str(seg, field_name="subcommand", tool_id=cid))
             merged = merge_maps(merged, layer) if merged else layer
             merged.pop("extends", None)
             merged.pop("subcommand", None)
