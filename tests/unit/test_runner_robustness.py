@@ -10,7 +10,7 @@ import pytest
 
 from helpers import write_yaml
 from maina.backends import PathBackend
-from maina.core.errors import InstallError
+from maina.core.errors import ArgError, InstallError
 from maina.core.registry import Registry
 from maina.installer import Installer
 from maina.runner import ToolRunner
@@ -113,3 +113,33 @@ def test_run_without_stdin_does_not_block(tmp_path: Path) -> None:
     result = runner.run({}, timeout=5)
     assert result.ok
     assert result.raw == ""
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        {"env": {"A": "x\x00y"}},
+        {"env": {"A=B": "1"}},
+        {"env": {"": "1"}},
+        {"extra": [1, 2]},
+        {"stdin": 5},
+        {"env_allow": "HOME"},
+        {"cwd": "bad\x00dir"},
+    ],
+)
+def test_bad_call_inputs_raise_arg_error_not_a_stdlib_error(
+    tmp_path: Path, call: dict[str, Any]
+) -> None:
+    reg = make_reg(tmp_path, {"echo.yaml": {"cli": "echo", "install": {"backend": "path"}}})
+    runner = ToolRunner(reg.load("echo"), installer=path_installer(tmp_path, reg))
+    with pytest.raises(ArgError):
+        runner.run({}, **call)
+
+
+def test_a_nul_byte_in_an_argument_raises_arg_error(tmp_path: Path) -> None:
+    args = {"msg": {"positional": True}}
+    manifest = {"cli": "echo", "install": {"backend": "path"}, "args": args}
+    reg = make_reg(tmp_path, {"echo.yaml": manifest})
+    runner = ToolRunner(reg.load("echo"), installer=path_installer(tmp_path, reg))
+    with pytest.raises(ArgError, match="NUL"):
+        runner.run({"msg": "a\x00b"})

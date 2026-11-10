@@ -16,7 +16,7 @@ from maina.core.errors import ArgError
 from maina.core.registry import ArgSpec
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterable, Mapping
 
 
 class ArgParser:
@@ -310,13 +310,28 @@ class ArgParser:
         return [f"{flag}{joiner}{joined}"] if joiner is not None else [flag, joined]
 
     @staticmethod
-    def normalize_extra(extra: str | list[str] | None) -> list[str]:
+    def normalize_extra(
+        extra: str | os.PathLike[str] | Iterable[str | os.PathLike[str]] | None,
+    ) -> list[str]:
         """Normalize extra passthrough args to an argv suffix."""
         if extra is None:
             return []
+        if isinstance(extra, os.PathLike):
+            return ArgParser._extra_tokens([extra])
         if not isinstance(extra, str):
-            return list(extra)
+            return ArgParser._extra_tokens(extra)
         try:
             return shlex.split(extra)
         except ValueError as exc:
             raise ArgError(f"extra={extra!r} is not a valid shell-quoted string: {exc}") from exc
+
+    @staticmethod
+    def _extra_tokens(extra: Iterable[Any]) -> list[str]:
+        """``extra=[...]`` tokens: strings or paths only (a number is a call-site mistake)."""
+        try:
+            tokens = list(extra)
+        except TypeError as exc:
+            raise ArgError(f"extra must be a string or a list of strings, not {extra!r}") from exc
+        if bad := [t for t in tokens if not isinstance(t, (str, os.PathLike))]:
+            raise ArgError(f"extra tokens must be strings or paths, got {bad[0]!r}")
+        return [os.fspath(t) for t in tokens]

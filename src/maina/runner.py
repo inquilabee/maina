@@ -87,6 +87,7 @@ class ToolRunner:
         tool that emits an archive, image, or other binary on stdout.
         """
         self._check_env(env)
+        self._check_call_inputs(env_allow=env_allow, stdin=stdin, cwd=cwd)
         # Materialise env_allow once — it is consumed twice (install-phase and
         # tool subprocess), so a one-shot generator would apply differently.
         env_allow = None if env_allow is None else frozenset(env_allow)
@@ -99,6 +100,8 @@ class ToolRunner:
             extra=extra,
             separator=self.manifest.separator,
         )
+        if any("\x00" in token for token in argv):
+            raise ArgError(f"{self.manifest.id}: an argument contains a NUL byte")
         exe, composed_env = self.installer.resolve(self.manifest, env_allow=env_allow)
         # resolve() already trimmed the base env for install subprocesses; trim
         # again here (backends may have re-read os.environ), then overlay the
@@ -151,6 +154,24 @@ class ToolRunner:
                     f"{type(key).__name__} -> {type(value).__name__} "
                     "(the environment is text; stringify it at the call site)"
                 )
+            if not key or "=" in key or "\x00" in key + value:
+                raise ArgError(
+                    f"{self.manifest.id}: env[{key!r}] needs a non-empty name without '=' "
+                    "and no NUL byte in the name or value"
+                )
+
+    def _check_call_inputs(self, *, env_allow: Any, stdin: Any, cwd: str | None) -> None:
+        """Reject call-site values ``Popen`` / ``frozenset`` would mangle or raise on."""
+        tool = self.manifest.id
+        if isinstance(env_allow, str):
+            raise ArgError(
+                f"{tool}: env_allow must be a list of variable names, not the string "
+                f"{env_allow!r} (it would be read as a set of single characters)"
+            )
+        if stdin is not None and not isinstance(stdin, (str, bytes)):
+            raise ArgError(f"{tool}: stdin must be str or bytes, not {type(stdin).__name__}")
+        if cwd is not None and "\x00" in str(cwd):
+            raise ArgError(f"{tool}: cwd contains a NUL byte")
 
     def _build_result(
         self,
