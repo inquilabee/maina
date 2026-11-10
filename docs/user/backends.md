@@ -61,7 +61,8 @@ Downloads a release asset over HTTPS, verifies an optional `sha256`, extracts
 the named `binary`, and marks it executable. Cached across runs. Streamed with a
 512 MiB soft cap; non-HTTPS URLs are refused. A bare-binary, `.gz` or `.xz`
 asset must start like a Linux, macOS or Windows executable (or a shebang script) before it is
-cached, so an HTML error or login page is rejected rather than installed.
+cached, so an HTML error or login page is rejected rather than installed;
+`install.allow_any_executable: true` turns that check off for an unusual format.
 
 Pin a `sha256` per platform for every asset you depend on; without one the
 download is protected by TLS and the executable check only.

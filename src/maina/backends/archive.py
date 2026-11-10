@@ -42,6 +42,7 @@ EXECUTABLE_MAGICS = (
     b"\xce\xfa\xed\xfe",
     b"\xcf\xfa\xed\xfe",
     b"\xca\xfe\xba\xbe",
+    b"\xca\xfe\xba\xbf",
 )
 # Failures a corrupt, truncated, or unwritable download raises from the stdlib.
 UNPACK_ERRORS = (
@@ -224,7 +225,9 @@ class ArchiveFetcher:
                     tmp_path, dest_dir, binary, allow_any_executable=allow_any_executable
                 )
                 return
-        self.copy_raw_asset(archive, dest_dir / binary, name=name)
+        self.copy_raw_asset(
+            archive, dest_dir / binary, name=name, allow_any_executable=allow_any_executable
+        )
 
     @staticmethod
     def assert_safe_member(dest: Path, member_name: str) -> None:
@@ -309,6 +312,8 @@ class ArchiveFetcher:
         dest = dest.resolve()
         with zipfile.ZipFile(archive) as zf:
             infos = zf.infolist()
+            if len(infos) > EXTRACT_MAX_MEMBERS:
+                raise InstallError(f"archive has over {EXTRACT_MAX_MEMBERS} members, over the cap")
             total = sum(info.file_size for info in infos)
             if total > EXTRACT_MAX_BYTES:
                 raise InstallError(
@@ -338,8 +343,13 @@ class ArchiveFetcher:
     )
 
     @classmethod
-    def copy_raw_asset(cls, archive: Path, out: Path, *, name: str) -> None:
-        """Copy a single-file asset (bare binary, or ``.gz`` / ``.xz``) to out."""
+    def copy_raw_asset(
+        cls, archive: Path, out: Path, *, name: str, allow_any_executable: bool = False
+    ) -> None:
+        """Copy a single-file asset (bare binary, or ``.gz`` / ``.xz``) to out.
+
+        Unless *allow_any_executable*, the file must start like an executable.
+        """
         if name.endswith(cls.UNSUPPORTED_ASSET_SUFFIXES):
             raise InstallError(f"unsupported asset format: {name}")
         tmp = out.with_name(f".{out.name}.part")
@@ -350,7 +360,8 @@ class ArchiveFetcher:
             else:
                 with opener(archive, "rb") as src, tmp.open("wb") as dst:
                     cls._capped_copy(src, dst, name)
-            cls._require_executable_format(tmp, name)
+            if not allow_any_executable:
+                cls._require_executable_format(tmp, name)
         except BaseException:
             tmp.unlink(missing_ok=True)
             raise

@@ -113,6 +113,27 @@ def test_safe_extract_tar_rejects_too_many_members(
         ArchiveFetcher.safe_extract_tar(archive, dest, mode="r:gz")
 
 
+def test_safe_extract_zip_rejects_too_many_members(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("maina.backends.archive.EXTRACT_MAX_MEMBERS", 2)
+    archive = tmp_path / "many.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        for index in range(3):
+            zf.writestr(f"empty{index}", b"")
+    with pytest.raises(InstallError, match="members"):
+        ArchiveFetcher.safe_extract_zip(archive, tmp_path / "out")
+
+
+def test_copy_raw_asset_opt_out_keeps_an_unusual_format(tmp_path: Path) -> None:
+    asset = tmp_path / "tool"
+    asset.write_bytes(b"\x00asm unusual launcher")
+    with pytest.raises(InstallError, match="not an executable"):
+        ArchiveFetcher.copy_raw_asset(asset, tmp_path / "out", name="tool")
+    ArchiveFetcher.copy_raw_asset(asset, tmp_path / "out", name="tool", allow_any_executable=True)
+    assert (tmp_path / "out").is_file()
+
+
 def patch_zip_declared_size(path: Path, *, real_size: int, lie_size: int) -> None:
     """Rewrite the uncompressed-size field in both the local file header and
     the central directory record of the (single) entry in *path*, without
