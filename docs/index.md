@@ -35,13 +35,10 @@ runtime, so no hand-written wrapper is needed.
   [ShipGate](https://inquilabee.github.io/shipgate/), which builds on maina).
 - Not a shell: commands are argv lists, never a shell string.
 
-## Platform support and stability
+## Platform support
 
 Linux and macOS are supported. Windows is not: the install lock is a no-op there
-and archive extraction assumes Unix semantics. maina is Beta (0.x): `Tool`, the
-manifest schema, `ToolResult`, and the exception types are the stable core;
-`MainaApp`, `register`, the process-session helpers (`runtime`, `use`,
-`isolated`), and the backend/runtime protocols may change before 1.0.
+and archive extraction assumes Unix semantics.
 
 ## Next
 

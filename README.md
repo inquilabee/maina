@@ -68,10 +68,9 @@ real `shellcheck` manifest with a JSON parser.
 ## What's in the name?
 
 The myna (also spelled *maina*) is a bird, and the logo is a Common myna. Birds spend
-their lives carrying things from one place to another, and that is the one thing
-this project borrows from them: it carries a call from Python over to a program
-written in another language, and brings the answer back as data. The name only claims
-that part of what birds do.
+their lives carrying things from one place to another, and that is just what this
+project does: it carries a call from Python over to a program written in another
+language, and brings the answer back as data. The bird is where the name comes from.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/inquilabee/maina/main/docs/images/maina-myna.jpg" alt="A Common myna perched on a stone post" width="560">
@@ -79,14 +78,10 @@ that part of what birds do.
   <sub>A Common myna. Photo by Hobbyfotowiki, <a href="https://commons.wikimedia.org/wiki/File:Common_myna,_(Acridotheres_tristis).jpg">Wikimedia Commons</a> (CC0).</sub>
 </p>
 
-## Platform support and stability
+## Platform support
 
 Linux and macOS are supported. Windows is not: the install lock is a no-op there and
 archive extraction assumes Unix semantics.
-
-maina is **Beta (0.x)**. `Tool`, the manifest schema, `ToolResult`, and the exception
-types are the stable core. `MainaApp`, `register`, the process-session helpers
-(`runtime`, `use`, `isolated`), and the backend/runtime protocols may change before 1.0.
 
 ## Documentation
 
